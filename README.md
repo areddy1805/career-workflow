@@ -244,27 +244,142 @@ A Selenium-based harvester is still available as a backup:
 - Extracts valid `nkparam`
 - Stores in `nkPool.txt`
 
-```bash
-python nk_param_getter.py   # Optional fallback, Ctrl+C to stop
+
+
+
 ---
 
-## 🤖 Using Recommended Jobs as an Agent Feed
+## 🤖 Automated Job Application Agent
 
-`get_recommended_jobs()` returns a plain Python list of `Job` dataclasses, making it easy to pipe into any automation or AI agent:
+For a fully automated, AI-powered job application workflow, use:
 
-```python
-jobs = jc.get_recommended_jobs()
+```bash
+python apply_agent.py
+```
 
-# Feed into an LLM agent, a Notion database, a Telegram bot, etc.
-for job in jobs:
-    payload = {
-        "title":    job.title,
-        "company":  job.company,
-        "location": job.location,
-        "skills":   job.tags,
-        "url":      job.apply_link,
-    }
-    your_agent.process(payload)
+The agent is built on top of `NaukriLoginClient` and `NaukriJobClient`, so all authentication, session management, cookies, and token handling are already taken care of automatically.
+
+---
+
+### ✨ What the Agent Does
+
+The workflow runs end-to-end automatically:
+
+1. Logs into Naukri using your `.env` credentials
+2. Searches jobs using curated backend-focused keywords
+3. Scores each job using an AI model (`OpenAI`)
+4. Automatically applies to jobs that pass the score threshold
+5. Handles basic job questionnaires using predefined answers
+6. Skips external company-site applications
+7. Prevents duplicate applications using a local CSV log
+8. Displays a colored terminal dashboard with live progress
+
+---
+
+### ⚙️ Prerequisites
+
+Add your OpenAI API key to the `.env` file:
+
+```env
+OPEN_API_KEY=your-openai-api-key
+```
+
+Your `.env` should now look like:
+
+```env
+USERNAME=your_naukri_email@example.com
+PASSWORD=your_naukri_password
+OPEN_API_KEY=your-openai-api-key
+```
+
+---
+
+### 🧠 Default Search Strategy
+
+The agent fetches jobs using curated backend-development queries such as:
+
+- Node.js Developer
+- Python Backend Developer
+- Backend Engineer
+- API Developer
+- Full Stack Developer
+
+It also filters using:
+- Experience level
+- Job freshness
+- Multiple result pages
+
+---
+
+### 🔧 Configuration
+
+You can customize the behaviour directly inside `apply_agent.py`:
+
+| Variable | Purpose |
+|---|---|
+| `BQUERIES` | List of job search keywords |
+| `EXPERIENCE_LEVELS` | Experience filters |
+| `PAGES` | Number of search-result pages |
+| `JOB_AGE` | Max age of jobs to consider |
+| `SCORE_THRESHOLD` | Minimum AI score required before applying |
+
+---
+
+### 📂 Application Tracking
+
+The agent keeps track of already-applied jobs using:
+
+```bash
+applied_jobs.csv
+```
+
+This ensures:
+- No duplicate applications
+- Safe repeated runs
+- Persistent local history
+
+---
+
+### 🖥️ Terminal Dashboard
+
+The agent displays a live terminal dashboard showing:
+
+- Login status
+- Jobs fetched
+- AI evaluation score
+- Apply success/failure
+- Questionnaire detection
+- Final application summary
+
+Example:
+
+```text
+[FETCH] Backend Engineer — Hyderabad
+[AI SCORE] 8.7/10
+[APPLY] Success
+```
+
+---
+
+ External company-site applications | ❌ Skipped intentionally |
+
+---
+
+### 💡 Example Workflow
+
+```bash
+python apply_agent.py
+```
+
+Typical flow:
+
+```text
+Login Successful
+Fetching Jobs...
+Scoring with AI...
+Applying...
+Saved to applied_jobs.csv
+Run Complete
 ```
 
 ---
