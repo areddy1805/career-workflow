@@ -12,10 +12,7 @@ CANDIDATE_PROFILE = {
     "notice_period_days": "30",
     # Leave None when unknown or time-sensitive.
     "last_working_day": None,
-    "reason_for_job_change": (
-        "Looking for a role focused on production Generative AI, "
-        "RAG and agentic AI systems with greater technical ownership."
-    ),
+    "reason_for_job_change": "Seeking a production GenAI, RAG and agentic AI engineering role.",
     # ==================================================================
     # Overall experience
     # ==================================================================
@@ -51,6 +48,9 @@ CANDIDATE_PROFILE = {
     "prompt_engineering_experience_years": "3",
     "ai_evaluation_experience_years": "3",
     "databricks_experience_years": "0",
+    "langchain_experience_years": "2",
+    "langgraph_experience_years": "2",
+    "fastapi_experience_years": "2",
     # ==================================================================
     # Cloud
     # ==================================================================
@@ -80,15 +80,15 @@ CANDIDATE_PROFILE = {
     ],
     "willing_to_relocate_pune": "Yes",
     # Explicit policy.
-    "willing_to_relocate_south_delhi": "No",
+    "willing_to_relocate_south_delhi": "Yes",
     # ==================================================================
     # Work preferences
     # ==================================================================
-    "willing_alternate_saturdays": "No",
+    "willing_alternate_saturdays": "Yes",
     "has_offer_in_hand": "No",
     "accept_fte": "Yes",
     "accept_remote": "Yes",
-    "accept_one_year_contract": "No",
+    "accept_one_year_contract": "Yes",
     "willing_hackerrank_test": "Yes",
     "willing_f2f_interview": "Yes",
     "former_infosys_employee": "No",
@@ -125,5 +125,16 @@ CANDIDATE_PROFILE = {
         "API deployment and cloud-based AI application deployment. "
         "Working knowledge of Kubernetes and Azure deployment patterns."
     ),
+    "production_llm_summary": "Yes",
+    "genai_model_answer": "Azure OpenAI GPT models for generation and text-embedding models for retrieval, selected for Azure integration, reliability and enterprise controls.",
+    "genai_production_duration": "2 years",
+    "genai_user_count": "100+ users",
+    "genai_roi_summary": "Reduced response and information-retrieval time while improving answer consistency and support productivity.",
+    "genai_nfr_summary": "Security, latency, availability, observability, rate limiting, retries, caching and evaluation quality gates.",
+    "react_native_apps_count": "0",
+    "fullstack_project_summary": "Built and maintained Angular and Node.js full-stack applications, owning frontend architecture, API integration, state management, performance optimization and production delivery.",
+    "applied_accenture_last_year": "No",
+    "ollama_vllm_summary": "Yes",
+    "fastapi_serving_summary": "Yes",
     "default_unmapped_experience_years": "2",
 }

@@ -22,7 +22,7 @@ FIELDS = [
 ]
 
 
-def ensure_telemetry_file():
+def ensure_telemetry_file() -> None:
     TELEMETRY_FILE.parent.mkdir(
         parents=True,
         exist_ok=True,
@@ -35,9 +35,9 @@ def ensure_telemetry_file():
         "w",
         encoding="utf-8",
         newline="",
-    ) as f:
+    ) as file:
         writer = csv.DictWriter(
-            f,
+            file,
             fieldnames=FIELDS,
         )
 
@@ -47,7 +47,17 @@ def ensure_telemetry_file():
 def log_unresolved_questions(
     row: dict,
     questions: list[dict],
-):
+) -> None:
+    """
+    Append unresolved questionnaire questions to telemetry.
+
+    This file is intentionally append-only because the same question may
+    appear with different option structures across jobs.
+    """
+
+    if not questions:
+        return
+
     ensure_telemetry_file()
 
     observed_at = datetime.now(UTC).isoformat()
@@ -56,9 +66,9 @@ def log_unresolved_questions(
         "a",
         encoding="utf-8",
         newline="",
-    ) as f:
+    ) as file:
         writer = csv.DictWriter(
-            f,
+            file,
             fieldnames=FIELDS,
         )
 

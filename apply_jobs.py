@@ -1,6 +1,7 @@
 import csv
 import json
 import os
+import random
 import time
 
 from datetime import UTC, datetime, timedelta
@@ -49,7 +50,8 @@ MAX_APPLICATIONS = 5
 
 SCAN_LIMIT = 20
 
-SLEEP_BETWEEN_JOBS = 5
+SLEEP_BETWEEN_JOBS_MIN = 4
+SLEEP_BETWEEN_JOBS_MAX = 8
 
 
 SCORED_JOBS_FILE = Path("data/scored_jobs.csv")
@@ -60,7 +62,7 @@ APPLICATION_LOG_FILE = Path("data/application_log.csv")
 # Increment whenever resolver behavior materially changes.
 # MANUAL_REVIEW and VALIDATION_ERROR entries from an older resolver version
 # become immediately eligible for retry.
-RESOLVER_VERSION = 3
+RESOLVER_VERSION = 4
 
 
 PRIORITY_ORDER = {
@@ -1240,8 +1242,6 @@ def main():
 
             break
 
-        scanned_jobs += 1
-
         status = process_job(
             jc,
             row,
@@ -1253,6 +1253,10 @@ def main():
         )
 
         counters[status] += 1
+
+        # External redirects do not consume the useful candidate scan budget.
+        if status != "EXTERNAL":
+            scanned_jobs += 1
 
         if status == "APPLIED":
             successful_applications += 1
@@ -1276,7 +1280,7 @@ def main():
             "successful applications"
         )
 
-        time.sleep(SLEEP_BETWEEN_JOBS)
+        time.sleep(random.uniform(SLEEP_BETWEEN_JOBS_MIN, SLEEP_BETWEEN_JOBS_MAX))
 
     print("\n" + "=" * 110)
 
