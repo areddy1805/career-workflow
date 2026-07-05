@@ -9,7 +9,6 @@ from src.utils.nkparam_generator import generate_nkparam
 from src.config.constants import RECOMMENDED_JOBS_URL, JOB_SEARCH_URL, APPLY_JOB_URL
 import json
 
-
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 _handler = logging.StreamHandler()
@@ -21,7 +20,7 @@ logger.addHandler(_handler)
 
 APPLY_SRC_MAP = {
     "recommended": ("drecomm_apply", "--drecomm_apply-1-F-0-1--{sid}-"),
-    "search":      ("srp",           "--srp-1-F-0-1--{sid}-"),
+    "search": ("srp", "--srp-1-F-0-1--{sid}-"),
 }
 
 
@@ -126,7 +125,11 @@ class NaukriJobClient:
     def _parse_job(self, raw: dict) -> Job:
         # Extract location from the placeholders list if present.
         location = next(
-            (p["label"] for p in raw.get("placeholders", []) if p.get("type") == "location"),
+            (
+                p["label"]
+                for p in raw.get("placeholders", [])
+                if p.get("type") == "location"
+            ),
             "N/A",
         )
         return Job(
@@ -136,8 +139,11 @@ class NaukriJobClient:
             location=location,
             experience=raw.get("experienceText") or raw.get("experience") or "N/A",
             salary=raw.get("salaryDetail") or raw.get("salary") or "Not disclosed",
-            posted_date=raw.get("footerPlaceholderLabel") or raw.get("postedDate") or "N/A",
-            apply_link=raw.get("jdURL") or f"https://www.naukri.com/job-listings-{raw.get('jobId', '')}",
+            posted_date=raw.get("footerPlaceholderLabel")
+            or raw.get("postedDate")
+            or "N/A",
+            apply_link=raw.get("jdURL")
+            or f"https://www.naukri.com/job-listings-{raw.get('jobId', '')}",
             description=raw.get("jobDescription") or "",
             tags=(
                 [t.strip() for t in raw.get("tagsAndSkills", "").split(",")]
@@ -150,9 +156,9 @@ class NaukriJobClient:
         # Returns a dict of current UTC timestamps used by the recommended jobs payload.
         now = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")
         return {
-            "apply":        now,
-            "preference":   now,
-            "profile":      now,
+            "apply": now,
+            "preference": now,
+            "profile": now,
             "similar_jobs": now,
         }
 
@@ -163,7 +169,8 @@ class NaukriJobClient:
         # Produces the seoKey param expected by the search endpoint.
         # Example: "python-developer-jobs-in-bangalore-2"
         kw_slug = (
-            keyword.strip().lower()
+            keyword.strip()
+            .lower()
             .replace(".", "-dot-")
             .replace(" ", "-")
             .replace("+", "-")
@@ -192,16 +199,18 @@ class NaukriJobClient:
                 elif t == "location":
                     loc = item.get("label")
 
-            formatted.append({
-                "title":    job.get("title"),
-                "company":  job.get("companyName"),
-                "experience": exp,
-                "location": loc,
-                "salary":   sal,
-                "skills":   job.get("tagsAndSkills", "").split(","),
-                "job_url":  "https://www.naukri.com" + job.get("jdURL", ""),
-                "posted":   job.get("footerPlaceholderLabel"),
-            })
+            formatted.append(
+                {
+                    "title": job.get("title"),
+                    "company": job.get("companyName"),
+                    "experience": exp,
+                    "location": loc,
+                    "salary": sal,
+                    "skills": job.get("tagsAndSkills", "").split(","),
+                    "job_url": "https://www.naukri.com" + job.get("jdURL", ""),
+                    "posted": job.get("footerPlaceholderLabel"),
+                }
+            )
 
         return formatted
 
@@ -217,15 +226,17 @@ class NaukriJobClient:
         # Builds headers for the search endpoint. Uses non-auth base headers
         # and adds the appid, gid, and nkparam fields required by the search API.
         headers = self._client._build_headers(auth=False)
-        headers.update({
-            "authority":       "www.naukri.com",
-            "accept":          "application/json",
-            "accept-encoding": "gzip, deflate, br, zstd",
-            "accept-language": "en-US,en;q=0.9",
-            "appid":           "109",
-            "gid":             "LOCATION,INDUSTRY,EDUCATION,FAREA_ROLE",
-            "nkparam":         self._get_nkparam(),
-        })
+        headers.update(
+            {
+                "authority": "www.naukri.com",
+                "accept": "application/json",
+                "accept-encoding": "gzip, deflate, br, zstd",
+                "accept-language": "en-US,en;q=0.9",
+                "appid": "109",
+                "gid": "LOCATION,INDUSTRY,EDUCATION,FAREA_ROLE",
+                "nkparam": self._get_nkparam(),
+            }
+        )
         return headers
 
     # ----------------------------------------------------------------------------------
@@ -243,24 +254,26 @@ class NaukriJobClient:
 
         params = {
             "microsite": "y",
-            "src":       "jobsearchDesk",
-            "sid":       sid,
-            "xp":        "1",
-            "px":        "1",
+            "src": "jobsearchDesk",
+            "sid": sid,
+            "xp": "1",
+            "px": "1",
         }
 
         headers = self._client._build_headers(auth=True)
         headers["nkparam"] = self._get_nkparam()
-        headers.update({
-            "appid":          "121",
-            "systemid":       "Naukri",
-            "clientid":       "d3skt0p",
-            "accept":         "application/json",
-            "referer":        "https://www.naukri.com/",
-            "sec-fetch-site": "same-origin",
-            "sec-fetch-mode": "cors",
-            "sec-fetch-dest": "empty",
-        })
+        headers.update(
+            {
+                "appid": "121",
+                "systemid": "Naukri",
+                "clientid": "d3skt0p",
+                "accept": "application/json",
+                "referer": "https://www.naukri.com/",
+                "sec-fetch-site": "same-origin",
+                "sec-fetch-mode": "cors",
+                "sec-fetch-dest": "empty",
+            }
+        )
 
         logger.debug("Fetching job details for job_id=%s sid=%s", job_id, sid)
 
@@ -274,7 +287,9 @@ class NaukriJobClient:
             raise NaukriAuthError(msg)
 
         if not res.ok:
-            raise NaukriParseError(f"Job details fetch failed: {res.status_code} — {res.text}")
+            raise NaukriParseError(
+                f"Job details fetch failed: {res.status_code} — {res.text}"
+            )
 
         try:
             return res.json()
@@ -293,9 +308,9 @@ class NaukriJobClient:
     def apply_job(
         self,
         job: Job,
-        mandatory_skills: list[str] = None,
-        optional_skills:  list[str] = None,
-        sid:    str = "",
+        mandatory_skills: list[str] = None,  # type: ignore
+        optional_skills: list[str] = None,  # type: ignore
+        sid: str = "",
         source: str = "recommended",
     ) -> dict:
         url = APPLY_JOB_URL
@@ -306,33 +321,37 @@ class NaukriJobClient:
         if not sid:
             sid = datetime.utcnow().strftime("%Y%m%d%H%M%S") + "0000000"
 
-        apply_src, logstr_template = APPLY_SRC_MAP.get(source, APPLY_SRC_MAP["recommended"])
+        apply_src, logstr_template = APPLY_SRC_MAP.get(
+            source, APPLY_SRC_MAP["recommended"]
+        )
         logstr = logstr_template.format(sid=sid)
 
         payload = {
-            "strJobsarr":       [job.job_id],
-            "logstr":           logstr,
-            "flowtype":         "show",
-            "crossdomain":      True,
-            "jquery":           1,
-            "rdxMsgId":         "",
-            "chatBotSDK":       True,
+            "strJobsarr": [job.job_id],
+            "logstr": logstr,
+            "flowtype": "show",
+            "crossdomain": True,
+            "jquery": 1,
+            "rdxMsgId": "",
+            "chatBotSDK": True,
             "mandatory_skills": mandatory_skills or [],
-            "optional_skills":  optional_skills or [],
-            "applyTypeId":      "107",
-            "closebtn":         "y",
-            "applySrc":         apply_src,
-            "sid":              sid,
-            "mid":              "",
+            "optional_skills": optional_skills or [],
+            "applyTypeId": "107",
+            "closebtn": "y",
+            "applySrc": apply_src,
+            "sid": sid,
+            "mid": "",
         }
 
         headers = self._client._build_headers(auth=True)
-        headers.update({
-            "appid":     "121",
-            "systemid":  "jobseeker",
-            "clientid":  "d3skt0p",
-            "accept":    "application/json",
-        })
+        headers.update(
+            {
+                "appid": "121",
+                "systemid": "jobseeker",
+                "clientid": "d3skt0p",
+                "accept": "application/json",
+            }
+        )
 
         logger.debug("Applying to job_id=%s sid=%s", job.job_id, sid)
 
@@ -357,6 +376,97 @@ class NaukriJobClient:
     # Apply job with questionnaire answers
     # ----------------------------------------------------------------------------------
 
+    def submit_questionnaire_answers(
+        self,
+        job: Job,
+        answers: dict[str, str],
+        sid: str,
+        source: str = "search",
+    ) -> dict:
+        """
+        Submit explicit questionnaire answers.
+
+        The caller must provide:
+            {
+                question_id: answer
+            }
+
+        This method does not infer or generate answers.
+        """
+
+        if not job.job_id:
+            raise ValueError("Invalid job_id")
+
+        if not answers:
+            raise ValueError("answers cannot be empty")
+
+        if not sid:
+            raise ValueError("sid is required")
+
+        apply_src, logstr_template = APPLY_SRC_MAP.get(
+            source,
+            APPLY_SRC_MAP["recommended"],
+        )
+
+        logstr = logstr_template.format(sid=sid)
+
+        payload = {
+            "strJobsarr": [job.job_id],
+            "logstr": logstr,
+            "flowtype": "show",
+            "crossdomain": True,
+            "jquery": 1,
+            "rdxMsgId": "",
+            "chatBotSDK": True,
+            "mandatory_skills": [],
+            "optional_skills": [],
+            "applyTypeId": "107",
+            "closebtn": "y",
+            "applySrc": apply_src,
+            "sid": sid,
+            "mid": "",
+            "applyData": {
+                job.job_id: {
+                    "answers": answers,
+                }
+            },
+        }
+
+        headers = self._client._build_headers(auth=True)
+
+        logger.debug(
+            "Submitting explicit questionnaire answers " "for job_id=%s sid=%s",
+            job.job_id,
+            sid,
+        )
+
+        res = self._session.post(
+            APPLY_JOB_URL,
+            headers=headers,
+            json=payload,
+        )
+
+        if res.status_code in (401, 403):
+            try:
+                msg = res.json().get(
+                    "message",
+                    "Authentication failed",
+                )
+            except Exception:
+                msg = res.text
+
+            raise NaukriAuthError(msg)
+
+        if not res.ok:
+            raise NaukriParseError(
+                f"Questionnaire submission failed: " f"{res.status_code} — {res.text}"
+            )
+
+        try:
+            return res.json()
+        except Exception:
+            raise NaukriParseError(f"Invalid JSON response: {res.text}")
+
     def handle_static_questionnaire_and_apply(
         self,
         job,
@@ -370,15 +480,20 @@ class NaukriJobClient:
         # Static profile values used when generating questionnaire answers.
         # Update these to match the candidate's actual profile.
         PROFILE = {
-            "current_ctc":  "5",
+            "current_ctc": "5",
             "expected_ctc": "7",
-            "exp_total":    "2",
-            "exp_node":     "2",
-            "exp_python":   "1",
-            "notice_days":  30,
+            "exp_total": "2",
+            "exp_node": "2",
+            "exp_python": "1",
+            "notice_days": 30,
             "skills": [
-                "node", "docker", "kubernetes",
-                "aws", "ci/cd", "jenkins", "terraform",
+                "node",
+                "docker",
+                "kubernetes",
+                "aws",
+                "ci/cd",
+                "jenkins",
+                "terraform",
             ],
         }
 
@@ -405,7 +520,7 @@ class NaukriJobClient:
                 return list(options.keys())[0]
 
             for q in questionnaire:
-                qid   = q["questionId"]
+                qid = q["questionId"]
                 qtext = (q.get("questionName") or "").lower()
                 qtype = (q.get("questionType") or "").lower()
                 options = q.get("answerOption") or {}
@@ -433,7 +548,9 @@ class NaukriJobClient:
                             key = pick_notice(options, profile["notice_days"])
                         elif any(skill in qtext for skill in profile["skills"]):
                             key = pick_yes(options)
-                        elif any(x in qtext for x in ["do you", "have you", "experience"]):
+                        elif any(
+                            x in qtext for x in ["do you", "have you", "experience"]
+                        ):
                             key = pick_yes(options)
                         else:
                             key = list(options.keys())[0]
@@ -450,24 +567,26 @@ class NaukriJobClient:
         answers = build_smart_answers(questionnaire, PROFILE)
         logger.debug("Generated answers: %s", answers)
 
-        apply_src, logstr_template = APPLY_SRC_MAP.get(source, APPLY_SRC_MAP["recommended"])
+        apply_src, logstr_template = APPLY_SRC_MAP.get(
+            source, APPLY_SRC_MAP["recommended"]
+        )
         logstr = logstr_template.format(sid=sid)
 
         payload = {
-            "strJobsarr":       [job.job_id],
-            "logstr":           logstr,
-            "flowtype":         "show",
-            "crossdomain":      True,
-            "jquery":           1,
-            "rdxMsgId":         "",
-            "chatBotSDK":       True,
+            "strJobsarr": [job.job_id],
+            "logstr": logstr,
+            "flowtype": "show",
+            "crossdomain": True,
+            "jquery": 1,
+            "rdxMsgId": "",
+            "chatBotSDK": True,
             "mandatory_skills": mandatory_skills or [],
-            "optional_skills":  optional_skills or [],
-            "applyTypeId":      "107",
-            "closebtn":         "y",
-            "applySrc":         apply_src,
-            "sid":              sid,
-            "mid":              "",
+            "optional_skills": optional_skills or [],
+            "applyTypeId": "107",
+            "closebtn": "y",
+            "applySrc": apply_src,
+            "sid": sid,
+            "mid": "",
             "applyData": {
                 job.job_id: {
                     "answers": answers,
@@ -497,8 +616,8 @@ class NaukriJobClient:
             url,
             headers=self._headers(),
             json={
-                "clusterId":       None,
-                "src":             "recommClusterApi",
+                "clusterId": None,
+                "src": "recommClusterApi",
                 "clusterSplitDate": self._cluster_dates(),
             },
         )
@@ -517,31 +636,31 @@ class NaukriJobClient:
 
     def search_jobs(
         self,
-        keyword:          str,
-        location:         str = "",
-        page:             int = 2,
-        job_age:          int = 3,
-        experience:       int = 2,
+        keyword: str,
+        location: str = "",
+        page: int = 2,
+        job_age: int = 3,
+        experience: int = 2,
         results_per_page: int = 20,
-        lat_long:         str = "",
+        lat_long: str = "",
     ) -> list[Job]:
 
-        url     = JOB_SEARCH_URL
+        url = JOB_SEARCH_URL
         seo_key = self._build_seo_key(keyword, location, page)
 
         params = {
-            "noOfResults":    results_per_page,
-            "urlType":        "search_by_keyword",
-            "searchType":     "adv",
-            "keyword":        keyword,
-            "k":              keyword,
-            "pageNo":         page,
-            "experience":     experience,
-            "jobAge":         job_age,
+            "noOfResults": results_per_page,
+            "urlType": "search_by_keyword",
+            "searchType": "adv",
+            "keyword": keyword,
+            "k": keyword,
+            "pageNo": page,
+            "experience": experience,
+            "jobAge": job_age,
             "nignbevent_src": "jobsearchDeskGNB",
-            "seoKey":         seo_key,
-            "src":            "jobsearchDesk",
-            "latLong":        lat_long,
+            "seoKey": seo_key,
+            "src": "jobsearchDesk",
+            "latLong": lat_long,
         }
 
         res = self._session.get(url, headers=self._search_headers(), params=params)
@@ -556,7 +675,7 @@ class NaukriJobClient:
         if not res.ok:
             raise NaukriParseError(f"Search failed: {res.status_code} — {res.text}")
 
-        data     = res.json()
+        data = res.json()
         raw_jobs = data.get("jobDetails") or data.get("jobs") or []
 
         # format_jobs is called here for side-effect logging/debugging purposes.

@@ -10,10 +10,13 @@ from src.models.models import *
 from src.utils.extractors import extract_form_key2, extract_all_js_urls
 import requests
 from src.utils.request_helper import with_exponential_retry
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 _handler = logging.StreamHandler()
-_handler.setFormatter(logging.Formatter("%(asctime)s  %(levelname)-8s  %(message)s", datefmt="%H:%M:%S"))
+_handler.setFormatter(
+    logging.Formatter("%(asctime)s  %(levelname)-8s  %(message)s", datefmt="%H:%M:%S")
+)
 logger.addHandler(_handler)
 
 
@@ -81,21 +84,22 @@ UPLOAD_HEADERS = {
 }
 
 OTP_HEADERS = {
-  "accept": "application/json",
-  "appid": "100",
-  "content-type": "application/json",
-  "referer": "https://www.naukri.com/nlogin/login?URL=//www.naukri.com/mnjuser/recommendedjobs",
-  "sec-ch-ua": "\"Chromium\";v=\"146\", \"Not-A.Brand\";v=\"24\", \"Google Chrome\";v=\"146\"",
-  "sec-ch-ua-mobile": "?0",
-  "sec-ch-ua-platform": "\"Windows\"",
-  "systemid": "jobseeker",
-  "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
-  "x-requested-with": "XMLHttpRequest"
+    "accept": "application/json",
+    "appid": "100",
+    "content-type": "application/json",
+    "referer": "https://www.naukri.com/nlogin/login?URL=//www.naukri.com/mnjuser/recommendedjobs",
+    "sec-ch-ua": '"Chromium";v="146", "Not-A.Brand";v="24", "Google Chrome";v="146"',
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": '"Windows"',
+    "systemid": "jobseeker",
+    "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+    "x-requested-with": "XMLHttpRequest",
 }
 
 # ---------------------------------------------------------------------------
 # Client
 # ---------------------------------------------------------------------------
+
 
 class NaukriLoginClient:
 
@@ -106,6 +110,10 @@ class NaukriLoginClient:
         self.naukri_session = None
         self.profile_id = None
         self.cache = {}
+
+    def _get_cookie_value(self, name: str):
+        cookie = self.session.get_cookie(name)
+        return cookie.value if cookie else None
 
     def _build_headers(self, auth=False, extra=None):
         headers = DEFAULT_HEADERS.copy()
@@ -138,11 +146,14 @@ class NaukriLoginClient:
             print(res.content)
             raise NaukriAuthError("Login failed")
 
-        token = self.session.cookies.get("nauk_at")
+        token = self._get_cookie_value("nauk_at")
         if not token:
             raise NaukriAuthError("No token")
 
-        self.naukri_session = NaukriSession(token, self.session.cookies)
+        self.naukri_session = NaukriSession(
+            bearer_token=token,
+            cookies={},
+        )
 
         try:
             self.cache["form_key"] = self.get_form_key2()
@@ -154,16 +165,12 @@ class NaukriLoginClient:
     # ------------------------------------------------------------------
     # form_key helpers
     # ------------------------------------------------------------------
- 
-
-
 
     @with_exponential_retry(label="verify_otp")
     def _verify_otp_request(self, username: str, otp: str, is_mobile: bool):
         payload = {
             "username": username,
             "token": otp,
-
             "flowId": "login",
             "isLoginByEmail": not is_mobile,
             "isLoginByMobile": is_mobile,
@@ -174,7 +181,7 @@ class NaukriLoginClient:
             json=payload,
         )
 
-    def verify_otp(self, otp: str, username: str = None, is_mobile: bool = True):
+    def verify_otp(self, otp: str, username: str = None, is_mobile: bool = True):  # type: ignore
         """
         Verify an OTP challenge issued by Naukri during login.
 
@@ -198,7 +205,7 @@ class NaukriLoginClient:
             logger.error("OTP verification failed: %s %s", res.status_code, res.text)
             raise NaukriAuthError(f"OTP verification failed ({res.status_code})")
 
-        token = self.session.cookies.get("nauk_at")
+        token = self._get_cookie_value("nauk_at")
         if not token:
             # Some flows return the token in the JSON body instead
             try:
@@ -209,7 +216,10 @@ class NaukriLoginClient:
         if not token:
             raise NaukriAuthError("OTP verified but no auth token received")
 
-        self.naukri_session = NaukriSession(token, self.session.cookies)
+        self.naukri_session = NaukriSession(
+            bearer_token=token,
+            cookies={},
+        )
 
         try:
             self.cache["form_key"] = self.get_form_key2()
@@ -217,7 +227,6 @@ class NaukriLoginClient:
             pass
 
         return self.naukri_session
-
 
     @with_exponential_retry(label="send_otp")
     def _send_otp_request(self, username: str, is_mobile: bool):
@@ -227,15 +236,15 @@ class NaukriLoginClient:
             "isLoginByEmail": not is_mobile,
             "isLoginByMobile": is_mobile,
         }
-        otp_header=self._build_headers()
-        otp_header["appid"]="100"
+        otp_header = self._build_headers()
+        otp_header["appid"] = "100"
         return self.session.post(
             OTP_SEND_URL,
             headers=otp_header,
             json=payload,
         )
 
-    def send_otp(self, username: str = None, is_mobile: bool = True):
+    def send_otp(self, username: str = None, is_mobile: bool = True):  # type: ignore
         """
         Trigger Naukri to send an OTP to the user's phone/email.
 
@@ -261,8 +270,6 @@ class NaukriLoginClient:
             return res.json()
         except Exception:
             return {}
-
-
 
     @with_exponential_retry(label="get_form_key")
     def _fetch_profile_html(self):
@@ -443,7 +450,7 @@ class NaukriLoginClient:
     def _update_profile_request(self, headers, payload):
         return self.session.post(PROFILE_UPDATE_URL, headers=headers, json=payload)
 
-    def update_profile(self, headline: str = None, name: str = None, summary: str = None):
+    def update_profile(self, headline: str = None, name: str = None, summary: str = None):  # type: ignore
         pid = self.fetch_profile_id()
 
         headers = self._build_headers(
@@ -473,10 +480,6 @@ class NaukriLoginClient:
         payload = {"profile": profile_fields, "profileId": pid}
         res = self._update_profile_request(headers, payload)
         return ProfileUpdateResult(pid, res.json(), res.status_code)
-    
-
-
-       
 
     @with_exponential_retry(label="fetch_history")
     def _fetch_history_request(self, page_size, days, page_number, mobile=False):
@@ -486,8 +489,12 @@ class NaukriLoginClient:
             "systemid": "135" if mobile else "107",
             "content-type": "application/json",
             "x-requested-with": "XMLHttpRequest",
-            "referer": "https://www.naukri.com/apply/historypage" if mobile else "https://www.naukri.com/myapply/historypage",
-            "authorization": f"Bearer {self.naukri_session.bearer_token}",
+            "referer": (
+                "https://www.naukri.com/apply/historypage"
+                if mobile
+                else "https://www.naukri.com/myapply/historypage"
+            ),
+            "authorization": f"Bearer {self.naukri_session.bearer_token}",  # type: ignore
         }
         if mobile:
             headers["clientid"] = "m0b5"
@@ -502,10 +509,12 @@ class NaukriLoginClient:
 
         return self.session.get(HISTORY_URL, headers=headers, params=params)
 
-    def get_application_history(self, page_size=10, days=90, page_number=1, mobile=False):
+    def get_application_history(
+        self, page_size=10, days=90, page_number=1, mobile=False
+    ):
         """
         Fetch job application history.
-        
+
         Args:
             page_size:    Number of results per page (default 10)
             days:         How far back to look (default 90)
@@ -525,15 +534,14 @@ class NaukriLoginClient:
     # ------------------------------------------------------------------
     # Utilities
     # ------------------------------------------------------------------
-    
+
     def generate_file_key(self, length):
         chars = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
         return "".join(random.choice(chars) for _ in range(length))
-    
 
     def parse_history(self, raw: dict) -> list[ApplicationHistory]:
         results = []
-        for item in raw.get("applyDetails", []):
+        for item in raw.get("applyDetails") or []:
             statuses = [
                 ApplicationStatus(
                     status_id=s["statusId"],
@@ -543,18 +551,20 @@ class NaukriLoginClient:
                 for s in item.get("status", [])
             ]
             rating = item.get("companyRating", {})
-            results.append(ApplicationHistory(
-                job_id=item["jobId"],
-                job_title=item["jobTitle"],
-                company=item["company"],
-                location=item["location"],
-                apply_type=item["applyType"],
-                is_open=item["isOpen"] == "true",
-                ars_score=item.get("arsScore", 0),
-                star_rating=item.get("starRating", "0"),
-                job_type=item.get("jobType", ""),
-                statuses=statuses,
-                company_rating=float(rating["AggregateRating"]) if rating else None,
-                logo_path=item.get("logoPath"),
-            ))
+            results.append(
+                ApplicationHistory(
+                    job_id=item["jobId"],
+                    job_title=item["jobTitle"],
+                    company=item["company"],
+                    location=item["location"],
+                    apply_type=item["applyType"],
+                    is_open=item["isOpen"] == "true",
+                    ars_score=item.get("arsScore", 0),
+                    star_rating=item.get("starRating", "0"),
+                    job_type=item.get("jobType", ""),
+                    statuses=statuses,
+                    company_rating=float(rating["AggregateRating"]) if rating else None,  # type: ignore
+                    logo_path=item.get("logoPath"),
+                )
+            )
         return results
