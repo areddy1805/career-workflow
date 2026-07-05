@@ -6,7 +6,12 @@ from src.client.naukri_client import NaukriLoginClient
 from src.exceptions.exceptions import NaukriAuthError, NaukriParseError
 from src.utils.request_helper import with_exponential_retry
 from src.utils.nkparam_generator import generate_nkparam
-from src.config.constants import RECOMMENDED_JOBS_URL, JOB_SEARCH_URL, APPLY_JOB_URL
+from src.config.constants import (
+    RECOMMENDED_JOBS_URL,
+    JOB_SEARCH_URL,
+    APPLY_JOB_URL,
+    CHATBOT_RESPOND_URL,
+)
 import json
 
 logger = logging.getLogger(__name__)
@@ -686,3 +691,64 @@ class NaukriJobClient:
             return []
 
         return [self._parse_job(j) for j in raw_jobs]
+
+    def respond_to_chatbot(
+        self,
+        *,
+        answer_text: str,
+        conversation_name: str,
+        answer_id: str = "-1",
+        status: str = "Fresh",
+    ) -> dict:
+        if not answer_text:
+            raise ValueError("answer_text is required")
+
+        if not conversation_name:
+            raise ValueError("conversation_name is required")
+
+        payload = {
+            "input": {
+                "text": [answer_text],
+                "id": [answer_id],
+            },
+            "appName": conversation_name,
+            "domain": "Naukri",
+            "conversation": conversation_name,
+            "channel": "web",
+            "status": status,
+            "utmSource": "",
+            "utmContent": "",
+            "deviceType": "WEB",
+        }
+
+        headers = self._client._build_headers(auth=True)
+        headers.update(
+            {
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            }
+        )
+
+        res = self._session.post(
+            CHATBOT_RESPOND_URL,
+            headers=headers,
+            json=payload,
+        )
+
+        if res.status_code in (401, 403):
+            try:
+                message = res.json().get("message", "Authentication failed")
+            except Exception:
+                message = res.text
+
+            raise NaukriAuthError(message)
+
+        if not res.ok:
+            raise NaukriParseError(
+                f"Chatbot response failed: " f"{res.status_code} — {res.text}"
+            )
+
+        try:
+            return res.json()
+        except Exception:
+            raise NaukriParseError(f"Invalid chatbot JSON response: {res.text}")

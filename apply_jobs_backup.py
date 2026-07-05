@@ -536,31 +536,17 @@ MAX_CONSECUTIVE_UNKNOWN_FAILURES = 3
 
 
 def extract_chatbot_response(response: dict) -> dict:
-    """
-    Normalize both chatbot response shapes:
-    nested chatbotResponse from initial apply and direct chatbot state
-    returned by the respond endpoint.
-    """
     if not isinstance(response, dict):
         return {}
-
     chatbot = response.get("chatbotResponse")
-
     if isinstance(chatbot, dict) and chatbot:
         return chatbot
-
-    chatbot_markers = (
-        "currentConversationName",
-        "currentNodeName",
-        "conversation_session_id",
-        "speechResponse",
-        "options",
-        "isApply",
-    )
-
-    if any(marker in response for marker in chatbot_markers):
+    if (
+        "currentConversationName" in response
+        and "currentNodeName" in response
+        and "conversation_session_id" in response
+    ):
         return response
-
     return {}
 
 
@@ -744,15 +730,7 @@ def run_interactive_chatbot_flow(
             f"{node_name or 'unknown node'}"
         )
 
-        options = chatbot_options(chatbot)
-
-        is_resume_upload_node = (
-            conversation_name == "RecruiterQUP_keySkillsResumeUpload"
-            or node_name.lower() == "resume upload"
-            or any(is_upload_option(option) for option in options)
-        )
-
-        if data_committed and is_leaf and not is_resume_upload_node:
+        if data_committed and is_leaf:
             return (
                 "APPLIED",
                 "interactive questionnaire committed at terminal node",
@@ -800,24 +778,9 @@ def run_interactive_chatbot_flow(
         next_chatbot = extract_chatbot_response(response)
 
         if next_chatbot:
-            next_options = chatbot_options(next_chatbot)
-            next_conversation = str(
-                next_chatbot.get("currentConversationName") or ""
-            ).strip()
-            next_node = str(
-                next_chatbot.get("currentNodeName") or ""
-            ).strip()
-
-            next_is_resume_upload = (
-                next_conversation == "RecruiterQUP_keySkillsResumeUpload"
-                or next_node.lower() == "resume upload"
-                or any(is_upload_option(option) for option in next_options)
-            )
-
             if (
                 next_chatbot.get("dataCommitted") is True
                 and next_chatbot.get("isLeafNode") is True
-                and not next_is_resume_upload
             ):
                 return (
                     "APPLIED",
@@ -985,20 +948,6 @@ def process_job(
     if questionnaire:
         print(f"[QUESTIONNAIRE] {len(questionnaire)} question(s)")
     else:
-        initial_chatbot = extract_chatbot_response(initial)
-
-        if initial_chatbot:
-            print("[INTERACTIVE_REQUIRED] Entering chatbot/QUP flow")
-            status, reason = run_interactive_chatbot_flow(
-                jc=jc,
-                job=job,
-                row=row,
-                initial_response=initial,
-            )
-            append_log(row, status, reason)
-            print(f"[{status}] {reason}")
-            return status
-
         initial_classification = classify_apply_response(initial)
 
         if initial_classification.status == ApplyStatus.INTERACTIVE_REQUIRED:

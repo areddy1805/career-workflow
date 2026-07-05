@@ -7,6 +7,8 @@ class ApplyStatus(str, Enum):
     APPLIED = "APPLIED"
     ALREADY_APPLIED = "ALREADY_APPLIED"
 
+    INTERACTIVE_REQUIRED = "INTERACTIVE_REQUIRED"
+
     VALIDATION_ERROR = "VALIDATION_ERROR"
     RETRYABLE = "RETRYABLE"
     BLOCKED = "BLOCKED"
@@ -46,6 +48,22 @@ def classify_apply_response(
         return ApplyClassification(
             status=ApplyStatus.ALREADY_APPLIED,
             reason="platform reports existing application",
+        )
+
+        # ------------------------------------------------------------------
+    # Interactive chatbot / profile-QUP flow
+    # ------------------------------------------------------------------
+
+    chatbot = response.get("chatbotResponse") or {}
+
+    if chatbot.get("conversation_session_id") and chatbot.get("isApply") is True:
+        return ApplyClassification(
+            status=ApplyStatus.INTERACTIVE_REQUIRED,
+            reason=(
+                f"interactive apply flow at "
+                f"{chatbot.get('currentConversationName') or 'unknown conversation'}"
+                f"/{chatbot.get('currentNodeName') or 'unknown node'}"
+            ),
         )
 
     # ------------------------------------------------------------------

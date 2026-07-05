@@ -125,4 +125,5 @@ CANDIDATE_PROFILE = {
         "API deployment and cloud-based AI application deployment. "
         "Working knowledge of Kubernetes and Azure deployment patterns."
     ),
+    "default_unmapped_experience_years": "2",
 }

@@ -297,6 +297,49 @@ def resolve_answer(
     if "reason of job change" in q:
         return profile.get("reason_for_job_change")
 
+    # Generic affirmative-policy fallback
+    if any(
+        phrase in q
+        for phrase in (
+            "willing to relocate",
+            "ready to relocate",
+            "available for interview",
+            "available to attend",
+            "comfortable working",
+            "willing to work",
+            "can attend",
+            "can relocate",
+        )
+    ):
+        if interview_date_is_past(text):
+            return None
+
+        return "Yes"
+
+    # Generic experience fallback
+    if contains_experience_question(q):
+        return profile.get(
+            "default_unmapped_experience_years",
+            "2",
+        )
+
+    # ------------------------------------------------------------------
+    # Generic capability / hands-on confirmation
+    # ------------------------------------------------------------------
+
+    capability_markers = (
+        "have you deployed",
+        "have you built",
+        "have you worked",
+        "have you used",
+        "did you use",
+        "do you have experience",
+        "hands-on experience",
+    )
+
+    if any(marker in q for marker in capability_markers):
+        return "Yes"
+
     return None
 
 
