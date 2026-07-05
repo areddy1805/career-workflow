@@ -2,40 +2,17 @@ import csv
 import json
 import os
 import time
-
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
 
 from dotenv import load_dotenv
-
-from config.candidate_profile import (
-    CANDIDATE_PROFILE,
-)
-
-from src.application.response_classifier import (
-    ApplyStatus,
-    classify_apply_response,
-)
-
-from src.application.response_store import (
-    save_response,
-)
-
-from src.client.job_client import (
-    NaukriJobClient,
-)
-
-from src.client.naukri_client import (
-    NaukriLoginClient,
-)
-
+from src.application.response_store import save_response
+from config.candidate_profile import CANDIDATE_PROFILE
+from src.client.job_client import NaukriJobClient
+from src.client.naukri_client import NaukriLoginClient
 from src.models.models import Job
-
-from src.utils.questionnaire_resolver import (
-    resolve_answer,
-    serialize_answer,
-)
-
+from src.utils.questionnaire_resolver import resolve_answer, serialize_answer
+from src.application.response_classifier import classify_apply_response
 from src.utils.questionnaire_telemetry import (
     log_unresolved_questions,
 )
@@ -44,31 +21,24 @@ from src.utils.questionnaire_telemetry import (
 # Configuration
 # ==============================================================================
 
+SUCCESS_BATCH_LIMIT = 5
+
+# Maximum number of candidate jobs inspected in one run.
+# None means unlimited.
+SCAN_LIMIT = 20
+
+SCORED_JOBS_FILE = Path("data/scored_jobs.csv")
+APPLICATION_LOG_FILE = Path("data/application_log.csv")
 
 MAX_APPLICATIONS = 5
 
-SCAN_LIMIT = 20
-
 SLEEP_BETWEEN_JOBS = 5
-
-
-SCORED_JOBS_FILE = Path("data/scored_jobs.csv")
-
-APPLICATION_LOG_FILE = Path("data/application_log.csv")
-
-
-# Increment whenever resolver behavior materially changes.
-# MANUAL_REVIEW and VALIDATION_ERROR entries from an older resolver version
-# become immediately eligible for retry.
-RESOLVER_VERSION = 2
-
 
 PRIORITY_ORDER = {
     "P1": 1,
     "P2": 2,
     "P3": 3,
 }
-
 
 LOCATION_ORDER = {
     "PUNE": 1,
@@ -77,28 +47,17 @@ LOCATION_ORDER = {
     "OTHER": 4,
 }
 
-
-PERMANENT_TERMINAL_STATUSES = {
+TERMINAL_STATUSES = {
     "APPLIED",
     "ALREADY_APPLIED",
+    "MANUAL_REVIEW",
     "EXTERNAL",
-    "BLOCKED",
-}
-
-
-RETRY_COOLDOWN_HOURS = {
-    "MANUAL_REVIEW": 24,
-    "VALIDATION_ERROR": 24,
-    "RETRYABLE": 6,
-    "UNKNOWN_FAILURE": 72,
-    "FAILED": 6,
 }
 
 
 # ==============================================================================
 # Application log
 # ==============================================================================
-
 
 LOG_FIELDS = [
     "job_id",
@@ -109,7 +68,6 @@ LOG_FIELDS = [
     "location",
     "status",
     "reason",
-    "resolver_version",
     "applied_at",
 ]
 
@@ -120,52 +78,8 @@ def ensure_log_file():
         exist_ok=True,
     )
 
-    if not APPLICATION_LOG_FILE.exists():
-        with APPLICATION_LOG_FILE.open(
-            "w",
-            encoding="utf-8",
-            newline="",
-        ) as f:
-            writer = csv.DictWriter(
-                f,
-                fieldnames=LOG_FIELDS,
-            )
-
-            writer.writeheader()
-
+    if APPLICATION_LOG_FILE.exists():
         return
-
-    migrate_log_schema_if_needed()
-
-
-def migrate_log_schema_if_needed():
-    with APPLICATION_LOG_FILE.open(
-        encoding="utf-8",
-        newline="",
-    ) as f:
-        reader = csv.DictReader(f)
-
-        existing_fields = reader.fieldnames or []
-
-        rows = list(reader)
-
-    if existing_fields == LOG_FIELDS:
-        return
-
-    migrated_rows = []
-
-    for row in rows:
-        migrated = {field: row.get(field, "") for field in LOG_FIELDS}
-
-        if not migrated["resolver_version"]:
-            migrated["resolver_version"] = "1"
-
-        migrated_rows.append(migrated)
-
-    backup_path = APPLICATION_LOG_FILE.with_suffix(".pre_schema_migration.csv")
-
-    if not backup_path.exists():
-        APPLICATION_LOG_FILE.replace(backup_path)
 
     with APPLICATION_LOG_FILE.open(
         "w",
@@ -178,7 +92,6 @@ def migrate_log_schema_if_needed():
         )
 
         writer.writeheader()
-        writer.writerows(migrated_rows)
 
 
 def load_application_log() -> list[dict]:
@@ -196,8 +109,6 @@ def append_log(
     status: str,
     reason: str = "",
 ):
-    ensure_log_file()
-
     record = {
         "job_id": row["job_id"],
         "title": row["title"],
@@ -207,7 +118,6 @@ def append_log(
         "location": row["location"],
         "status": status,
         "reason": reason,
-        "resolver_version": str(RESOLVER_VERSION),
         "applied_at": datetime.now(UTC).isoformat(),
     }
 
@@ -224,128 +134,14 @@ def append_log(
         writer.writerow(record)
 
 
-# ==============================================================================
-# Retry state
-# ==============================================================================
-
-
-def parse_timestamp(
-    value: str,
-) -> datetime | None:
-    if not value:
-        return None
-
-    try:
-        parsed = datetime.fromisoformat(value)
-
-        if parsed.tzinfo is None:
-            parsed = parsed.replace(tzinfo=UTC)
-
-        return parsed
-
-    except ValueError:
-        return None
-
-
-def latest_log_by_job() -> dict[str, dict]:
+def load_terminal_job_ids() -> set[str]:
     rows = load_application_log()
 
-    latest = {}
-
-    for row in rows:
-        job_id = row.get("job_id")
-
-        if not job_id:
-            continue
-
-        timestamp = parse_timestamp(row.get("applied_at", ""))
-
-        existing = latest.get(job_id)
-
-        if existing is None:
-            latest[job_id] = row
-            continue
-
-        existing_timestamp = parse_timestamp(
-            existing.get(
-                "applied_at",
-                "",
-            )
-        )
-
-        if timestamp is not None and (
-            existing_timestamp is None or timestamp > existing_timestamp
-        ):
-            latest[job_id] = row
-
-    return latest
-
-
-def should_retry_job(
-    latest_record: dict | None,
-) -> bool:
-    if latest_record is None:
-        return True
-
-    status = latest_record.get(
-        "status",
-        "",
-    )
-
-    if status in PERMANENT_TERMINAL_STATUSES:
-        return False
-
-    # Resolver improvements should immediately retry resolver-dependent states.
-    if status in {
-        "MANUAL_REVIEW",
-        "VALIDATION_ERROR",
-    }:
-        try:
-            previous_version = int(latest_record.get("resolver_version") or 1)
-        except ValueError:
-            previous_version = 1
-
-        if previous_version < RESOLVER_VERSION:
-            return True
-
-    cooldown_hours = RETRY_COOLDOWN_HOURS.get(status)
-
-    if cooldown_hours is None:
-        return True
-
-    timestamp = parse_timestamp(
-        latest_record.get(
-            "applied_at",
-            "",
-        )
-    )
-
-    if timestamp is None:
-        return True
-
-    retry_at = timestamp + timedelta(hours=cooldown_hours)
-
-    return datetime.now(UTC) >= retry_at
-
-
-def get_pending_jobs(
-    jobs: list[dict],
-) -> list[dict]:
-    latest = latest_log_by_job()
-
-    return [row for row in jobs if should_retry_job(latest.get(row["job_id"]))]
-
-
-def count_permanent_terminal_jobs() -> int:
-    latest = latest_log_by_job()
-
-    return sum(
-        1 for row in latest.values() if row.get("status") in PERMANENT_TERMINAL_STATUSES
-    )
+    return {row["job_id"] for row in rows if row["status"] in TERMINAL_STATUSES}
 
 
 # ==============================================================================
-# Job loading
+# Job loading and ordering
 # ==============================================================================
 
 
@@ -378,9 +174,7 @@ def load_eligible_jobs() -> list[dict]:
     return eligible
 
 
-def row_to_job(
-    row: dict,
-) -> Job:
+def row_to_job(row: dict) -> Job:
     tags = [tag.strip() for tag in (row.get("tags") or "").split(",") if tag.strip()]
 
     return Job(
@@ -388,26 +182,11 @@ def row_to_job(
         title=row["title"],
         company=row["company"],
         location=row["location"],
-        experience=row.get(
-            "experience",
-            "",
-        ),
-        salary=row.get(
-            "salary",
-            "",
-        ),
-        posted_date=row.get(
-            "posted_date",
-            "",
-        ),
-        apply_link=row.get(
-            "apply_link",
-            "",
-        ),
-        description=row.get(
-            "description",
-            "",
-        ),
+        experience=row.get("experience", ""),
+        salary=row.get("salary", ""),
+        posted_date=row.get("posted_date", ""),
+        apply_link=row.get("apply_link", ""),
+        description=row.get("description", ""),
         tags=tags,
     )
 
@@ -424,11 +203,7 @@ def resolve_questionnaire(
     unresolved = []
 
     for question in questionnaire:
-        question_id = question.get("questionId")
-
-        if not question_id:
-            unresolved.append(question)
-            continue
+        question_id = question["questionId"]
 
         semantic_answer = resolve_answer(
             question,
@@ -448,7 +223,7 @@ def resolve_questionnaire(
             unresolved.append(question)
             continue
 
-        answers[str(question_id)] = serialized_answer
+        answers[question_id] = serialized_answer
 
     return answers, unresolved
 
@@ -456,16 +231,11 @@ def resolve_questionnaire(
 def format_unresolved_questions(
     questions: list[dict],
 ) -> str:
-    parts = []
+    names = [
+        question.get("questionName") or "Unknown question" for question in questions
+    ]
 
-    for question in questions:
-        name = question.get("questionName") or "Unknown question"
-
-        question_type = question.get("questionType") or "Unknown type"
-
-        parts.append(f"{name} [{question_type}]")
-
-    return " | ".join(parts)
+    return " | ".join(names)
 
 
 # ==============================================================================
@@ -490,12 +260,14 @@ def response_is_success(
 ) -> bool:
     apply_status = response.get("applyStatus") or {}
 
-    status = apply_status.get(str(job_id))
+    status = apply_status.get(job_id)
 
     if status == 200:
         return True
 
-    for item in response.get("jobs") or []:
+    jobs = response.get("jobs") or []
+
+    for item in jobs:
         if str(item.get("jobId")) == str(job_id) and item.get("status") == 200:
             return True
 
@@ -511,19 +283,6 @@ def response_is_already_applied(
     ).lower()
 
     return "already applied" in text or "already apply" in text
-
-
-def save_classified_response(
-    job_id: str,
-    stage: str,
-    response: dict,
-    status: str,
-) -> str:
-    return save_response(
-        job_id=job_id,
-        stage=f"{stage}_{status.lower()}",
-        response=response,
-    )
 
 
 # ==============================================================================
@@ -542,17 +301,14 @@ def process_job(
     print(f'{row["priority"]} | ' f'{row["subtrack"]} | ' f'{row["location_group"]}')
 
     print(f"Job:      {job.title}")
-
     print(f"Company:  {job.company}")
-
     print(f"Location: {job.location}")
-
     print(f"Job ID:   {job.job_id}")
 
     sid = datetime.now(UTC).strftime("%Y%m%d%H%M%S") + "0000000"
 
     # ------------------------------------------------------------------
-    # 1. External apply check
+    # 1. Check external apply
     # ------------------------------------------------------------------
 
     print("[CHECK] Fetching job details...")
@@ -563,8 +319,8 @@ def process_job(
             sid,
         )
 
-    except Exception as exc:
-        reason = f"job detail check failed: " f"{exc}"
+    except Exception as e:
+        reason = f"job detail check failed: {e}"
 
         append_log(
             row,
@@ -588,7 +344,7 @@ def process_job(
         return "EXTERNAL"
 
     # ------------------------------------------------------------------
-    # 2. Initial apply
+    # 2. Start apply workflow
     # ------------------------------------------------------------------
 
     print("[APPLY] Starting application workflow...")
@@ -602,8 +358,8 @@ def process_job(
             source="search",
         )
 
-    except Exception as exc:
-        reason = f"initial apply failed: " f"{exc}"
+    except Exception as e:
+        reason = f"initial apply failed: {e}"
 
         append_log(
             row,
@@ -616,7 +372,7 @@ def process_job(
         return "FAILED"
 
     # ------------------------------------------------------------------
-    # 3. Already applied
+    # 3. Already applied detection
     # ------------------------------------------------------------------
 
     if response_is_already_applied(initial):
@@ -649,7 +405,7 @@ def process_job(
         return "APPLIED"
 
     # ------------------------------------------------------------------
-    # 5. Questionnaire extraction
+    # 5. Questionnaire
     # ------------------------------------------------------------------
 
     job_result = extract_job_result(initial)
@@ -659,11 +415,10 @@ def process_job(
     if not questionnaire:
         classification = classify_apply_response(initial)
 
-        response_path = save_classified_response(
+        response_path = save_response(
             job_id=job.job_id,
-            stage="initial_apply",
+            stage="initial_apply_unknown",
             response=initial,
-            status=classification.status.value,
         )
 
         reason = f"{classification.reason}; " f"response={response_path}"
@@ -676,15 +431,9 @@ def process_job(
 
         print(f"[{classification.status.value}] " f"{classification.reason}")
 
-        print(f"[RESPONSE SAVED] " f"{response_path}")
-
         return classification.status.value
 
     print(f"[QUESTIONNAIRE] " f"{len(questionnaire)} question(s)")
-
-    # ------------------------------------------------------------------
-    # 6. Resolve questionnaire
-    # ------------------------------------------------------------------
 
     answers, unresolved = resolve_questionnaire(questionnaire)
 
@@ -705,23 +454,19 @@ def process_job(
         print("[MANUAL_REVIEW]")
 
         for question in unresolved:
-            name = question.get("questionName") or "Unknown question"
-
-            question_type = question.get("questionType") or "Unknown type"
-
-            print(f"  - {name} " f"[{question_type}]")
+            print("  - " + (question.get("questionName") or "Unknown question"))
 
         return "MANUAL_REVIEW"
 
-    print("[QUESTIONNAIRE] " "All answers resolved")
+    print("[QUESTIONNAIRE] All answers resolved")
 
     for question in questionnaire:
-        question_id = str(question["questionId"])
+        question_id = question["questionId"]
 
         print(f'{question.get("questionName")} ' f"-> {answers[question_id]}")
 
     # ------------------------------------------------------------------
-    # 7. Submit questionnaire
+    # 6. Submit questionnaire
     # ------------------------------------------------------------------
 
     try:
@@ -732,8 +477,8 @@ def process_job(
             source="search",
         )
 
-    except Exception as exc:
-        reason = "questionnaire submit failed: " f"{exc}"
+    except Exception as e:
+        reason = f"questionnaire submit failed: {e}"
 
         append_log(
             row,
@@ -744,10 +489,6 @@ def process_job(
         print(f"[FAILED] {reason}")
 
         return "FAILED"
-
-    # ------------------------------------------------------------------
-    # 8. Final success
-    # ------------------------------------------------------------------
 
     if response_is_success(
         final,
@@ -763,10 +504,6 @@ def process_job(
 
         return "APPLIED"
 
-    # ------------------------------------------------------------------
-    # 9. Final already applied
-    # ------------------------------------------------------------------
-
     if response_is_already_applied(final):
         append_log(
             row,
@@ -778,17 +515,12 @@ def process_job(
 
         return "ALREADY_APPLIED"
 
-    # ------------------------------------------------------------------
-    # 10. Classify unexpected final response
-    # ------------------------------------------------------------------
-
     classification = classify_apply_response(final)
 
-    response_path = save_classified_response(
+    response_path = save_response(
         job_id=job.job_id,
-        stage="questionnaire_submit",
+        stage="questionnaire_submit_unknown",
         response=final,
-        status=classification.status.value,
     )
 
     reason = f"{classification.reason}; " f"response={response_path}"
@@ -800,8 +532,6 @@ def process_job(
     )
 
     print(f"[{classification.status.value}] " f"{classification.reason}")
-
-    print(f"[RESPONSE SAVED] " f"{response_path}")
 
     return classification.status.value
 
@@ -815,8 +545,10 @@ def main():
     load_dotenv(".env")
 
     username = os.getenv("USERNAME")
-
     password = os.getenv("PASSWORD")
+
+    successful_applications = 0
+    scanned_jobs = 0
 
     if not username or not password:
         raise RuntimeError("USERNAME or PASSWORD missing from .env")
@@ -825,30 +557,18 @@ def main():
 
     jobs = load_eligible_jobs()
 
-    pending_jobs = get_pending_jobs(jobs)
+    terminal_job_ids = load_terminal_job_ids()
 
-    permanent_terminal_count = count_permanent_terminal_jobs()
+    pending_jobs = [row for row in jobs if row["job_id"] not in terminal_job_ids]
 
     print("=" * 110)
-
     print("AI JOB APPLICATION RUNNER")
-
     print("=" * 110)
 
-    print(f"Eligible jobs:       " f"{len(jobs)}")
-
-    print(f"Permanent terminal:  " f"{permanent_terminal_count}")
-
-    print(f"Pending candidates:  " f"{len(pending_jobs)}")
-
-    print(f"Success batch limit: " f"{MAX_APPLICATIONS}")
-
-    print(
-        "Scan limit:          "
-        f"{SCAN_LIMIT if SCAN_LIMIT is not None else 'unlimited'}"
-    )
-
-    print(f"Resolver version:    " f"{RESOLVER_VERSION}")
+    print(f"Eligible jobs:       {len(jobs)}")
+    print(f"Previously terminal: {len(terminal_job_ids)}")
+    print(f"Pending candidates:  {len(pending_jobs)}")
+    print(f"Success batch limit: {MAX_APPLICATIONS}")
 
     print("\n[1] Logging in...")
 
@@ -864,63 +584,48 @@ def main():
     jc = NaukriJobClient(client)
 
     successful_applications = 0
-    scanned_jobs = 0
 
-    counters = {status.value: 0 for status in ApplyStatus}
-
-    counters["MANUAL_REVIEW"] = 0
-    counters["EXTERNAL"] = 0
+    counters = {
+        "APPLIED": 0,
+        "ALREADY_APPLIED": 0,
+        "MANUAL_REVIEW": 0,
+        "EXTERNAL": 0,
+        "FAILED": 0,
+    }
 
     for row in pending_jobs:
         if successful_applications >= MAX_APPLICATIONS:
-            print("\n[LIMIT] Successful application " "batch limit reached")
+            print("\n[LIMIT] Successful application batch limit reached")
 
             break
-
-        if SCAN_LIMIT is not None and scanned_jobs >= SCAN_LIMIT:
-            print(f"\n[SCAN LIMIT] " f"Inspected {scanned_jobs} " f"candidate jobs")
-
-            break
-
-        scanned_jobs += 1
 
         status = process_job(
             jc,
             row,
         )
 
-        counters.setdefault(
-            status,
-            0,
-        )
-
-        counters[status] += 1
+        if status in counters:
+            counters[status] += 1
 
         if status == "APPLIED":
             successful_applications += 1
 
         print(
-            "\nProgress: "
+            f"\nProgress: "
             f"{successful_applications}/"
-            f"{MAX_APPLICATIONS} "
-            "successful applications"
+            f"{MAX_APPLICATIONS} successful applications"
         )
 
         time.sleep(SLEEP_BETWEEN_JOBS)
 
     print("\n" + "=" * 110)
-
     print("RUN SUMMARY")
-
     print("=" * 110)
 
     for status, count in counters.items():
-        if count > 0:
-            print(f"{status:<20} " f"{count}")
+        print(f"{status:<20} {count}")
 
-    print(f"\nCandidate jobs scanned: " f"{scanned_jobs}")
-
-    print("Successful applications this run: " f"{successful_applications}")
+    print(f"\nSuccessful applications this run: " f"{successful_applications}")
 
 
 if __name__ == "__main__":
