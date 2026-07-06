@@ -723,6 +723,26 @@ def resolve_answer(
     #     return "Yes"
 
     # ==========================================================================
+    # Production AI capability questions
+    # ==========================================================================
+
+    # if (
+    #     "deployed llms" in q
+    #     or "deployed llm" in q
+    #     or "deployed slms" in q
+    #     or "deployed slm" in q
+    # ):
+    #     return "Yes"
+
+    # if (
+    #     re.search(r"\bvllm\b", q)
+    #     or "ollama frameworks" in q
+    #     or "ollama framework" in q
+    #     or re.search(r"\bollama\b", q)
+    # ):
+    #     return "Yes"
+
+    # ==========================================================================
     # Tech Mahindra GenAI use-case descriptive questions
     # ==========================================================================
 
@@ -747,14 +767,14 @@ def resolve_answer(
             "Approximately 2 years",
         )
 
-    if (
-        "how many user are currently using" in q
-        or "how many users are currently using" in q
-    ):
-        return profile.get(
-            "genai_production_users",
-            "100+ users",
-        )
+    # if (
+    #     "how many user are currently using" in q
+    #     or "how many users are currently using" in q
+    # ):
+    #     return profile.get(
+    #         "genai_production_users",
+    #         "100+ users",
+    #     )
 
     if "indicative roi" in q or "metric improved" in q:
         return profile.get(
@@ -765,15 +785,15 @@ def resolve_answer(
             ),
         )
 
-    if "non functional requirement" in q or "non-functional requirement" in q:
-        return profile.get(
-            "genai_nfr_summary",
-            (
-                "Latency, availability, scalability, observability, "
-                "rate limiting, caching, retries, circuit breaking, "
-                "security and response validation."
-            ),
-        )
+    # if "non functional requirement" in q or "non-functional requirement" in q:
+    #     return profile.get(
+    #         "genai_nfr_summary",
+    #         (
+    #             "Latency, availability, scalability, observability, "
+    #             "rate limiting, caching, retries, circuit breaking, "
+    #             "security and response validation."
+    #         ),
+    #     )
 
     # ==========================================================================
     # Full-stack descriptive questions
@@ -1626,19 +1646,33 @@ def interview_date_is_past(
 def contains_experience_question(
     q: str,
 ) -> bool:
-    normalized = normalize(q)
+    """
+    Return True only for questions asking for a numeric duration
+    of experience.
 
-    return any(
-        marker in normalized
-        for marker in (
-            "experience",
-            "years",
-            "year of",
-            "relevant exp",
-            "hands-on experience",
-            "hands on experience",
-        )
+    Descriptive questions such as:
+        "Describe your experience with RAG"
+        "Explain your experience building AI systems"
+
+    must not enter the numeric experience resolver.
+    """
+
+    quantitative_patterns = (
+        r"\bhow many years\b",
+        r"\bhow many year\b",
+        r"\byears of experience\b",
+        r"\byear of experience\b",
+        r"\byears experience\b",
+        r"\byear experience\b",
+        r"\bexperience in years\b",
+        r"\bexperience \(years\)\b",
+        r"\bexperience \(in years\)\b",
+        r"\bnumber of years\b",
+        r"\bno\.? of years\b",
+        r"\btotal years\b",
     )
+
+    return any(re.search(pattern, q) for pattern in quantitative_patterns)
 
 
 def is_numeric(
