@@ -51,6 +51,10 @@ from src.application.outcome import (
 from src.application.response_interpreter import (
     interpret_application_response,
 )
+from src.application.policy import (
+    ApplicationPolicy,
+    evaluate_application_policy,
+)
 from src.resolution.hybrid_resolver import HybridQuestionResolver
 from src.utils.questionnaire_telemetry import log_unresolved_questions
 
@@ -697,6 +701,9 @@ class ApplicationRunSummary:
     already_applied: int
     skipped_local: int
     skipped_external: int
+    policy_rejected: int
+    dry_run_skipped: int
+    run_limit_reached: int
     failed: int
 
 
@@ -796,30 +803,40 @@ def run_application_batch(
     score_map: dict,
     questionnaire_resolver: QuestionnaireResolver,
     applied_jobs_set: set[str],
+    policy: ApplicationPolicy | None = None,
     sleep_fn=time.sleep,
     save_fn=save_applied_job,
 ) -> ApplicationRunSummary:
     """
     Execute the application workflow for a batch of filtered jobs.
 
-    Responsibilities:
-        - skip jobs already present in local persistence
-        - skip external application jobs
-        - execute the single-job application workflow
-        - reconcile server-side already-applied outcomes
-        - persist confirmed successful applications
-        - isolate failures so one job cannot terminate the batch
-        - return deterministic counters for the complete run
+    Enforcement order:
 
-    Terminal display remains here temporarily because the current CLI
-    orchestration depends on per-job progress output.
+        1. local idempotency
+        2. static application policy
+        3. dry-run boundary
+        4. external application check
+        5. application execution
+        6. persistence reconciliation
+
+    A policy-rejected or dry-run job can never reach
+    process_job_application().
     """
+
+    effective_policy = policy or ApplicationPolicy(
+        dry_run=False,
+    )
 
     applied_count = 0
     already_applied_count = 0
     skipped_local_count = 0
     skipped_external_count = 0
+    policy_rejected_count = 0
+    dry_run_skipped_count = 0
+    run_limit_reached_count = 0
     failed_count = 0
+
+    application_attempts = 0
 
     total_candidates = len(jobs)
 
@@ -844,7 +861,7 @@ def run_application_batch(
         )
 
         # ----------------------------------------------------------
-        # Local idempotency check
+        # Local idempotency
         # ----------------------------------------------------------
 
         if job.job_id in applied_jobs_set:
@@ -854,6 +871,49 @@ def run_application_batch(
             )
 
             skipped_local_count += 1
+            continue
+
+        # ----------------------------------------------------------
+        # Static application policy
+        # ----------------------------------------------------------
+
+        policy_evaluation = evaluate_application_policy(
+            meta=meta,
+            policy=effective_policy,
+        )
+
+        if not policy_evaluation.allowed:
+            logger.info(
+                "Policy rejected job_id=%s reason=%s detail=%s",
+                job.job_id,
+                policy_evaluation.reason.value,
+                policy_evaluation.detail,
+            )
+
+            policy_rejected_count += 1
+            continue
+
+        if effective_policy.dry_run:
+            logger.info(
+                "Dry-run: application suppressed for job_id=%s",
+                job.job_id,
+            )
+
+            dry_run_skipped_count += 1
+            continue
+
+        # ----------------------------------------------------------
+        # Per-run application limit
+        # ----------------------------------------------------------
+
+        if application_attempts >= effective_policy.max_applications_per_run:
+            logger.info(
+                "Per-run application limit reached. " "Skipping job_id=%s limit=%s",
+                job.job_id,
+                effective_policy.max_applications_per_run,
+            )
+
+            run_limit_reached_count += 1
             continue
 
         # ----------------------------------------------------------
@@ -874,20 +934,18 @@ def run_application_batch(
             continue
 
         # ----------------------------------------------------------
-        # Application workflow
+        # Application execution
         # ----------------------------------------------------------
 
         try:
+            application_attempts += 1
+
             outcome = process_job_application(
                 jc=jc,
                 job=job,
                 meta=meta,
                 questionnaire_resolver=questionnaire_resolver,
             )
-
-            # ------------------------------------------------------
-            # Server reports already applied
-            # ------------------------------------------------------
 
             if outcome.status == ApplicationStatus.ALREADY_APPLIED:
                 logger.info(
@@ -903,20 +961,12 @@ def run_application_batch(
 
                 continue
 
-            # ------------------------------------------------------
-            # Non-success terminal outcome
-            # ------------------------------------------------------
-
             if outcome.status != ApplicationStatus.APPLIED:
                 raise RuntimeError(
                     "Application did not produce a successful outcome: "
                     f"{outcome.status.value}. "
                     f"{outcome.reasoning}"
                 )
-
-            # ------------------------------------------------------
-            # Confirmed successful application
-            # ------------------------------------------------------
 
             applied_at = datetime.now(UTC).strftime("%H:%M:%S UTC")
 
@@ -942,6 +992,9 @@ def run_application_batch(
         already_applied=already_applied_count,
         skipped_local=skipped_local_count,
         skipped_external=skipped_external_count,
+        policy_rejected=policy_rejected_count,
+        dry_run_skipped=dry_run_skipped_count,
+        run_limit_reached=run_limit_reached_count,
         failed=failed_count,
     )
 
