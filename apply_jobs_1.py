@@ -32,8 +32,9 @@ from src.client.naukri_client import (
 
 from src.models.models import Job
 
-from src.resolution.hybrid_resolver import (
-    HybridQuestionResolver,
+from src.utils.questionnaire_resolver import (
+    resolve_answer,
+    serialize_answer,
 )
 
 from src.utils.questionnaire_telemetry import (
@@ -61,7 +62,7 @@ APPLICATION_LOG_FILE = Path("data/application_log.csv")
 # Increment whenever resolver behavior materially changes.
 # MANUAL_REVIEW and VALIDATION_ERROR entries from an older resolver version
 # become immediately eligible for retry.
-RESOLVER_VERSION = 5
+RESOLVER_VERSION = 4
 
 
 PRIORITY_ORDER = {
@@ -94,9 +95,6 @@ RETRY_COOLDOWN_HOURS = {
     "UNKNOWN_FAILURE": 72,
     "FAILED": 6,
 }
-
-
-HYBRID_QUESTION_RESOLVER = HybridQuestionResolver()
 
 
 # ==============================================================================
@@ -434,20 +432,25 @@ def resolve_questionnaire(
             unresolved.append(question)
             continue
 
-        resolution = HYBRID_QUESTION_RESOLVER.resolve(
-            question=question,
-            profile=CANDIDATE_PROFILE,
+        semantic_answer = resolve_answer(
+            question,
+            CANDIDATE_PROFILE,
         )
 
-        if not resolution.resolved:
-            unresolved_question = dict(question)
-            unresolved_question["_resolution_source"] = resolution.source
-            unresolved_question["_resolution_confidence"] = resolution.confidence
-            unresolved_question["_resolution_reasoning"] = resolution.reasoning
-            unresolved.append(unresolved_question)
+        if semantic_answer is None:
+            unresolved.append(question)
             continue
 
-        answers[str(question_id)] = resolution.serialized_answer
+        serialized_answer = serialize_answer(
+            question,
+            semantic_answer,
+        )
+
+        if serialized_answer is None:
+            unresolved.append(question)
+            continue
+
+        answers[str(question_id)] = serialized_answer
 
     return answers, unresolved
 
@@ -660,15 +663,13 @@ def resolve_chatbot_answer(chatbot: dict) -> tuple[str, str] | None:
 
     question = build_chatbot_question(chatbot)
 
-    resolution = HYBRID_QUESTION_RESOLVER.resolve(
-        question=question,
-        profile=CANDIDATE_PROFILE,
+    semantic_answer = resolve_answer(
+        question,
+        CANDIDATE_PROFILE,
     )
 
-    if not resolution.resolved:
+    if semantic_answer is None:
         return None
-
-    semantic_answer = resolution.semantic_answer
 
     if not options:
         return str(semantic_answer), "-1"
@@ -681,7 +682,10 @@ def resolve_chatbot_answer(chatbot: dict) -> tuple[str, str] | None:
         if option_text.lower() == target:
             return option_text, option_answer_id(option)
 
-    serialized = resolution.serialized_answer
+    serialized = serialize_answer(
+        question,
+        semantic_answer,
+    )
 
     if serialized is None:
         return None
@@ -802,7 +806,9 @@ def run_interactive_chatbot_flow(
             next_conversation = str(
                 next_chatbot.get("currentConversationName") or ""
             ).strip()
-            next_node = str(next_chatbot.get("currentNodeName") or "").strip()
+            next_node = str(
+                next_chatbot.get("currentNodeName") or ""
+            ).strip()
 
             next_is_resume_upload = (
                 next_conversation == "RecruiterQUP_keySkillsResumeUpload"
@@ -1165,7 +1171,7 @@ def process_job(
 
 
 def main():
-    load_dotenv(".env", override=True)
+    load_dotenv(".env")
 
     username = os.getenv("USERNAME")
 

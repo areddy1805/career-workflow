@@ -703,24 +703,24 @@ def resolve_answer(
     # Production AI capability questions
     # ==========================================================================
 
-    if "deployed llms" in q or "deployed llm" in q or "deployed slms" in q:
-        return "Yes"
+    # if "deployed llms" in q or "deployed llm" in q or "deployed slms" in q:
+    #     return "Yes"
 
-    if "vllm" in q or "ollama frameworks" in q or "ollama framework" in q:
-        return "Yes"
+    # if "vllm" in q or "ollama frameworks" in q or "ollama framework" in q:
+    #     return "Yes"
 
-    if (
-        "fastapi-based model serving" in q
-        or "fastapi based model serving" in q
-        or ("fastapi" in q and "microservices" in q)
-    ):
-        return "Yes"
+    # if (
+    #     "fastapi-based model serving" in q
+    #     or "fastapi based model serving" in q
+    #     or ("fastapi" in q and "microservices" in q)
+    # ):
+    #     return "Yes"
 
     if "rag/context engineering" in q or "rag context engineering" in q:
         return "Yes"
 
-    if "lora" in q or "qlora" in q or "quantization" in q:
-        return "Yes"
+    # if "lora" in q or "qlora" in q or "quantization" in q:
+    #     return "Yes"
 
     # ==========================================================================
     # Tech Mahindra GenAI use-case descriptive questions
@@ -831,14 +831,6 @@ def resolve_answer(
         "are you available",
         "can you attend",
         "can you relocate",
-        "do you have hands-on experience",
-        "do you have hands on experience",
-        "have you deployed",
-        "have you built",
-        "have you worked",
-        "have you used",
-        "did you use",
-        "do you have experience",
     )
 
     if any(marker in q for marker in affirmative_markers):
