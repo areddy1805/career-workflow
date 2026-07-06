@@ -525,26 +525,80 @@ def fetch_all_jobs(
 ) -> list:
 
     SEARCH_TRACKS = [
-        {"keyword": "Generative AI Engineer", "location": "", "track": "TIER_A"},
-        {"keyword": "AI Engineer", "location": "", "track": "TIER_B"},
-        {"keyword": "AI ML Engineer", "location": "", "track": "TIER_C"},
-        {"keyword": "Machine Learning Engineer", "location": "", "track": "TIER_C"},
-        {"keyword": "LLM Engineer", "location": "", "track": "TIER_A"},
-        {"keyword": "RAG Engineer", "location": "", "track": "TIER_A"},
-        {"keyword": "Agentic AI Engineer", "location": "", "track": "TIER_A"},
-        {"keyword": "GenAI Developer", "location": "", "track": "TIER_A"},
-        {"keyword": "AI Developer", "location": "", "track": "TIER_B"},
-        {"keyword": "AI Application Developer", "location": "", "track": "TIER_B"},
-        {"keyword": "NLP Engineer", "location": "", "track": "TIER_B"},
-        {"keyword": "Prompt Engineer", "location": "", "track": "TIER_B"},
-        {"keyword": "Computer Vision Engineer", "location": "", "track": "TIER_C"},
-        {"keyword": "Deep Learning Engineer", "location": "", "track": "TIER_C"},
-        {"keyword": "Data Scientist AI", "location": "", "track": "TIER_C"},
-        {"keyword": "MLOps Engineer AI", "location": "", "track": "TIER_C"},
-        {"keyword": "Full Stack AI Engineer", "location": "", "track": "TIER_B"},
-        {"keyword": "Python AI Developer", "location": "", "track": "TIER_B"},
-        {"keyword": "Azure OpenAI Developer", "location": "", "track": "TIER_A"},
-        {"keyword": "LangChain Developer", "location": "", "track": "TIER_A"},
+        # ----------------------------------------------------------
+        # P1 — Direct AI Engineering / GenAI roles
+        # ----------------------------------------------------------
+        {
+            "keyword": "Generative AI Engineer",
+            "location": "",
+            "track": "PRIMARY_AI",
+        },
+        {
+            "keyword": "AI Engineer",
+            "location": "",
+            "track": "PRIMARY_AI",
+        },
+        {
+            "keyword": "LLM Engineer",
+            "location": "",
+            "track": "PRIMARY_AI",
+        },
+        {
+            "keyword": "RAG Engineer",
+            "location": "",
+            "track": "PRIMARY_AI",
+        },
+        {
+            "keyword": "GenAI Developer",
+            "location": "",
+            "track": "PRIMARY_AI",
+        },
+        # ----------------------------------------------------------
+        # P2 — Applied AI / AI application engineering
+        # ----------------------------------------------------------
+        {
+            "keyword": "AI Application Developer",
+            "location": "",
+            "track": "AI_ADJACENT",
+        },
+        {
+            "keyword": "Python Generative AI",
+            "location": "",
+            "track": "AI_ADJACENT",
+        },
+        {
+            "keyword": "LangChain Developer",
+            "location": "",
+            "track": "AI_ADJACENT",
+        },
+        {
+            "keyword": "Azure OpenAI Developer",
+            "location": "",
+            "track": "AI_ADJACENT",
+        },
+        {
+            "keyword": "AI Backend Developer",
+            "location": "",
+            "track": "AI_ADJACENT",
+        },
+        # ----------------------------------------------------------
+        # P3 — Broader roles, but later AI gate is mandatory
+        # ----------------------------------------------------------
+        {
+            "keyword": "Python AI Developer",
+            "location": "",
+            "track": "BACKEND_AI_FALLBACK",
+        },
+        {
+            "keyword": "Full Stack Generative AI",
+            "location": "",
+            "track": "BACKEND_AI_FALLBACK",
+        },
+        {
+            "keyword": "Backend Developer LLM",
+            "location": "",
+            "track": "BACKEND_AI_FALLBACK",
+        },
     ]
 
     EXPERIENCE_LEVELS = [2]
@@ -998,27 +1052,6 @@ def enrich_jobs_with_details(
                 job["description"] = full_description
 
             job_data = detail.get("job") or {}
-
-            # Preserve richer location/work-mode evidence for the eligibility gate.
-            detail_location = (
-                job_data.get("location")
-                or job_data.get("locations")
-                or job_data.get("locationText")
-                or detail.get("location")
-            )
-            if detail_location:
-                if isinstance(detail_location, (list, tuple)):
-                    detail_location = ", ".join(map(str, detail_location))
-                job["location"] = str(detail_location)
-
-            work_mode = (
-                job_data.get("workMode")
-                or job_data.get("work_mode")
-                or job_data.get("workModeText")
-                or detail.get("workMode")
-            )
-            if work_mode:
-                job["work_mode"] = str(work_mode)
 
             job["is_external_apply"] = job_data.get("responseManager") == "companyUrl"
 

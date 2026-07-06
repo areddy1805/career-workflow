@@ -144,22 +144,47 @@ class JobFilterPipeline2:
     }
 
     # ── hard veto BEFORE ai — title only, zero ambiguity ────────────────────
-    # Hard veto only unmistakably non-target employment formats / non-engineering roles.
-    # AI/ML/Data Science/CV/model-training titles are deliberately NOT vetoed.
     VETO_TITLES = [
         "walk-in",
         "walkin",
         "walk in",
+        "android developer",
+        "ios developer",
+        "flutter developer",
+        "vp of",
+        "head of engineering",
+        "head of technology",
+        "founder",
         "tutor",
         "trainer",
-        "sales executive",
-        "business development executive",
-        "recruiter",
-        "talent acquisition",
+        "data scientist",
+        "ml engineer",
+        "data engineer",
+        "intern",
+        "internship",
+        "engineering manager",
+        "etl engineer",
+        "analyst",
+        "associate is engineer",
+        "infra engineer",
+        "observability engineer",
     ]
 
-    # Broad-coverage policy: company name never decides AI eligibility.
-    VETO_COMPANIES = set()
+    VETO_COMPANIES = {
+        "accenture",
+        "wipro",
+        "infosys",
+        "tcs",
+        "cognizant",
+        "capgemini",
+        "hcl",
+        "tech mahindra",
+        "mphasis",
+        "hexaware",
+        "ltimindtree",
+        "persistent",
+        "birlasoft",
+    }
 
     # ── red flag sniff on description (cheap, pre-ai) ───────────────────────
     # Only the things AI genuinely can't infer from tags alone
@@ -201,14 +226,22 @@ class JobFilterPipeline2:
     }
 
     # if ANY of these appear in title → drop it
-    # Only obvious non-software/non-AI tracks. Stack and AI sub-discipline are ranking signals.
     WRONG_TRACK_TITLE_KEYWORDS = {
-        "android developer",
+        "android",
         "ios developer",
-        "flutter developer",
+        "flutter",
+        "kotlin developer",
+        "swift developer",
+        "embedded",
+        "firmware",
+        "data engineer",
+        "data scientist",
+        "intern",
+        "internship",
+        "devops",
+        "mlops",
         "site reliability engineer",
         "sre engineer",
-        "devops engineer",
     }
 
     # Backward-compatible alias for callers/tests that inspect the old name.
@@ -281,24 +314,6 @@ class JobFilterPipeline2:
         "ai software engineer",
         "ai backend developer",
         "python ai developer",
-        "ai/ml engineer",
-        "ai ml engineer",
-        "machine learning engineer",
-        "ml engineer",
-        "data scientist",
-        "computer vision engineer",
-        "deep learning engineer",
-        "nlp engineer",
-        "prompt engineer",
-        "ml scientist",
-        "applied scientist",
-        "mlops engineer",
-        "llmops engineer",
-        "ai lead",
-        "ai architect",
-        "ai full stack engineer",
-        "full stack ai engineer",
-        "fullstack ai engineer",
     }
 
     def __init__(
@@ -367,7 +382,9 @@ class JobFilterPipeline2:
         jobs = self.ai_relevance_gate(jobs)
         print("AFTER AI RELEVANCE GATE:", len(jobs))
 
-        # Stack mismatch is a ranking signal, never an eligibility veto.
+        jobs = self.primary_stack_conflict_filter(jobs)
+        print("AFTER STACK CONFLICT FILTER:", len(jobs))
+
         jobs = self.tag_presort(jobs)
 
         jobs = jobs[: self.ai_score_limit]
@@ -390,8 +407,11 @@ class JobFilterPipeline2:
         jobs = self.full_description_red_flag_check(jobs)
         print("AFTER FULL JD RED FLAG CHECK:", len(jobs))
 
-        jobs = self.location_work_mode_gate(jobs)
-        print("AFTER LOCATION / WORK-MODE GATE:", len(jobs))
+        jobs = self.primary_stack_conflict_filter(
+            jobs,
+            use_full_description=True,
+        )
+        print("AFTER FULL JD STACK CONFLICT FILTER:", len(jobs))
 
         jobs = self.ai_score_batch(jobs)
 
@@ -620,24 +640,11 @@ class JobFilterPipeline2:
         for job in jobs:
             title = (job.get("title") or "").lower()
 
-            explicit_ai_title = any(
-                signal in title for signal in self.AI_TITLE_SIGNALS
-            )
-
-            if (
-                not explicit_ai_title
-                and not any(keyword in title for keyword in self.SOFTWARE_KEYWORDS)
-            ):
-                print(f"  [TITLE FILTER - not software/AI] {job.get('title')}")
+            if not any(keyword in title for keyword in self.SOFTWARE_KEYWORDS):
+                print(f"  [TITLE FILTER - not software] {job.get('title')}")
                 continue
 
-            if (
-                not explicit_ai_title
-                and any(
-                    keyword in title
-                    for keyword in self.WRONG_TRACK_TITLE_KEYWORDS
-                )
-            ):
+            if any(keyword in title for keyword in self.WRONG_TRACK_TITLE_KEYWORDS):
                 print(f"  [TITLE FILTER - wrong track] {job.get('title')}")
                 continue
 
@@ -717,79 +724,157 @@ class JobFilterPipeline2:
         use_full_description=False,
     ):
         """
-        Compatibility hook. Broad AI coverage policy never rejects a genuine
-        AI job because of Java/C++/.NET/CV/ML/Data-Science stack differences.
-        Those differences are handled by scoring and ranking only.
+        Reject incompatible primary-stack roles.
+
+        Before detail enrichment:
+        - title
+        - mandatory tags
+        - tags
+
+        After detail enrichment:
+        - title
+        - mandatory tags
+        - tags
+        - full description
         """
-        return list(jobs)
 
-    @staticmethod
-    def _classify_work_mode(job):
-        text = " ".join(
-            str(job.get(key) or "")
-            for key in ("work_mode", "workMode", "location", "description")
-        ).lower()
-
-        remote_signals = (
-            "remote", "work from home", "work-from-home", "wfh",
-            "anywhere", "distributed team",
-        )
-        hybrid_signals = ("hybrid", "hybrid working", "hybrid work")
-        office_signals = (
-            "work from office", "work-from-office", "wfo",
-            "onsite", "on-site", "in office", "office based",
-        )
-
-        if any(signal in text for signal in remote_signals):
-            return "remote"
-        if any(signal in text for signal in hybrid_signals):
-            return "hybrid"
-        if any(signal in text for signal in office_signals):
-            return "office"
-        return "unknown"
-
-    @staticmethod
-    def _is_pune_location(job):
-        text = " ".join(
-            str(job.get(key) or "")
-            for key in ("location", "description")
-        ).lower()
-        return bool(re.search(r"\bpune\b|pimpri|chinchwad|hinjawadi|hinjewadi", text))
-
-    def location_work_mode_gate(self, jobs):
-        """
-        Eligibility policy:
-        - remote/WFH: eligible from anywhere;
-        - office/hybrid: eligible only when Pune is explicitly present;
-        - unknown mode: eligible regardless of listed location, because the
-          listing does not prove office attendance is required.
-        """
         clean = []
 
         for job in jobs:
-            mode = self._classify_work_mode(job)
-            location = (job.get("location") or "").strip()
-            is_pune = self._is_pune_location(job)
+            title = (job.get("title") or "").lower()
 
-            job["work_mode_classification"] = mode
-            job["is_pune_location"] = is_pune
+            mandatory = {str(tag).lower() for tag in job.get("mandatory_tags", [])}
 
-            if mode == "remote":
-                clean.append(job)
-                continue
+            tags = {str(tag).lower() for tag in job.get("tags", [])}
 
-            if mode in {"office", "hybrid"}:
-                if is_pune:
-                    clean.append(job)
-                else:
-                    print(
-                        f"  [LOCATION REJECT - {mode}] "
-                        f"{job.get('title')} @ {job.get('company')} | {location}"
+            description = (
+                (job.get("description") or "").lower() if use_full_description else ""
+            )
+
+            searchable = " ".join(
+                [
+                    title,
+                    " ".join(mandatory),
+                    " ".join(tags),
+                    description,
+                ]
+            )
+
+            reject_reason = None
+
+            # Java-primary
+            if "java" in title:
+                reject_reason = "Java-primary role"
+
+            elif "java" in mandatory and any(
+                signal in searchable
+                for signal in (
+                    "spring",
+                    "spring boot",
+                    "hibernate",
+                    "microservices in java",
+                )
+            ):
+                reject_reason = "Java-primary role"
+
+            # C++ primary
+            elif "c++" in mandatory or "cpp" in mandatory:
+                python_primary = "python" in mandatory
+
+                applied_ai_evidence = sum(
+                    signal in searchable
+                    for signal in (
+                        "rag",
+                        "retrieval augmented generation",
+                        "langchain",
+                        "langgraph",
+                        "llamaindex",
+                        "azure openai",
+                        "openai api",
+                        "vector database",
+                        "vector search",
+                        "agentic ai",
+                        "ai agent",
                     )
+                )
+
+                if not (python_primary and applied_ai_evidence >= 2):
+                    reject_reason = "C++-primary role"
+
+            # .NET primary
+            elif (
+                ".net" in title
+                or "dotnet" in title
+                or "c#" in mandatory
+                or ".net" in mandatory
+                or "dotnet" in mandatory
+            ):
+                reject_reason = ".NET-primary role"
+
+            # VBA / Excel automation
+            elif "vba" in mandatory or (
+                "advanced excel" in tags and "power query" in tags
+            ):
+                reject_reason = "VBA/Excel automation role"
+
+            # Computer Vision primary
+            elif ("computer vision" in mandatory or "opencv" in mandatory) and not any(
+                signal in searchable
+                for signal in (
+                    "rag",
+                    "langchain",
+                    "langgraph",
+                    "llm",
+                    "generative ai",
+                    "genai",
+                    "azure openai",
+                )
+            ):
+                reject_reason = "Computer-Vision-primary role"
+
+            # Research / model-training primary
+            elif use_full_description:
+                research_signals = sum(
+                    signal in searchable
+                    for signal in (
+                        "train deep learning models",
+                        "training neural networks",
+                        "model training",
+                        "applied ai research",
+                        "research scientist",
+                        "computer vision research",
+                        "deep learning research",
+                    )
+                )
+
+                applied_ai_signals = sum(
+                    signal in searchable
+                    for signal in (
+                        "rag",
+                        "retrieval augmented generation",
+                        "langchain",
+                        "langgraph",
+                        "llamaindex",
+                        "azure openai",
+                        "openai api",
+                        "vector database",
+                        "vector search",
+                        "agentic ai",
+                        "ai agent",
+                    )
+                )
+
+                if research_signals >= 2 and applied_ai_signals == 0:
+                    reject_reason = "ML-research-primary role"
+
+            if reject_reason:
+                print(
+                    f"  [STACK CONFLICT - {reject_reason}] "
+                    f"{job.get('title')} @ "
+                    f"{job.get('company')}"
+                )
                 continue
 
-            # Unknown mode is permissive: location metadata alone does not
-            # prove that office attendance is required.
             clean.append(job)
 
         return clean
@@ -1063,40 +1148,65 @@ class JobFilterPipeline2:
             )
 
         prompt2 = f"""
-You rank genuine AI jobs for this candidate. Eligibility is broad; ranking is preference.
+You are a strict job-fit evaluator for this exact candidate identity:
 
-Candidate ground-truth profile for matching:
-- Senior software engineer with production full-stack/backend experience.
-- Angular/TypeScript, Node.js/Express, REST APIs, MongoDB, service integration.
-- Production AI engineering experience represented by Python/FastAPI AI services,
-  RAG, hybrid retrieval, reranking, embeddings, vector search, LangChain/LangGraph,
-  agents, tool calling, LLM evaluation, local model serving, Azure OpenAI,
-  Azure AI Foundry, and Azure AI Search.
+- Senior software engineer with a strong Angular/TypeScript frontend foundation.
+- Production full-stack/backend experience with Node.js, Express, REST APIs,
+  MongoDB, and service integration.
+- Applied-AI specialization built through production-style projects:
+  Python/FastAPI AI services, RAG, hybrid retrieval, reranking, embeddings,
+  vector search, LangChain/LangGraph-style orchestration, agents, tool calling,
+  LLM evaluation, local model serving, Azure OpenAI, and Azure AI Search.
+- The target is Applied AI / GenAI application engineering.
+- Generic backend/full-stack jobs are not the goal.
+- Angular/full-stack is a POSITIVE supporting signal when the role also builds
+  AI-enabled products; it is not a reason to reject the role.
+- Do not assume years of Applied-AI employment equal total engineering tenure.
+  Judge transition credibility from transferable software engineering plus
+  direct hands-on AI system overlap.
 
-POLICY:
-- Any genuinely AI-related engineering role is eligible.
-- Do NOT reject or heavily punish a role merely because its primary stack is
-  Java, C++, .NET, TensorFlow, PyTorch, computer vision, NLP, traditional ML,
-  data science, model training, MLOps, or another AI sub-discipline.
-- Stack and sub-discipline mismatch affect ranking only.
-- Generic software jobs with only incidental AI wording should score below 50.
-- Explicit AI roles should normally score at least 50.
-- Prefer GenAI/LLM/RAG/Agentic roles, then Applied AI/NLP/Prompt/AI Full Stack,
-  then ML/CV/DL/Data Science + AI, then ambiguous AI-adjacent roles.
-- Evaluate against the stated candidate profile; do not describe the candidate
-  as transitioning into AI or lacking production AI experience.
+TARGET ROLE FAMILY:
+Applied AI Engineer, Generative AI Engineer, GenAI Developer,
+AI Application Engineer, LLM Engineer, RAG Engineer, Agentic AI Engineer,
+AI Backend Engineer, Python AI Developer, and AI-enabled Full Stack Engineer.
 
-SCORING:
-90-100: direct GenAI/LLM/RAG/agentic fit with strong stack overlap.
-80-89: strong applied-AI fit.
-70-79: genuine AI role with good transferable overlap.
-60-69: genuine AI role with meaningful stack/sub-discipline gaps.
-50-59: genuine AI role with substantial gaps but still worth applying.
-0-49: not genuinely AI work, or AI is merely incidental.
+CAREER-TRACK BOUNDARIES:
+Reject or heavily penalize Data Science, ML research, model-training-heavy ML,
+computer-vision-specialist, MLOps-only, DevOps-only, Java-primary,
+.NET-primary, VBA/Excel automation, mobile-only, and generic frontend/backend
+roles with no concrete Applied-AI work.
+
+SCORING ANCHORS:
+90-100 = exceptional direct match: multiple concrete LLM/RAG/agent capabilities,
+         production software/API work, and strong platform overlap.
+80-89  = strong direct Applied-AI match with minor tool/domain gaps.
+70-79  = good Applied-AI match; credible now with normal onboarding.
+60-69  = mixed AI + software role with meaningful but manageable gaps.
+40-59  = weak/ambiguous AI relevance or AI is secondary to another discipline.
+0-39   = wrong track, incompatible primary stack, research/model-training-heavy,
+         or generic software role without substantive Applied-AI responsibilities.
+
+CALIBRATION RULES:
+- Do not award 80+ for merely mentioning AI, Copilot, automation, or an LLM API.
+- Concrete RAG, retrieval, agents, orchestration, evaluation, vector search,
+  prompt systems, or AI-service responsibilities are strong evidence.
+- A full-stack/Angular role with substantive GenAI responsibilities can score
+  highly because it combines the candidate's strongest production foundation
+  with the target specialization.
+- A pure Angular/frontend role without substantive AI work must score below 40.
+- A generic Python/backend role without substantive AI work must score below 40.
+- ML libraries alone do not imply Applied-AI fit.
+- Research/model-training work must not be confused with LLM application work.
+- Senior/lead wording alone is not a mismatch; evaluate actual scope and required
+  experience. Penalize only clearly unrealistic organizational scope.
 
 OUTPUT CONTRACT:
-Return exactly one result for every supplied Job ID. Copy IDs exactly.
-No markdown or extra text. Integer score 0-100.
+- Evaluate every job independently.
+- Return exactly one result per supplied Job ID.
+- Copy Job IDs exactly.
+- Reason only about that job.
+- No comparisons, omissions, duplicates, markdown, or extra text.
+- Score must be an integer from 0 to 100.
 
 Return ONLY:
 {{
@@ -1203,22 +1313,60 @@ Jobs:
 
     def post_score_guard(self, jobs):
         """
-        Preserve every job that passed the genuine-AI relevance and location
-        gates. Stack family, seniority, and specialization only affect priority.
+        Final deterministic enforcement after semantic scoring.
         """
         clean = []
+
         for job in jobs:
+            title = (job.get("title") or "").lower()
+            mandatory = {
+                str(tag).lower() for tag in job.get("mandatory_tags", [])
+            }
+            text = self._job_text(job)
             features = self._fit_features(job)
+            reject_reason = None
 
-            # Prevent incidental AI mentions in generic software jobs from being
-            # auto-applied. Explicit AI titles are never capped here.
+            if "java" in title:
+                reject_reason = "Java-primary title"
+            elif (
+                ".net" in title
+                or "dotnet" in title
+                or "c#" in mandatory
+                or ".net" in mandatory
+                or "dotnet" in mandatory
+            ):
+                reject_reason = ".NET-primary role"
+            elif "vba" in mandatory:
+                reject_reason = "VBA-primary role"
+            elif (
+                ("computer vision" in mandatory or "opencv" in mandatory)
+                and features["ai_hits"] == 0
+            ):
+                reject_reason = "Computer-Vision-primary role"
+            elif features["research_hits"] >= 2 and features["ai_hits"] == 0:
+                reject_reason = "ML-research-primary role"
+            elif features["ml_core_hits"] >= 4 and features["ai_hits"] == 0:
+                reject_reason = "Model-training-primary ML role"
+
+            if reject_reason:
+                print(
+                    f"  [POST-SCORE VETO - {reject_reason}] "
+                    f"{job.get('title')} @ {job.get('company')} "
+                    f"(AI score={job.get('ai_score', 0)})"
+                )
+                continue
+
+            # One incidental AI phrase cannot become an auto-apply job.
             if features["ai_hits"] <= 1 and not features["ai_title"]:
-                job["ai_score"] = min(job.get("ai_score", 0), 49)
+                job["ai_score"] = min(job.get("ai_score", 0), 59)
 
-            # Explicit AI titles get a minimum eligible score. This implements
-            # spray-and-pray within the AI domain while retaining useful ranking.
-            if features["ai_title"]:
-                job["ai_score"] = max(job.get("ai_score", 0), self.min_apply_score)
+            # Strong Applied-AI + software evidence gets a stable floor.
+            if features["ai_hits"] >= 4 and (
+                features["backend_hits"] >= 2
+                or features["frontend_hits"] >= 2
+                or features["ai_title"]
+            ):
+                job["ai_score"] = max(job.get("ai_score", 0), 78)
 
             clean.append(job)
 
@@ -1242,13 +1390,20 @@ Jobs:
     # SELECT
     # =========================================================
     def select(self, jobs):
-        """
-        Every job reaching this stage has already passed the hard-veto,
-        genuine-AI relevance, and location/work-mode eligibility gates.
+        apply_list = [j for j in jobs if j.get("ai_score", 0) >= self.min_apply_score]
+        review_list = [
+            j for j in jobs if 10 <= j.get("ai_score", 0) < self.min_apply_score
+        ]
 
-        AI score controls ordering only; it is not an eligibility threshold.
-        """
-        return jobs[: self.daily_apply_limit]
+        if review_list:
+            print(f"\n── REVIEW MANUALLY ({len(review_list)}) ──")
+            for j in review_list:
+                print(
+                    f"  score={j.get('ai_score')}  {j.get('title')} @ {j.get('company')}"
+                    f"  |  {j.get('ai_reason', '')}"
+                )
+
+        return apply_list[: self.daily_apply_limit]
 
     # =========================================================
     # CACHE
