@@ -77,6 +77,20 @@ def interpret_application_response(
 
     chatbot_response = response.get("chatbotResponse") or {}
 
+    if (
+        chatbot_response.get("isApply") is True
+        and chatbot_response.get("dataCommitted") is True
+    ):
+        return ApplicationOutcome(
+            status=ApplicationStatus.APPLIED,
+            job_id=job_id,
+            response=response,
+            reasoning=(
+                "Application completed successfully; chatbot flow confirms "
+                "isApply=true and dataCommitted=true."
+            ),
+        )
+
     if chatbot_response and not chatbot_response.get("dataCommitted", False):
         return ApplicationOutcome(
             status=ApplicationStatus.PROFILE_DATA_REQUIRED,

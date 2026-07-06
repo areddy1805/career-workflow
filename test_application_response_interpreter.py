@@ -123,3 +123,30 @@ def test_unknown_response_is_not_success() -> None:
 
     assert outcome.status == ApplicationStatus.UNKNOWN
     assert outcome.applied is False
+
+
+def test_custom_apply_with_committed_optional_resume_upload_is_applied():
+    response = {
+        "statusCode": 0,
+        "qup": {
+            "isCustom": True,
+            "qupFields": {
+                "uploadResume": {
+                    "isMandatory": "0",
+                }
+            },
+        },
+        "chatbotResponse": {
+            "isApply": True,
+            "isLeafNode": True,
+            "dataCommitted": True,
+            "currentNodeName": "Resume Upload",
+        },
+    }
+
+    outcome = interpret_application_response(
+        job_id="030726924996",
+        response=response,
+    )
+
+    assert outcome.status == ApplicationStatus.APPLIED

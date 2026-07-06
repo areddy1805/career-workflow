@@ -59,6 +59,7 @@ from src.application.failure import (
     FailureKind,
     classify_application_exception,
 )
+from src.application.response_store import save_response
 from src.resolution.hybrid_resolver import HybridQuestionResolver
 from src.utils.questionnaire_telemetry import log_unresolved_questions
 import html
@@ -842,6 +843,12 @@ def process_job_application(
         ),
     )
 
+    save_response(
+        job_id=job.job_id,
+        stage="initial_apply_raw",
+        response=initial_response,
+    )
+
     initial_outcome = interpret_application_response(
         job_id=job.job_id,
         response=initial_response,
@@ -888,6 +895,12 @@ def process_job_application(
         answers=answers,
         sid=sid,
         source="search",
+    )
+
+    save_response(
+        job_id=job.job_id,
+        stage="questionnaire_submit_raw",
+        response=final_response,
     )
 
     return interpret_application_response(
