@@ -3,8 +3,11 @@ from datetime import datetime, UTC
 
 from src.models.models import Job
 from src.client.naukri_client import NaukriLoginClient
-from src.exceptions.exceptions import NaukriAuthError, NaukriParseError
-from src.utils.request_helper import with_exponential_retry
+from src.exceptions.exceptions import (
+    NaukriAuthError,
+    NaukriParseError,
+    NaukriSearchChallengeError,
+)
 from src.utils.nkparam_generator import generate_nkparam
 from src.config.constants import (
     RECOMMENDED_JOBS_URL,
@@ -674,8 +677,19 @@ class NaukriJobClient:
             raise NaukriAuthError("403 Forbidden — nkparam token likely expired")
 
         if res.status_code == 406:
-            logger.debug("406 Validation error: %s", res.text)
-            return []
+            try:
+                payload = res.json()
+            except Exception:
+                payload = {}
+
+            message = str(payload.get("message") or res.text or "").lower()
+
+            if "recaptcha" in message or "captcha" in message:
+                raise NaukriSearchChallengeError(
+                    "Job search blocked by CAPTCHA challenge"
+                )
+
+            raise NaukriParseError(f"Search validation failed: 406 — {res.text}")
 
         if not res.ok:
             raise NaukriParseError(f"Search failed: {res.status_code} — {res.text}")

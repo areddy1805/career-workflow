@@ -112,6 +112,10 @@ data/scoring_inspection.txt
 data/responses/
 data/debug/
 data/raw_responses/
+data/job_search_cache.json
+data/job_search_cache.json.tmp
+data/search_challenge_state.json
+data/search_challenge_state.json.tmp
 
 
 # ==============================================================================

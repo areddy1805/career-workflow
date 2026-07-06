@@ -41,7 +41,11 @@ from config.candidate_profile import CANDIDATE_PROFILE
 from src.client.job_client import NaukriJobClient
 from src.client.jop_classifier import JobFilterPipeline2
 from src.client.naukri_client import NaukriLoginClient
-from src.exceptions.exceptions import NaukriAuthError, NaukriParseError
+from src.exceptions.exceptions import (
+    NaukriAuthError,
+    NaukriParseError,
+    NaukriSearchChallengeError,
+)
 from src.llm.client import OMLXClient
 from src.llm.question_resolver import LLMQuestionResolver
 from src.application.outcome import (
@@ -61,6 +65,9 @@ from src.application.failure import (
 )
 from src.application.response_store import save_response
 from src.resolution.hybrid_resolver import HybridQuestionResolver
+from src.search.job_search_cache import JobSearchCache
+from src.search.challenge_cooldown import SearchChallengeCooldown
+
 from src.utils.questionnaire_telemetry import log_unresolved_questions
 import html
 import re
@@ -164,6 +171,82 @@ def save_applied_job(job) -> bool:
 
 LINE = f"{Fore.WHITE}{'─' * 68}{Style.RESET_ALL}"
 THIN = f"{Fore.WHITE}{'·' * 68}{Style.RESET_ALL}"
+
+
+def print_acquisition_summary(
+    jobs: list,
+    fetch_result: JobFetchResult,
+) -> None:
+    live = 0
+    cache = 0
+    live_cache = 0
+    unknown = 0
+
+    for job in jobs:
+        source = getattr(
+            job,
+            "acquisition_source",
+            "unknown",
+        )
+
+        if source == "live":
+            live += 1
+
+        elif source == "cache":
+            cache += 1
+
+        elif source == "live+cache":
+            live_cache += 1
+
+        else:
+            unknown += 1
+
+    print_section_title("job acquisition summary")
+
+    rows = [
+        (
+            "Final jobs",
+            len(jobs),
+        ),
+        (
+            "Live only",
+            live,
+        ),
+        (
+            "Cache only",
+            cache,
+        ),
+        (
+            "Live + cache",
+            live_cache,
+        ),
+        (
+            "Unknown source",
+            unknown,
+        ),
+        (
+            "Search requests",
+            fetch_result.search_requests_attempted,
+        ),
+        (
+            "Challenge encountered",
+            fetch_result.challenge_encountered,
+        ),
+        (
+            "Cooldown suppression",
+            fetch_result.search_skipped_due_to_cooldown,
+        ),
+    ]
+
+    for label, value in rows:
+        print(
+            f"  {Fore.WHITE}"
+            f"{label:<28}"
+            f"{Style.RESET_ALL}  "
+            f"{Fore.CYAN}"
+            f"{value}"
+            f"{Style.RESET_ALL}"
+        )
 
 
 def print_section_title(text: str) -> None:
@@ -521,9 +604,18 @@ def print_summary(
 # ----------------------------------------------------------------------------------
 
 
+@dataclass
+class JobFetchResult:
+    jobs: list
+    challenge_encountered: bool = False
+    completed_normally: bool = True
+    search_skipped_due_to_cooldown: bool = False
+    search_requests_attempted: int = 0
+
+
 def fetch_all_jobs(
     jc: NaukriJobClient,
-) -> list:
+) -> JobFetchResult:
 
     SEARCH_TRACKS = [
         {"keyword": "Generative AI Engineer", "location": "", "track": "TIER_A"},
@@ -552,8 +644,11 @@ def fetch_all_jobs(
     PAGES = 1
     JOB_AGE = 3
 
-    seen_ids = set()
+    seen_ids: set[str] = set()
     all_jobs = []
+
+    challenge_encountered = False
+    search_requests_attempted = 0
 
     print_section_title(
         f"fetching jobs  "
@@ -563,12 +658,20 @@ def fetch_all_jobs(
     )
 
     for query in SEARCH_TRACKS:
+        if challenge_encountered:
+            break
+
         for exp in EXPERIENCE_LEVELS:
+            if challenge_encountered:
+                break
+
             for page in range(
                 1,
                 PAGES + 1,
             ):
                 try:
+                    search_requests_attempted += 1
+
                     jobs = jc.search_jobs(
                         keyword=query["keyword"],
                         location=query["location"],
@@ -596,8 +699,6 @@ def fetch_all_jobs(
                         if job_id:
                             seen_ids.add(job_id)
 
-                        # Preserve the search source for downstream
-                        # classification and policy decisions.
                         setattr(
                             job,
                             "search_track",
@@ -608,6 +709,12 @@ def fetch_all_jobs(
                             job,
                             "search_query",
                             query["keyword"],
+                        )
+
+                        setattr(
+                            job,
+                            "acquisition_source",
+                            "live",
                         )
 
                         new_jobs.append(job)
@@ -623,10 +730,23 @@ def fetch_all_jobs(
                         new=len(new_jobs),
                     )
 
-                    if len(jobs) == 0:
+                    if not jobs:
                         break
 
                     time.sleep(1.2)
+
+                except NaukriSearchChallengeError as exc:
+                    challenge_encountered = True
+
+                    print(
+                        f"\n  {Fore.YELLOW}"
+                        f"[SEARCH STOPPED]"
+                        f"{Style.RESET_ALL}  "
+                        f"{exc}. Continuing with "
+                        f"{len(all_jobs)} collected jobs."
+                    )
+
+                    break
 
                 except Exception as exc:
                     print(
@@ -649,7 +769,202 @@ def fetch_all_jobs(
         f"{Style.RESET_ALL}"
     )
 
-    return all_jobs
+    return JobFetchResult(
+        jobs=all_jobs,
+        challenge_encountered=challenge_encountered,
+        completed_normally=not challenge_encountered,
+        search_requests_attempted=search_requests_attempted,
+    )
+
+
+def resolve_job_acquisition(
+    fetch_result: JobFetchResult,
+    cache: JobSearchCache,
+) -> list:
+    """
+    Resolve final jobs from live acquisition and fresh cache entries.
+
+    Policy:
+        - normal search:
+            use live results only and refresh cache
+
+        - partial challenged search:
+            merge live jobs with fresh cache jobs
+
+        - challenge before acquisition:
+            use fresh cache jobs
+
+        - cooldown-suppressed search:
+            use fresh cache jobs
+
+    Provenance:
+        live        -> observed only in current search
+        cache       -> recovered only from cache
+        live+cache  -> observed in both
+    """
+
+    fresh_jobs = fetch_result.jobs
+    cached_jobs = cache.load()
+
+    fresh_ids = {
+        job.job_id
+        for job in fresh_jobs
+        if getattr(
+            job,
+            "job_id",
+            None,
+        )
+    }
+
+    cached_ids = {
+        job.job_id
+        for job in cached_jobs
+        if getattr(
+            job,
+            "job_id",
+            None,
+        )
+    }
+
+    for job in fresh_jobs:
+        job_id = getattr(
+            job,
+            "job_id",
+            None,
+        )
+
+        source = "live+cache" if job_id in cached_ids else "live"
+
+        setattr(
+            job,
+            "acquisition_source",
+            source,
+        )
+
+    for job in cached_jobs:
+        job_id = getattr(
+            job,
+            "job_id",
+            None,
+        )
+
+        source = "live+cache" if job_id in fresh_ids else "cache"
+
+        setattr(
+            job,
+            "acquisition_source",
+            source,
+        )
+
+    if fetch_result.search_skipped_due_to_cooldown:
+        if cached_jobs:
+            print(
+                f"\n  {Fore.YELLOW}"
+                f"Live search suppressed by challenge cooldown."
+                f"{Style.RESET_ALL}"
+                f"\n  Using {len(cached_jobs)} cached jobs."
+            )
+
+        return cached_jobs
+
+    if fetch_result.challenge_encountered:
+        if fresh_jobs:
+            merged_jobs = cache.merge(
+                fresh_jobs=fresh_jobs,
+                cached_jobs=cached_jobs,
+            )
+
+            for job in merged_jobs:
+                job_id = getattr(
+                    job,
+                    "job_id",
+                    None,
+                )
+
+                if job_id in fresh_ids and job_id in cached_ids:
+                    source = "live+cache"
+
+                elif job_id in fresh_ids:
+                    source = "live"
+
+                else:
+                    source = "cache"
+
+                setattr(
+                    job,
+                    "acquisition_source",
+                    source,
+                )
+
+            cache.save(merged_jobs)
+
+            print(
+                f"\n  {Fore.YELLOW}"
+                f"Search challenge encountered after partial acquisition."
+                f"{Style.RESET_ALL}"
+                f"\n  Fresh jobs  : {len(fresh_jobs)}"
+                f"\n  Cached jobs : {len(cached_jobs)}"
+                f"\n  Final jobs  : {len(merged_jobs)}"
+            )
+
+            return merged_jobs
+
+        if cached_jobs:
+            print(
+                f"\n  {Fore.YELLOW}"
+                f"Search challenge encountered before fresh acquisition."
+                f"{Style.RESET_ALL}"
+                f"\n  Using {len(cached_jobs)} cached jobs."
+            )
+
+            return cached_jobs
+
+        return []
+
+    cache.save(fresh_jobs)
+
+    return fresh_jobs
+
+
+def acquire_jobs(
+    jc: NaukriJobClient,
+    cache: JobSearchCache,
+    cooldown: SearchChallengeCooldown,
+) -> tuple[list, JobFetchResult]:
+    """
+    Execute cooldown-aware job acquisition.
+
+    The cooldown prevents repeated search requests after a CAPTCHA
+    challenge while still allowing cache-backed pipeline execution.
+    """
+
+    if cooldown.is_active():
+        fetch_result = JobFetchResult(
+            jobs=[],
+            challenge_encountered=False,
+            completed_normally=False,
+            search_skipped_due_to_cooldown=True,
+            search_requests_attempted=0,
+        )
+
+        jobs = resolve_job_acquisition(
+            fetch_result=fetch_result,
+            cache=cache,
+        )
+
+        return jobs, fetch_result
+
+    fetch_result = fetch_all_jobs(jc)
+
+    if fetch_result.challenge_encountered:
+        cooldown.record_challenge()
+
+    jobs = resolve_job_acquisition(
+        fetch_result=fetch_result,
+        cache=cache,
+    )
+
+    return jobs, fetch_result
 
 
 # ----------------------------------------------------------------------------------
@@ -1375,13 +1690,53 @@ if __name__ == "__main__":
     )
 
     # --------------------------------------------------------------------------
-    # Step 3: Fetch jobs
+    # Step 3: Cooldown-aware job acquisition with cache recovery
     # --------------------------------------------------------------------------
 
-    jobs = fetch_all_jobs(jc)
+    job_cache = JobSearchCache(
+        path=os.getenv(
+            "JOB_SEARCH_CACHE_PATH",
+            "data/job_search_cache.json",
+        ),
+        ttl_days=int(
+            os.getenv(
+                "JOB_SEARCH_CACHE_TTL_DAYS",
+                "3",
+            )
+        ),
+    )
+
+    search_cooldown = SearchChallengeCooldown(
+        path=os.getenv(
+            "SEARCH_CHALLENGE_STATE_PATH",
+            "data/search_challenge_state.json",
+        ),
+        cooldown_minutes=int(
+            os.getenv(
+                "SEARCH_CHALLENGE_COOLDOWN_MINUTES",
+                "60",
+            )
+        ),
+    )
+
+    jobs, fetch_result = acquire_jobs(
+        jc=jc,
+        cache=job_cache,
+        cooldown=search_cooldown,
+    )
+
+    print_acquisition_summary(
+        jobs=jobs,
+        fetch_result=fetch_result,
+    )
 
     if not jobs:
-        print(f"\n" f"{Fore.YELLOW}" f"  No jobs found. Exiting." f"{Style.RESET_ALL}")
+        print(
+            f"\n"
+            f"{Fore.YELLOW}"
+            f"  No fresh or cached jobs available. Exiting."
+            f"{Style.RESET_ALL}"
+        )
 
         raise SystemExit(0)
 

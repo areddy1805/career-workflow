@@ -1,5 +1,6 @@
 class NaukriClientError(Exception):
     """Base exception for all Naukri client errors."""
+
     pass
 
 
@@ -11,6 +12,12 @@ class NaukriAuthError(NaukriClientError):
         if status_code:
             msg += f" | HTTP {status_code}"
         super().__init__(msg)
+
+
+class NaukriSearchChallengeError(NaukriClientError):
+    """Raised when job search is blocked by a CAPTCHA or anti-bot challenge."""
+
+    pass
 
 
 class NaukriNetworkError(NaukriClientError):
