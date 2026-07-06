@@ -384,7 +384,7 @@ class NaukriJobClient:
     def submit_questionnaire_answers(
         self,
         job: Job,
-        answers: dict[str, str],
+        answers: dict[str, object],
         sid: str,
         source: str = "search",
     ) -> dict:

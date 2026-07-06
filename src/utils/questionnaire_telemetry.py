@@ -19,6 +19,10 @@ FIELDS = [
     "category",
     "mandatory",
     "answer_options",
+    "resolution_status",
+    "resolution_source",
+    "resolution_confidence",
+    "resolution_reasoning",
 ]
 
 
@@ -119,6 +123,22 @@ def log_unresolved_questions(
                     "answer_options": json.dumps(
                         question.get("answerOption") or {},
                         ensure_ascii=False,
+                    ),
+                    "resolution_status": question.get(
+                        "resolution_status",
+                        "",
+                    ),
+                    "resolution_source": question.get(
+                        "resolution_source",
+                        "",
+                    ),
+                    "resolution_confidence": question.get(
+                        "resolution_confidence",
+                        "",
+                    ),
+                    "resolution_reasoning": question.get(
+                        "resolution_reasoning",
+                        "",
                     ),
                 }
             )
