@@ -1,3 +1,22 @@
+
+<!--
+
+rm -f data/search_challenge_state.json
+
+APPLICATION_DRY_RUN=true \
+MAX_APPLICATIONS_PER_RUN=1 \
+python apply_agent.py
+
+
+APPLICATION_DRY_RUN=false \
+MAX_APPLICATIONS_PER_RUN=1 \
+python apply_agent.py
+
+ -->
+
+
+
+
 <p align="center">
   <img src="assests/logo2.svg" alt="naukri-api-client" width="680"/>
 </p>
@@ -29,9 +48,9 @@ A lightweight and Selenium-free Python API client for Naukri.com, designed to he
 | OTP login/MFA | ✅ Working |
 
 
-> **Updated on April 13 2026**  
-> **No Selenium required** for core features.  
-> The `nkparam` token is generated via API.  
+> **Updated on April 13 2026**
+> **No Selenium required** for core features.
+> The `nkparam` token is generated via API.
 > Selenium-based harvester is kept only as a backup utility.
 
 > **No Selenium required** for features 1–4. The Selenium script is only needed as a helper to harvest fresh `nkparam` tokens for the search endpoint.
@@ -44,7 +63,7 @@ A lightweight and Selenium-free Python API client for Naukri.com, designed to he
 naukri-api-client/
 ├── main.py                     # Entry point — demo of all features
 ├── nkPool.txt                  # Pool of captured nkparam tokens
-├── .env                        # Credentials 
+├── .env                        # Credentials
 ├── src/
 │   ├── client/
 │   │   ├── naukri_client.py    # Core auth + profile + resume client
@@ -60,7 +79,7 @@ naukri-api-client/
 │       ├── extractors.py       # HTML / JS parsing helpers
 │       └── request_helper.py   # Exponential-retry decorator
         ├── get_Nkparam.py      # Selenium helper to harvest nkparam tokens
-        ├── nkparam_generator.py   #generate nkparam tokens 
+        ├── nkparam_generator.py   #generate nkparam tokens
 ```
 
 ---
@@ -106,7 +125,7 @@ PASSWORD=your_naukri_password
 ```
 
 ---
-## 🚀 Quick Start 
+## 🚀 Quick Start
         you can simply run `main.py` also
 
         ```python
@@ -215,7 +234,7 @@ class Job:
 
 ## 🔑 The `nkparam` Problem (and Current Solution)
 
-Naukri's job-search endpoint (`/jobapi/v3/search`) requires a request header called `nkparam`.  
+Naukri's job-search endpoint (`/jobapi/v3/search`) requires a request header called `nkparam`.
 This is not just a random token — it is essentially an **encrypted/signature key** generated using:
 - current timestamp (time-based salt)
 - session-related data

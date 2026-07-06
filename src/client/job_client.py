@@ -673,6 +673,12 @@ class NaukriJobClient:
 
         res = self._session.get(url, headers=self._search_headers(), params=params)
 
+        # print("\nSEARCH DEBUG")
+        # print("STATUS:", res.status_code)
+        # print("URL:", res.url)
+        # print("CONTENT-TYPE:", res.headers.get("content-type"))
+        # print("RESPONSE:", res.text[:2000])
+
         if res.status_code == 403:
             raise NaukriAuthError("403 Forbidden — nkparam token likely expired")
 
