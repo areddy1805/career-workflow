@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime
+from datetime import datetime, UTC
 
 from src.models.models import Job
 from src.client.naukri_client import NaukriLoginClient
@@ -159,7 +159,7 @@ class NaukriJobClient:
 
     def _cluster_dates(self) -> dict:
         # Returns a dict of current UTC timestamps used by the recommended jobs payload.
-        now = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")
+        now = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.000Z")
         return {
             "apply": now,
             "preference": now,
@@ -253,7 +253,7 @@ class NaukriJobClient:
             raise ValueError("job_id is required")
 
         if not sid:
-            sid = datetime.utcnow().strftime("%Y%m%d%H%M%S") + "0000000"
+            sid = datetime.now(UTC).strftime("%Y%m%d%H%M%S") + "0000000"
 
         url = f"https://www.naukri.com/jobapi/v1/job/{job_id}"
 
@@ -313,8 +313,8 @@ class NaukriJobClient:
     def apply_job(
         self,
         job: Job,
-        mandatory_skills: list[str] = None,  # type: ignore
-        optional_skills: list[str] = None,  # type: ignore
+        mandatory_skills: list[str] | None = None,
+        optional_skills: list[str] | None = None,
         sid: str = "",
         source: str = "recommended",
     ) -> dict:
@@ -324,7 +324,7 @@ class NaukriJobClient:
             raise ValueError("Invalid job_id")
 
         if not sid:
-            sid = datetime.utcnow().strftime("%Y%m%d%H%M%S") + "0000000"
+            sid = datetime.now(UTC).strftime("%Y%m%d%H%M%S") + "0000000"
 
         apply_src, logstr_template = APPLY_SRC_MAP.get(
             source, APPLY_SRC_MAP["recommended"]

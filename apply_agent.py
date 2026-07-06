@@ -26,7 +26,8 @@
 #   fetch_all_jobs() to tune what gets fetched each run.
 # ----------------------------------------------------------------------------------
 
-from datetime import datetime
+from dataclasses import dataclass
+from datetime import datetime, UTC
 from typing import Any, Protocol
 import csv
 import logging
@@ -43,6 +44,13 @@ from src.client.naukri_client import NaukriLoginClient
 from src.exceptions.exceptions import NaukriAuthError, NaukriParseError
 from src.llm.client import OMLXClient
 from src.llm.question_resolver import LLMQuestionResolver
+from src.application.outcome import (
+    ApplicationOutcome,
+    ApplicationStatus,
+)
+from src.application.response_interpreter import (
+    interpret_application_response,
+)
 from src.resolution.hybrid_resolver import HybridQuestionResolver
 from src.utils.questionnaire_telemetry import log_unresolved_questions
 
@@ -63,9 +71,12 @@ logger = logging.getLogger(__name__)
 CSV_FILE = "applied_jobs.csv"
 
 
-def load_applied_jobs() -> set:
-    # Returns the set of job_ids already applied to in previous runs.
-    # Returns an empty set if the file does not exist yet.
+def load_applied_jobs() -> set[str]:
+    """
+    Return all locally persisted applied job IDs.
+
+    Missing or empty persistence files are treated as an empty set.
+    """
     if not os.path.exists(CSV_FILE):
         return set()
 
@@ -76,13 +87,29 @@ def load_applied_jobs() -> set:
         encoding="utf-8",
     ) as file:
         reader = csv.DictReader(file)
-        return set(row["job_id"] for row in reader)
+
+        return {
+            str(row.get("job_id") or "").strip()
+            for row in reader
+            if str(row.get("job_id") or "").strip()
+        }
 
 
-def save_applied_job(job) -> None:
-    # Appends a single job record to the CSV after a successful apply.
-    # Creates the file with a header row on first write.
+def save_applied_job(job) -> bool:
+    """
+    Persist a successfully applied job exactly once.
+
+    Returns:
+        True  -> a new CSV row was written
+        False -> the job already existed locally
+    """
+    applied_job_ids = load_applied_jobs()
+
+    if job.job_id in applied_job_ids:
+        return False
+
     file_exists = os.path.exists(CSV_FILE)
+    file_has_content = file_exists and os.path.getsize(CSV_FILE) > 0
 
     with open(
         CSV_FILE,
@@ -102,7 +129,7 @@ def save_applied_job(job) -> None:
             fieldnames=fieldnames,
         )
 
-        if not file_exists:
+        if not file_has_content:
             writer.writeheader()
 
         writer.writerow(
@@ -110,9 +137,11 @@ def save_applied_job(job) -> None:
                 "job_id": job.job_id,
                 "title": job.title,
                 "company": job.company,
-                "applied_at": datetime.utcnow().isoformat(),
+                "applied_at": datetime.now(UTC).isoformat(),
             }
         )
+
+    return True
 
 
 # ----------------------------------------------------------------------------------
@@ -143,7 +172,7 @@ def print_job_header(
 ) -> None:
     # Prints the full metadata block for a single job. Includes title, company,
     # job ID, URL, AI score with a visual bar, and skill tags if present.
-    now = datetime.utcnow().strftime("%Y-%m-%d  %H:%M UTC")
+    now = datetime.now(UTC).strftime("%Y-%m-%d  %H:%M UTC")
 
     score_str = ""
 
@@ -380,6 +409,8 @@ def print_summary(
     total_found: int,
     total_allowed: int,
     applied: int,
+    already_applied: int,
+    skipped_local: int,
     skipped_ext: int,
     failed: int,
 ) -> None:
@@ -403,6 +434,16 @@ def print_summary(
             Fore.GREEN,
         ),
         (
+            "Already applied (server)",
+            str(already_applied),
+            Fore.CYAN,
+        ),
+        (
+            "Skipped (local history)",
+            str(skipped_local),
+            Fore.WHITE,
+        ),
+        (
             "Skipped (external apply)",
             str(skipped_ext),
             Fore.YELLOW,
@@ -413,7 +454,6 @@ def print_summary(
             Fore.RED,
         ),
     ]
-
     for label, value, color in rows:
         print(
             f"  {Fore.WHITE}"
@@ -624,6 +664,288 @@ def resolve_questionnaire(
     return answers, unresolved
 
 
+class JobApplicationClient(Protocol):
+    """
+    Structural interface required by process_job_application().
+
+    NaukriJobClient and test doubles can satisfy this protocol
+    without inheritance or concrete-type coupling.
+    """
+
+    def apply_job(
+        self,
+        job: Any,
+        mandatory_skills: list[str] | None = None,
+        optional_skills: list[str] | None = None,
+        sid: str = "",
+        source: str = "recommended",
+    ) -> dict: ...
+
+    def submit_questionnaire_answers(
+        self,
+        job: Any,
+        answers: dict[str, object],
+        sid: str,
+        source: str = "search",
+    ) -> dict: ...
+
+
+@dataclass(frozen=True)
+class ApplicationRunSummary:
+    total_candidates: int
+    applied: int
+    already_applied: int
+    skipped_local: int
+    skipped_external: int
+    failed: int
+
+
+def process_job_application(
+    jc: JobApplicationClient,
+    job: Any,
+    meta: dict,
+    questionnaire_resolver: QuestionnaireResolver,
+) -> ApplicationOutcome:
+    """
+    Execute the complete application workflow for one job.
+
+    Responsibilities:
+        1. Submit the initial application.
+        2. Interpret the initial API response.
+        3. Return immediately for direct success or already-applied outcomes.
+        4. Resolve and submit questionnaires when required.
+        5. Log unresolved questionnaire items before failing safely.
+        6. Interpret and return the final questionnaire submission outcome.
+
+    This function does not:
+        - print terminal status
+        - update counters
+        - persist applied jobs
+        - sleep between applications
+
+    Those responsibilities remain with the outer orchestration loop.
+    """
+
+    mandatory = job.tags[:2] if job.tags else []
+    optional = job.tags[2:] if len(job.tags) > 2 else []
+
+    initial_response = jc.apply_job(
+        job,
+        mandatory_skills=mandatory,
+        optional_skills=optional,
+        source="search",
+    )
+
+    initial_outcome = interpret_application_response(
+        job_id=job.job_id,
+        response=initial_response,
+    )
+
+    if initial_outcome.status in {
+        ApplicationStatus.APPLIED,
+        ApplicationStatus.ALREADY_APPLIED,
+    }:
+        return initial_outcome
+
+    if initial_outcome.status != ApplicationStatus.QUESTIONNAIRE_REQUIRED:
+        return initial_outcome
+
+    questionnaire = initial_outcome.questionnaire
+
+    answers, unresolved = resolve_questionnaire(
+        resolver=questionnaire_resolver,
+        questionnaire=questionnaire,
+        profile=CANDIDATE_PROFILE,
+    )
+
+    if unresolved:
+        log_unresolved_questions(
+            row={
+                "job_id": job.job_id,
+                "title": job.title,
+                "company": job.company,
+                "priority": meta.get("priority", ""),
+                "subtrack": meta.get("subtrack", ""),
+            },
+            questions=unresolved,
+        )
+
+        raise RuntimeError(
+            "Questionnaire requires manual review: "
+            f"{len(unresolved)} unresolved question(s)"
+        )
+
+    sid = datetime.now(UTC).strftime("%Y%m%d%H%M%S") + "0000000"
+
+    final_response = jc.submit_questionnaire_answers(
+        job=job,
+        answers=answers,
+        sid=sid,
+        source="search",
+    )
+
+    return interpret_application_response(
+        job_id=job.job_id,
+        response=final_response,
+    )
+
+
+def run_application_batch(
+    jc,
+    jobs: list,
+    score_map: dict,
+    questionnaire_resolver: QuestionnaireResolver,
+    applied_jobs_set: set[str],
+    sleep_fn=time.sleep,
+    save_fn=save_applied_job,
+) -> ApplicationRunSummary:
+    """
+    Execute the application workflow for a batch of filtered jobs.
+
+    Responsibilities:
+        - skip jobs already present in local persistence
+        - skip external application jobs
+        - execute the single-job application workflow
+        - reconcile server-side already-applied outcomes
+        - persist confirmed successful applications
+        - isolate failures so one job cannot terminate the batch
+        - return deterministic counters for the complete run
+
+    Terminal display remains here temporarily because the current CLI
+    orchestration depends on per-job progress output.
+    """
+
+    applied_count = 0
+    already_applied_count = 0
+    skipped_local_count = 0
+    skipped_external_count = 0
+    failed_count = 0
+
+    total_candidates = len(jobs)
+
+    for index, job in enumerate(
+        jobs,
+        start=1,
+    ):
+        meta = score_map.get(
+            job.job_id,
+            {},
+        )
+
+        score = meta.get("score")
+        ai_detail = meta.get("ai_detail")
+
+        print_job_header(
+            index=index,
+            total=total_candidates,
+            job=job,
+            score=score,
+            ai_detail=ai_detail,
+        )
+
+        # ----------------------------------------------------------
+        # Local idempotency check
+        # ----------------------------------------------------------
+
+        if job.job_id in applied_jobs_set:
+            logger.info(
+                "Skipping locally persisted job: job_id=%s",
+                job.job_id,
+            )
+
+            skipped_local_count += 1
+            continue
+
+        # ----------------------------------------------------------
+        # External application check
+        # ----------------------------------------------------------
+
+        try:
+            if jc.is_external_apply(job.job_id):
+                print_status_skipped_external()
+
+                skipped_external_count += 1
+                continue
+
+        except Exception as exc:
+            print_status_failed(exc)
+
+            failed_count += 1
+            continue
+
+        # ----------------------------------------------------------
+        # Application workflow
+        # ----------------------------------------------------------
+
+        try:
+            outcome = process_job_application(
+                jc=jc,
+                job=job,
+                meta=meta,
+                questionnaire_resolver=questionnaire_resolver,
+            )
+
+            # ------------------------------------------------------
+            # Server reports already applied
+            # ------------------------------------------------------
+
+            if outcome.status == ApplicationStatus.ALREADY_APPLIED:
+                logger.info(
+                    "Server reports job already applied: job_id=%s",
+                    job.job_id,
+                )
+
+                applied_jobs_set.add(job.job_id)
+
+                save_fn(job)
+
+                already_applied_count += 1
+
+                continue
+
+            # ------------------------------------------------------
+            # Non-success terminal outcome
+            # ------------------------------------------------------
+
+            if outcome.status != ApplicationStatus.APPLIED:
+                raise RuntimeError(
+                    "Application did not produce a successful outcome: "
+                    f"{outcome.status.value}. "
+                    f"{outcome.reasoning}"
+                )
+
+            # ------------------------------------------------------
+            # Confirmed successful application
+            # ------------------------------------------------------
+
+            applied_at = datetime.now(UTC).strftime("%H:%M:%S UTC")
+
+            print_status_applied(applied_at)
+
+            save_fn(job)
+
+            applied_jobs_set.add(job.job_id)
+
+            applied_count += 1
+
+        except Exception as exc:
+            print_status_failed(exc)
+
+            failed_count += 1
+
+        finally:
+            sleep_fn(3)
+
+    return ApplicationRunSummary(
+        total_candidates=total_candidates,
+        applied=applied_count,
+        already_applied=already_applied_count,
+        skipped_local=skipped_local_count,
+        skipped_external=skipped_external_count,
+        failed=failed_count,
+    )
+
+
 # ----------------------------------------------------------------------------------
 # Main — orchestrates the full agent run
 # ----------------------------------------------------------------------------------
@@ -631,12 +953,13 @@ def resolve_questionnaire(
 if __name__ == "__main__":
 
     username = os.getenv("USERNAME")
-
     password = os.getenv("PASSWORD")
-
     ai_key = os.getenv("OPEN_API_KEY")
 
-    # Step 1: authenticate and establish session.
+    # --------------------------------------------------------------------------
+    # Step 1: Authenticate and establish session
+    # --------------------------------------------------------------------------
+
     print_section_title("logging in to naukri")
 
     client = NaukriLoginClient(
@@ -654,7 +977,10 @@ if __name__ == "__main__":
         f"{Style.RESET_ALL}"
     )
 
-    # Step 2: fetch raw jobs from search API.
+    # --------------------------------------------------------------------------
+    # Step 2: Construct application dependencies
+    # --------------------------------------------------------------------------
+
     jc = NaukriJobClient(client)
 
     omlx_client = OMLXClient(
@@ -669,153 +995,73 @@ if __name__ == "__main__":
         llm_resolver=llm_question_resolver,
     )
 
+    # --------------------------------------------------------------------------
+    # Step 3: Fetch jobs
+    # --------------------------------------------------------------------------
+
     jobs = fetch_all_jobs(jc)
 
     if not jobs:
-        print(f"\n{Fore.YELLOW}" f"  No jobs found. Exiting." f"{Style.RESET_ALL}")
+        print(f"\n" f"{Fore.YELLOW}" f"  No jobs found. Exiting." f"{Style.RESET_ALL}")
 
-        exit(0)
+        raise SystemExit(0)
 
-    # Step 3: run AI filter pipeline. Jobs are scored and ranked. Only those
-    # above the pipeline's threshold are passed to the apply loop.
+    # --------------------------------------------------------------------------
+    # Step 4: Run AI filtering and ranking pipeline
+    # --------------------------------------------------------------------------
+
     print_section_title("running AI filter pipeline")
 
-    pipeline = JobFilterPipeline2(openai_api_key=ai_key)
+    pipeline = JobFilterPipeline2(
+        openai_api_key=ai_key,
+    )
 
     final_jobs = pipeline.run(jobs)
 
-    # Build a lookup from job_id to the pipeline result dict
-    # containing score, ai_detail, priority, subtrack, etc.
-    score_map = {job["job_id"]: job for job in final_jobs}
+    # Lookup containing score, AI detail, priority, subtrack, and other
+    # classification metadata produced by the filtering pipeline.
+    score_map = {result["job_id"]: result for result in final_jobs}
 
-    allow = set(score_map.keys())
+    allowed_job_ids = set(score_map.keys())
 
     print_pipeline_results(final_jobs)
 
-    # Step 4: apply loop. Iterates only over jobs that passed the AI filter.
+    # --------------------------------------------------------------------------
+    # Step 5: Load local application history
+    # --------------------------------------------------------------------------
+
     applied_jobs_set = load_applied_jobs()
 
-    applied_count = 0
-    skipped_ext = 0
-    failed_count = 0
+    # --------------------------------------------------------------------------
+    # Step 6: Select filtered application candidates
+    # --------------------------------------------------------------------------
 
-    allowed_jobs = [job for job in jobs if job.job_id in allow]
+    allowed_jobs = [job for job in jobs if job.job_id in allowed_job_ids]
 
-    print_section_title(f"applying to " f"{len(allowed_jobs)} " f"filtered jobs")
+    print_section_title(f"applying to {len(allowed_jobs)} filtered jobs")
 
-    for index, job in enumerate(
-        allowed_jobs,
-        start=1,
-    ):
-        meta = score_map.get(
-            job.job_id,
-            {},
-        )
+    # --------------------------------------------------------------------------
+    # Step 7: Execute tested batch orchestration
+    # --------------------------------------------------------------------------
 
-        score = meta.get("score")
+    run_summary = run_application_batch(
+        jc=jc,
+        jobs=allowed_jobs,
+        score_map=score_map,
+        questionnaire_resolver=questionnaire_resolver,
+        applied_jobs_set=applied_jobs_set,
+    )
 
-        ai_detail = meta.get("ai_detail")
+    # --------------------------------------------------------------------------
+    # Step 8: Print final deterministic run summary
+    # --------------------------------------------------------------------------
 
-        print_job_header(
-            index=index,
-            total=len(allowed_jobs),
-            job=job,
-            score=score,
-            ai_detail=ai_detail,
-        )
-
-        # External apply jobs cannot be submitted via the API.
-        if jc.is_external_apply(job.job_id):
-            print_status_skipped_external()
-
-            skipped_ext += 1
-
-            continue
-
-        # Use the first two tags as mandatory skills and the rest as optional.
-        mandatory = job.tags[:2] if job.tags else []
-
-        optional = job.tags[2:] if len(job.tags) > 2 else []
-
-        try:
-            result = jc.apply_job(
-                job,
-                mandatory_skills=mandatory,
-                optional_skills=optional,
-                source="search",
-            )
-
-            job_result = (result.get("jobs") or [{}])[0]
-
-            # If the initial apply response contains a questionnaire,
-            # resolve all questions through the hybrid resolver and submit
-            # only when every question is safely resolved.
-            if job_result.get("questionnaire"):
-                print_questionnaire_notice()
-
-                questionnaire = job_result["questionnaire"]
-
-                answers, unresolved = resolve_questionnaire(
-                    resolver=questionnaire_resolver,
-                    questionnaire=questionnaire,
-                    profile=CANDIDATE_PROFILE,
-                )
-
-                if unresolved:
-                    log_unresolved_questions(
-                        row={
-                            "job_id": job.job_id,
-                            "title": job.title,
-                            "company": job.company,
-                            "priority": meta.get(
-                                "priority",
-                                "",
-                            ),
-                            "subtrack": meta.get(
-                                "subtrack",
-                                "",
-                            ),
-                        },
-                        questions=unresolved,
-                    )
-
-                    raise RuntimeError(
-                        "Questionnaire requires manual review: "
-                        f"{len(unresolved)} unresolved question(s)"
-                    )
-
-                sid = datetime.utcnow().strftime("%Y%m%d%H%M%S") + "0000000"
-
-                result = jc.submit_questionnaire_answers(
-                    job=job,
-                    answers=answers,
-                    sid=sid,
-                    source="search",
-                )
-
-            applied_at = datetime.utcnow().strftime("%H:%M:%S UTC")
-
-            print_status_applied(applied_at)
-
-            save_applied_job(job)
-
-            applied_jobs_set.add(job.job_id)
-
-            applied_count += 1
-
-        except Exception as exc:
-            print_status_failed(exc)
-
-            failed_count += 1
-
-        # Delay between applies to avoid triggering rate limits.
-        time.sleep(3)
-
-    # Step 5: print final run summary.
     print_summary(
         total_found=len(jobs),
-        total_allowed=len(allowed_jobs),
-        applied=applied_count,
-        skipped_ext=skipped_ext,
-        failed=failed_count,
+        total_allowed=run_summary.total_candidates,
+        applied=run_summary.applied,
+        already_applied=run_summary.already_applied,
+        skipped_local=run_summary.skipped_local,
+        skipped_ext=run_summary.skipped_external,
+        failed=run_summary.failed,
     )
