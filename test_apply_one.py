@@ -9,7 +9,6 @@ from src.client.naukri_client import NaukriLoginClient
 from src.client.job_client import NaukriJobClient
 from src.models.models import Job
 
-
 TEST_JOB_ID = "030726014753"
 
 
@@ -22,24 +21,14 @@ def load_job(job_id: str) -> Job:
         rows = list(csv.DictReader(f))
 
     row = next(
-        (
-            r
-            for r in rows
-            if r["job_id"] == job_id
-        ),
+        (r for r in rows if r["job_id"] == job_id),
         None,
     )
 
     if row is None:
-        raise RuntimeError(
-            f"Job ID {job_id} not found in scored_jobs.csv"
-        )
+        raise RuntimeError(f"Job ID {job_id} not found in scored_jobs.csv")
 
-    tags = [
-        tag.strip()
-        for tag in (row.get("tags") or "").split(",")
-        if tag.strip()
-    ]
+    tags = [tag.strip() for tag in (row.get("tags") or "").split(",") if tag.strip()]
 
     return Job(
         job_id=row["job_id"],
@@ -58,8 +47,8 @@ def load_job(job_id: str) -> Job:
 def main():
     load_dotenv(".env")
 
-    username = os.getenv("USERNAME")
-    password = os.getenv("PASSWORD")
+    username = os.getenv("NAUKRI_USERNAME")
+    password = os.getenv("NAUKRI_PASSWORD")
 
     job = load_job(TEST_JOB_ID)
 
@@ -111,9 +100,7 @@ def main():
     print("WARNING: THE NEXT ACTION SUBMITS A REAL APPLICATION")
     print("=" * 100)
 
-    confirmation = input(
-        f'Type APPLY {job.job_id} to submit: '
-    ).strip()
+    confirmation = input(f"Type APPLY {job.job_id} to submit: ").strip()
 
     if confirmation != f"APPLY {job.job_id}":
         print("[STOP] Confirmation did not match")

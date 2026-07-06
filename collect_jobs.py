@@ -8,7 +8,6 @@ from dotenv import load_dotenv
 from src.client.naukri_client import NaukriLoginClient
 from src.client.job_client import NaukriJobClient
 
-
 load_dotenv(".env")
 
 
@@ -110,13 +109,11 @@ def save_jobs(jobs):
 
 
 def main():
-    username = os.getenv("USERNAME")
-    password = os.getenv("PASSWORD")
+    username = os.getenv("NAUKRI_USERNAME")
+    password = os.getenv("NAUKRI_PASSWORD")
 
     if not username or not password:
-        raise RuntimeError(
-            "USERNAME or PASSWORD missing from .env"
-        )
+        raise RuntimeError("USERNAME or PASSWORD missing from .env")
 
     print("[LOGIN] Authenticating")
 
@@ -135,11 +132,7 @@ def main():
 
     seen_job_ids = set()
 
-    total_requests = (
-        len(SEARCHES)
-        * len(EXPERIENCE_LEVELS)
-        * PAGES_PER_SEARCH
-    )
+    total_requests = len(SEARCHES) * len(EXPERIENCE_LEVELS) * PAGES_PER_SEARCH
 
     request_number = 0
 
@@ -157,9 +150,7 @@ def main():
 
                 request_number += 1
 
-                print(
-                    f"\n[SEARCH {request_number}/{total_requests}]"
-                )
+                print(f"\n[SEARCH {request_number}/{total_requests}]")
 
                 print(
                     f"keyword={keyword} | "
@@ -179,9 +170,7 @@ def main():
                     )
 
                 except Exception as exc:
-                    print(
-                        f"[ERROR] Search failed: {exc}"
-                    )
+                    print(f"[ERROR] Search failed: {exc}")
 
                     time.sleep(3)
 
@@ -220,9 +209,7 @@ def main():
 
     print(f"Unique jobs: {len(all_jobs)}")
 
-    print(
-        f"Saved to: {OUTPUT_FILE.resolve()}"
-    )
+    print(f"Saved to: {OUTPUT_FILE.resolve()}")
 
 
 if __name__ == "__main__":

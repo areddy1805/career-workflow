@@ -3,13 +3,12 @@ from dotenv import load_dotenv
 
 from src.client.naukri_client import NaukriLoginClient
 
-
 load_dotenv(".env")
 
 
 def main():
-    username = os.getenv("USERNAME")
-    password = os.getenv("PASSWORD")
+    username = os.getenv("NAUKRI_USERNAME")
+    password = os.getenv("NAUKRI_PASSWORD")
 
     if not username or not password:
         raise RuntimeError("USERNAME or PASSWORD missing")

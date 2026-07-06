@@ -7,8 +7,8 @@ from src.client.naukri_client import NaukriLoginClient
 def main():
     load_dotenv(".env")
 
-    username = os.getenv("USERNAME")
-    password = os.getenv("PASSWORD")
+    username = os.getenv("NAUKRI_USERNAME")
+    password = os.getenv("NAUKRI_PASSWORD")
 
     print("[1] Logging in...")
 

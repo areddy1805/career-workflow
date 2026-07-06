@@ -13,8 +13,8 @@ JOB_ID = "290626015208"
 def main():
     load_dotenv(".env")
 
-    username = os.getenv("USERNAME")
-    password = os.getenv("PASSWORD")
+    username = os.getenv("NAUKRI_USERNAME")
+    password = os.getenv("NAUKRI_PASSWORD")
 
     client = NaukriLoginClient(username, password)
     client.login()

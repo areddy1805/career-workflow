@@ -4,116 +4,256 @@ import re
 import requests
 
 
-
-
-
 class JobFilterPipeline2:
 
     # ── your stack — AI scores against this ──────────────────────────────────
     MY_STACK = [
         # ── Core backend ──────────────────────────────────────────────
-        "node", "node.js", "nodejs", "python", "javascript", "typescript",
-
+        "node",
+        "node.js",
+        "nodejs",
+        "python",
+        "javascript",
+        "typescript",
         # ── Frameworks ───────────────────────────────────────────────
-        "express", "express.js", "fastapi", "flask", "nestjs", "nest.js",
-        "django", "hapi", "koa",
-
+        "express",
+        "express.js",
+        "fastapi",
+        "flask",
+        "nestjs",
+        "nest.js",
+        "django",
+        "hapi",
+        "koa",
         # ── Databases ────────────────────────────────────────────────
-        "mongodb", "mongoose", "postgresql", "mysql", "redis", "sqlite",
-        "dynamodb", "firestore", "cassandra", "elasticsearch",
-        "sql", "nosql",
-
+        "mongodb",
+        "mongoose",
+        "postgresql",
+        "mysql",
+        "redis",
+        "sqlite",
+        "dynamodb",
+        "firestore",
+        "cassandra",
+        "elasticsearch",
+        "sql",
+        "nosql",
         # ── Cloud & DevOps ───────────────────────────────────────────
-        "aws", "gcp", "azure", "docker", "kubernetes", "ci/cd",
-        "github actions", "jenkins", "terraform", "linux", "nginx",
-        "ec2", "s3", "lambda", "cloudwatch",
-
+        "aws",
+        "gcp",
+        "azure",
+        "docker",
+        "kubernetes",
+        "ci/cd",
+        "github actions",
+        "jenkins",
+        "terraform",
+        "linux",
+        "nginx",
+        "ec2",
+        "s3",
+        "lambda",
+        "cloudwatch",
         # ── APIs & Messaging ─────────────────────────────────────────
-        "rest", "rest api", "restful", "graphql", "websocket", "grpc",
-        "kafka", "rabbitmq", "celery", "bull", "socket.io",
-
+        "rest",
+        "rest api",
+        "restful",
+        "graphql",
+        "websocket",
+        "grpc",
+        "kafka",
+        "rabbitmq",
+        "celery",
+        "bull",
+        "socket.io",
         # ── Automation & Scraping ────────────────────────────────────
-        "selenium", "playwright", "puppeteer", "beautifulsoup", "scrapy",
-        "web scraping", "automation", "n8n", "trigger.dev", "zapier",
-
+        "selenium",
+        "playwright",
+        "puppeteer",
+        "beautifulsoup",
+        "scrapy",
+        "web scraping",
+        "automation",
+        "n8n",
+        "trigger.dev",
+        "zapier",
         # ── AI / LLM ─────────────────────────────────────────────────
-        "langchain", "openai", "llm", "rag", "vector db", "pinecone",
-        "weaviate", "chromadb", "huggingface", "embeddings", "genai",
-        "langsmith", "llamaindex",
-
+        "langchain",
+        "openai",
+        "llm",
+        "rag",
+        "vector db",
+        "pinecone",
+        "weaviate",
+        "chromadb",
+        "huggingface",
+        "embeddings",
+        "genai",
+        "langsmith",
+        "llamaindex",
         # ── Tools & Practices ────────────────────────────────────────
-        "git", "github", "postman", "swagger", "jwt", "oauth",
-        "microservices", "system design", "api design",
+        "git",
+        "github",
+        "postman",
+        "swagger",
+        "jwt",
+        "oauth",
+        "microservices",
+        "system design",
+        "api design",
     ]
 
     # ── hard veto BEFORE ai — title only, zero ambiguity ────────────────────
     VETO_TITLES = [
-        "walk-in", "walkin", "walk in",
-        "android developer", "ios developer", "flutter developer",
-        "frontend developer", "front-end developer",
-        "principal engineer", "staff engineer", "architect",
-        "vp of", "head of engineering", "head of technology",
-        "founder", "tutor", "trainer",
-        "data scientist", "ml engineer", "data engineer", "intern", "internship",
-        "engineering manager", "etl engineer", "prompt engineer",
-        "analyst", "associate is engineer", "infra engineer",
-        "observability engineer","Manager"
+        "walk-in",
+        "walkin",
+        "walk in",
+        "android developer",
+        "ios developer",
+        "flutter developer",
+        "frontend developer",
+        "front-end developer",
+        "principal engineer",
+        "staff engineer",
+        "architect",
+        "vp of",
+        "head of engineering",
+        "head of technology",
+        "founder",
+        "tutor",
+        "trainer",
+        "data scientist",
+        "ml engineer",
+        "data engineer",
+        "intern",
+        "internship",
+        "engineering manager",
+        "etl engineer",
+        "prompt engineer",
+        "analyst",
+        "associate is engineer",
+        "infra engineer",
+        "observability engineer",
+        "Manager",
     ]
 
-
     VETO_COMPANIES = {
-    "accenture", "wipro", "infosys", "tcs", "cognizant",
-    "capgemini", "hcl", "tech mahindra", "mphasis", "hexaware",
-    "ltimindtree", "persistent", "birlasoft",
-}
+        "accenture",
+        "wipro",
+        "infosys",
+        "tcs",
+        "cognizant",
+        "capgemini",
+        "hcl",
+        "tech mahindra",
+        "mphasis",
+        "hexaware",
+        "ltimindtree",
+        "persistent",
+        "birlasoft",
+    }
 
     # ── red flag sniff on description (cheap, pre-ai) ───────────────────────
     # Only the things AI genuinely can't infer from tags alone
     DESC_RED_FLAGS = {
-        "walk-in":      r"walk.?in|walkin",
+        "walk-in": r"walk.?in|walkin",
         "venue listed": r"venue\s*:|interview venue|bring your resume|carry your resume",
     }
 
-
-
-
     SOFTWARE_KEYWORDS = {
-        "software", "developer", "engineer", "engineering",
-        "backend", "full stack", "fullstack",
-        "python", "node", "nodejs", "javascript", "typescript",
-        "django", "fastapi", "flask", "golang",
-        "devops", "cloud", "sre", "platform",
-        "api", "microservices", "infrastructure",
-        "tech lead", "sde", "swe", "mts", "programmer","react"
+        "software",
+        "developer",
+        "engineer",
+        "engineering",
+        "backend",
+        "full stack",
+        "fullstack",
+        "python",
+        "node",
+        "nodejs",
+        "javascript",
+        "typescript",
+        "django",
+        "fastapi",
+        "flask",
+        "golang",
+        "devops",
+        "cloud",
+        "sre",
+        "platform",
+        "api",
+        "microservices",
+        "infrastructure",
+        "tech lead",
+        "sde",
+        "swe",
+        "mts",
+        "programmer",
+        "react",
     }
 
     # if ANY of these appear in title → drop it
     FRONTEND_VETO_KEYWORDS = {
-        "frontend", "front-end", "front end",
-      "angular", "vue", "ui developer", "ui engineer",
-        "android", "ios", "flutter", "mobile", "kotlin", "swift",
-        "embedded", "firmware",
-        "ml engineer", "data engineer", "data scientist","intern", "internship", "lead","Golang","MLops","devops","mlops", "golang"," Web developer - Java Technologies"
-        ," Member of Technical Staff - MTS"
+        "frontend",
+        "front-end",
+        "front end",
+        "angular",
+        "vue",
+        "ui developer",
+        "ui engineer",
+        "android",
+        "ios",
+        "flutter",
+        "mobile",
+        "kotlin",
+        "swift",
+        "embedded",
+        "firmware",
+        "ml engineer",
+        "data engineer",
+        "data scientist",
+        "intern",
+        "internship",
+        "lead",
+        "Golang",
+        "MLops",
+        "devops",
+        "mlops",
+        "golang",
+        " Web developer - Java Technologies",
+        " Member of Technical Staff - MTS",
     }
 
     def __init__(
         self,
-        openai_api_key,
-        cache_file="score_cache.json",
-        daily_apply_limit=50,
-        min_apply_score=50,
-        ai_score_limit=300,
-        batch_size=50,
+        api_key: str | None = None,
+        base_url: str | None = None,
+        model: str | None = None,
+        cache_file: str = "score_cache.json",
+        daily_apply_limit: int = 50,
+        min_apply_score: int = 50,
+        ai_score_limit: int = 300,
+        batch_size: int = 5,
     ):
-        self.api_key           = openai_api_key
-        self.url               = "https://api.openai.com/v1/chat/completions"
-        self.cache_file        = cache_file
+        self.api_key = api_key or os.getenv("OMLX_API_KEY")
+
+        if not self.api_key:
+            raise ValueError("OMLX_API_KEY is not configured")
+
+        self.base_url = (
+            base_url or os.getenv("OMLX_BASE_URL") or "http://127.0.0.1:8000/v1"
+        ).rstrip("/")
+
+        self.model = model or os.getenv("OMLX_MODEL") or "qwen3.5-4b"
+
+        self.url = f"{self.base_url}/chat/completions"
+
+        self.cache_file = cache_file
         self.daily_apply_limit = daily_apply_limit
-        self.min_apply_score   = min_apply_score
-        self.ai_score_limit    = ai_score_limit
-        self.batch_size        = batch_size
-        self.cache             = self._load_cache()
+        self.min_apply_score = min_apply_score
+        self.ai_score_limit = ai_score_limit
+        self.batch_size = batch_size
+        self.cache = self._load_cache()
 
     # =========================================================
     # MAIN
@@ -136,16 +276,15 @@ class JobFilterPipeline2:
         jobs = self.desc_red_flag_check(jobs)
         print("AFTER RED FLAG CHECK:", len(jobs))
 
-        jobs=self.title_filter(jobs)
+        jobs = self.title_filter(jobs)
         print("AFTER TITLE FILTER:", len(jobs))
 
-        jobs = self.company_veto(jobs)        # ← add here
+        jobs = self.company_veto(jobs)  # ← add here
         print("AFTER COMPANY VETO:", len(jobs))
-
 
         jobs = self.tag_presort(jobs)
 
-        jobs = jobs[:self.ai_score_limit]
+        jobs = jobs[: self.ai_score_limit]
         print("AFTER LIMIT:", len(jobs))
 
         jobs = self.ai_score_batch(jobs)
@@ -157,8 +296,10 @@ class JobFilterPipeline2:
         print("FINAL SELECTED:", len(jobs))
 
         for j in jobs:
-            print(f"  {j.get('ai_score'):>3}  {j.get('title')} @ {j.get('company')}"
-                  f"  |  {j.get('ai_reason', '')}")
+            print(
+                f"  {j.get('ai_score'):>3}  {j.get('title')} @ {j.get('company')}"
+                f"  |  {j.get('ai_reason', '')}"
+            )
 
         return jobs
 
@@ -172,7 +313,7 @@ class JobFilterPipeline2:
             job = j if isinstance(j, dict) else j.__dict__
 
             # days old
-            posted   = (job.get("posted_date") or "").lower()
+            posted = (job.get("posted_date") or "").lower()
             days_old = 7
             if "today" in posted or "hour" in posted or "just now" in posted:
                 days_old = 0
@@ -202,19 +343,21 @@ class JobFilterPipeline2:
                 raw_tags = re.split(r"[,;|]", raw_tags)
             tags = [t.strip().lower() for t in raw_tags if t.strip()]
 
-            normalized.append({
-                "job_id":         job.get("job_id"),
-                "title":          (job.get("title")       or "").strip(),
-                "company":        (job.get("company")     or "").strip(),
-                "location":       (job.get("location")    or "").strip(),
-                "description":    (job.get("description") or "").strip(),
-                "tags":           tags,
-                "mandatory_tags": tags[:2],   # site signals these as primary
-                "optional_tags":  tags[2:],
-                "days_old":       days_old,
-                "experience_min": exp_min,
-                "experience_max": exp_max,
-            })
+            normalized.append(
+                {
+                    "job_id": job.get("job_id"),
+                    "title": (job.get("title") or "").strip(),
+                    "company": (job.get("company") or "").strip(),
+                    "location": (job.get("location") or "").strip(),
+                    "description": (job.get("description") or "").strip(),
+                    "tags": tags,
+                    "mandatory_tags": tags[:2],  # site signals these as primary
+                    "optional_tags": tags[2:],
+                    "days_old": days_old,
+                    "experience_min": exp_min,
+                    "experience_max": exp_max,
+                }
+            )
 
         return normalized
 
@@ -252,9 +395,9 @@ class JobFilterPipeline2:
     # =========================================================
     def experience_filter(self, jobs):
         return [
-            j for j in jobs
-            if j.get("experience_min", 0) <= 4
-            and j.get("experience_max", 10) > 0
+            j
+            for j in jobs
+            if j.get("experience_min", 0) <= 4 and j.get("experience_max", 10) > 0
         ]
 
     # =========================================================
@@ -265,7 +408,8 @@ class JobFilterPipeline2:
         for j in jobs:
             desc = (j.get("description") or "").lower()
             flagged = [
-                label for label, pat in self.DESC_RED_FLAGS.items()
+                label
+                for label, pat in self.DESC_RED_FLAGS.items()
                 if re.search(pat, desc)
             ]
             if flagged:
@@ -297,7 +441,6 @@ class JobFilterPipeline2:
             result.append(j)
         return result
 
-
     def company_veto(self, jobs):
         clean = []
         for j in jobs:
@@ -312,9 +455,9 @@ class JobFilterPipeline2:
         my_stack = set(self.MY_STACK)
 
         def overlap(j):
-            tags     = set(j.get("tags", []))
+            tags = set(j.get("tags", []))
             mandatory_hit = sum(1 for t in j.get("mandatory_tags", []) if t in my_stack)
-            total_hit     = len(tags & my_stack)
+            total_hit = len(tags & my_stack)
             recency_bonus = max(0, 7 - j.get("days_old", 7))
             # mandatory tags weighted 3x — they represent the job's core ask
             return mandatory_hit * 3 + total_hit + recency_bonus
@@ -326,33 +469,98 @@ class JobFilterPipeline2:
     # =========================================================
     def ai_score_batch(self, jobs):
         result = []
-        for i in range(0, len(jobs), self.batch_size):
-            batch  = jobs[i:i + self.batch_size]
-            scores = self._call_ai(batch)
-            for idx, job in enumerate(batch):
-                jid  = str(job.get("job_id") or "")
-                data = self.cache.get(jid) if jid else None
 
-                if not data:
-                    data = scores.get(str(idx), {"score": 0, "reason": "no response"})
-                    if not isinstance(data.get("score"), int):
-                        data = {"score": 0, "reason": "parse error"}
-                    if jid:
-                        self.cache[jid] = data
+        for i in range(
+            0,
+            len(jobs),
+            self.batch_size,
+        ):
+            batch = jobs[i : i + self.batch_size]
 
-                job["ai_score"]  = data.get("score", 0)
-                job["ai_reason"] = data.get("reason", "")
+            uncached_jobs = []
+            uncached_positions = []
+
+            for position, job in enumerate(batch):
+                jid = str(job.get("job_id") or "")
+
+                if jid and jid in self.cache:
+                    cached = self.cache[jid]
+
+                    job["ai_score"] = cached.get("score", 0)
+                    job["ai_reason"] = cached.get(
+                        "reason",
+                        "cached",
+                    )
+
+                    result.append(job)
+
+                else:
+                    uncached_jobs.append(job)
+                    uncached_positions.append(position)
+
+            if not uncached_jobs:
+                continue
+
+            scores = self._call_ai(uncached_jobs)
+
+            if not scores:
+                print(f"AI batch failed — " f"{len(uncached_jobs)} jobs left uncached")
+
+                for job in uncached_jobs:
+                    job["ai_score"] = 0
+                    job["ai_reason"] = "AI scoring unavailable"
+
+                    result.append(job)
+
+                continue
+
+            for idx, job in enumerate(uncached_jobs):
+                jid = str(job.get("job_id") or "")
+
+                data = scores.get(str(idx))
+
+                if not isinstance(data, dict) or not isinstance(data.get("score"), int):
+                    print(
+                        f"AI score missing or invalid for "
+                        f"job_id={jid or '<unknown>'}"
+                    )
+
+                    job["ai_score"] = 0
+                    job["ai_reason"] = "AI score missing"
+
+                    result.append(job)
+
+                    continue
+
+                normalized_data = {
+                    "score": max(
+                        0,
+                        min(
+                            100,
+                            data["score"],
+                        ),
+                    ),
+                    "reason": str(data.get("reason") or ""),
+                }
+
+                job["ai_score"] = normalized_data["score"]
+                job["ai_reason"] = normalized_data["reason"]
+
+                if jid:
+                    self.cache[jid] = normalized_data
+
                 result.append(job)
 
-        self._save_cache()
+            self._save_cache()
+
         return result
 
     def _call_ai(self, jobs):
         job_block = ""
         for i, j in enumerate(jobs):
             mandatory = ", ".join(j.get("mandatory_tags", [])) or "none"
-            optional  = ", ".join(j.get("optional_tags",  [])) or "none"
-            exp       = f"{j.get('experience_min', 0)}-{j.get('experience_max', 10)} yrs"
+            optional = ", ".join(j.get("optional_tags", [])) or "none"
+            exp = f"{j.get('experience_min', 0)}-{j.get('experience_max', 10)} yrs"
 
             job_block += (
                 f"Job {i}:\n"
@@ -364,9 +572,6 @@ class JobFilterPipeline2:
                 f"  Days old:  {j.get('days_old', 7)}\n"
                 f"---\n"
             )
-        
-
-
 
         prompt2 = f"""
 You are a strict job filter for a backend developer. Score each job 0-100.
@@ -400,7 +605,7 @@ SCORING RUBRIC — use the full range, not just 85/60:
   or exp mismatch 4-5 yrs.
 
 10-29 — poor match
-  Very little stack overlap, or role is clearly not backend and have java,  
+  Very little stack overlap, or role is clearly not backend and have java,
 
 0-9 — do not apply
    That contain Java  and dotnet  Zero stack overlap (Java+Spring only, PHP only, .NET only etc.)
@@ -481,28 +686,74 @@ Jobs:
                 self.url,
                 headers={
                     "Authorization": f"Bearer {self.api_key}",
-                    "Content-Type":  "application/json",
+                    "Content-Type": "application/json",
                 },
                 json={
-                    "model":       "gpt-4o-mini",
-                    "messages":    [{"role": "user", "content": prompt2}],
-                    "temperature": 0.2,
+                    "model": self.model,
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": prompt2,
+                        }
+                    ],
+                    "temperature": 0.1,
+                    "max_tokens": 800,
+                    "response_format": {
+                        "type": "json_object",
+                    },
+                    "chat_template_kwargs": {
+                        "enable_thinking": False,
+                    },
                 },
-                timeout=90,
+                timeout=300,
             )
 
             if res.status_code != 200:
                 print("AI HTTP ERROR:", res.status_code, res.text[:200])
                 return {}
 
-            content = res.json()["choices"][0]["message"]["content"]
-            content = re.sub(r"```json|```", "", content).strip()
-            match   = re.search(r"\{.*\}", content, re.S)
+            response_json = res.json()
+
+            message = response_json["choices"][0]["message"]
+
+            content = message.get("content") or ""
+
+            content = re.sub(
+                r"```json|```",
+                "",
+                content,
+            ).strip()
+
+            match = re.search(
+                r"\{.*\}",
+                content,
+                re.S,
+            )
+
             if not match:
-                print("AI PARSE ERROR — raw:", content[:300])
+                print(
+                    "AI PARSE ERROR — no JSON object found\n"
+                    f"finish_reason={response_json['choices'][0].get('finish_reason')}\n"
+                    f"content={content[:1000]}"
+                )
+
                 return {}
 
-            data = json.loads(match.group(0))
+            json_text = match.group(0)
+
+            try:
+                data = json.loads(json_text)
+
+            except json.JSONDecodeError as exc:
+                print(
+                    "AI JSON ERROR\n"
+                    f"error={exc}\n"
+                    f"finish_reason={response_json['choices'][0].get('finish_reason')}\n"
+                    f"content={content[:1500]}"
+                )
+
+                return {}
+
             return data if isinstance(data, dict) else {}
 
         except Exception as e:
@@ -523,16 +774,20 @@ Jobs:
     # SELECT
     # =========================================================
     def select(self, jobs):
-        apply_list  = [j for j in jobs if j.get("ai_score", 0) >= self.min_apply_score]
-        review_list = [j for j in jobs if 10 <= j.get("ai_score", 0) < self.min_apply_score]
+        apply_list = [j for j in jobs if j.get("ai_score", 0) >= self.min_apply_score]
+        review_list = [
+            j for j in jobs if 10 <= j.get("ai_score", 0) < self.min_apply_score
+        ]
 
         if review_list:
             print(f"\n── REVIEW MANUALLY ({len(review_list)}) ──")
             for j in review_list:
-                print(f"  score={j.get('ai_score')}  {j.get('title')} @ {j.get('company')}"
-                      f"  |  {j.get('ai_reason', '')}")
+                print(
+                    f"  score={j.get('ai_score')}  {j.get('title')} @ {j.get('company')}"
+                    f"  |  {j.get('ai_reason', '')}"
+                )
 
-        return apply_list[:self.daily_apply_limit]
+        return apply_list[: self.daily_apply_limit]
 
     # =========================================================
     # CACHE

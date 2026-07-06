@@ -1,11 +1,11 @@
-
 from src.client.naukri_client import NaukriLoginClient
 from src.client.job_client import NaukriJobClient
 from dotenv import load_dotenv
 from colorama import Fore, Style, init
 import os
+
 load_dotenv()
-import time 
+import time
 
 init(autoreset=True)
 
@@ -14,8 +14,8 @@ if __name__ == "__main__":
     # Load credentials from .env file
     # (NAUKRI_USERNAME and NAUKRI_PASSWORD must be set)
     # ---------------------------------------------------------------
-    username = os.getenv("USERNAME")
-    password = os.getenv("PASSWORD")
+    username = os.getenv("NAUKRI_USERNAME")
+    password = os.getenv("NAUKRI_PASSWORD")
 
     # ---------------------------------------------------------------
     # 1. Login — authenticates and stores session + bearer token
@@ -23,7 +23,7 @@ if __name__ == "__main__":
     client = NaukriLoginClient(username, password)
     client.login()
     # # ---------------------------------------------------------------
-    # # 2. Resume upload — uploads a new PDF resume to your profile,provide the file path 
+    # # 2. Resume upload — uploads a new PDF resume to your profile,provide the file path
     # # ---------------------------------------------------------------
     # print(client.update_resume(r"C:/Users/HP/Downloads/my_resume2.pdf"))
 
@@ -50,13 +50,11 @@ if __name__ == "__main__":
     # jobs = jc.get_recommended_jobs()
 
     # print("Fetching recommended jobs...")
-       
 
-
-
-    
-    print("Searching jobs...")    
-    jobs = jc.search_jobs(keyword="Node.js developer", location="Hyderabad", experience=2)
+    print("Searching jobs...")
+    jobs = jc.search_jobs(
+        keyword="Node.js developer", location="Hyderabad", experience=2
+    )
 
     if not jobs:
         print(f"{Fore.YELLOW}  No jobs found.{Style.RESET_ALL}")
@@ -71,39 +69,41 @@ if __name__ == "__main__":
             print(f"{Fore.WHITE}  Tags    : {Fore.YELLOW}{job.tags}")
 
             mandatory = job.tags[:2] if job.tags else []
-            optional  = job.tags[2:] if len(job.tags) > 2 else []
+            optional = job.tags[2:] if len(job.tags) > 2 else []
 
             try:
-                result = jc.apply_job(job, mandatory_skills=mandatory, optional_skills=optional, source="recommended")
+                result = jc.apply_job(
+                    job,
+                    mandatory_skills=mandatory,
+                    optional_skills=optional,
+                    source="recommended",
+                )
 
                 # Check questionnaire
                 job_result = (result.get("jobs") or [{}])[0]
                 if job_result.get("questionnaire"):
-                    print(f"{Fore.YELLOW}   Skipped — questionnaire required{Style.RESET_ALL}")
+                    print(
+                        f"{Fore.YELLOW}   Skipped — questionnaire required{Style.RESET_ALL}"
+                    )
                     continue
 
                 print(f"{Fore.GREEN}  ✅ Applied successfully!{Style.RESET_ALL}")
 
             except Exception as e:
                 print(f"{Fore.RED}   Failed: {e}{Style.RESET_ALL}")
-            
+
             time.sleep(3)
 
-
-
-
-
-
-    # --------------------------------------------------------------- 
+    # ---------------------------------------------------------------
     # 6. scrap the jobs,example
-    #     
+    #
     # ---------------------------------------------------------------
     # i = 1
     # while True:
     #     job_list = jc.search_jobs("Node.js", location="Hyderabad", experience=1, page=i)
     #     for count, job in enumerate(job_list):
     #         print(count + 1, ":-", job.title, " :- ", job.company)
-        
+
     #     breaker = input("enter anything for next page, q to quit: ")
     #     if breaker.strip().lower() == "q":
     #         break

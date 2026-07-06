@@ -351,7 +351,10 @@ def print_pipeline_results(
         final_jobs,
         1,
     ):
-        score = job.get("score")
+        score = job.get(
+            "ai_score",
+            job.get("score", "?"),
+        )
 
         score_color = (
             Fore.GREEN
@@ -1110,15 +1113,43 @@ def build_runtime_application_policy() -> ApplicationPolicy:
     )
 
 
+def print_runtime_policy(
+    policy: ApplicationPolicy,
+) -> None:
+    mode = "DRY RUN" if policy.dry_run else "LIVE"
+
+    mode_color = Fore.YELLOW if policy.dry_run else Fore.RED
+
+    print_section_title("application runtime policy")
+
+    print(
+        f"  {Fore.WHITE}"
+        f"Mode                     : "
+        f"{Style.RESET_ALL}"
+        f"{mode_color}"
+        f"{Style.BRIGHT}"
+        f"{mode}"
+        f"{Style.RESET_ALL}"
+    )
+
+    print(
+        f"  {Fore.WHITE}"
+        f"Max applications per run : "
+        f"{Style.RESET_ALL}"
+        f"{Fore.CYAN}"
+        f"{policy.max_applications_per_run}"
+        f"{Style.RESET_ALL}"
+    )
+
+
 # ----------------------------------------------------------------------------------
 # Main — orchestrates the full agent run
 # ----------------------------------------------------------------------------------
 
 if __name__ == "__main__":
 
-    username = os.getenv("USERNAME")
-    password = os.getenv("PASSWORD")
-    ai_key = os.getenv("OPEN_API_KEY")
+    username = os.getenv("NAUKRI_USERNAME")
+    password = os.getenv("NAUKRI_PASSWORD")
 
     # --------------------------------------------------------------------------
     # Step 1: Authenticate and establish session
@@ -1176,11 +1207,21 @@ if __name__ == "__main__":
 
     print_section_title("running AI filter pipeline")
 
-    pipeline = JobFilterPipeline2(
-        openai_api_key=ai_key,
-    )
+    pipeline = JobFilterPipeline2()
 
     final_jobs = pipeline.run(jobs)
+
+    for result in final_jobs:
+
+        result["score"] = result.get(
+            "ai_score",
+            result.get("score", 0),
+        )
+
+        result["ai_detail"] = result.get(
+            "ai_reason",
+            result.get("ai_detail", ""),
+        )
 
     # Lookup containing score, AI detail, priority, subtrack, and other
     # classification metadata produced by the filtering pipeline.
@@ -1200,7 +1241,13 @@ if __name__ == "__main__":
     # Step 6: Select filtered application candidates
     # --------------------------------------------------------------------------
 
-    allowed_jobs = [job for job in jobs if job.job_id in allowed_job_ids]
+    jobs_by_id = {job.job_id: job for job in jobs}
+
+    allowed_jobs = [
+        jobs_by_id[result["job_id"]]
+        for result in final_jobs
+        if result["job_id"] in jobs_by_id
+    ]
 
     print_section_title(f"applying to {len(allowed_jobs)} filtered jobs")
 
@@ -1209,16 +1256,10 @@ if __name__ == "__main__":
     # --------------------------------------------------------------------------
     application_policy = build_runtime_application_policy()
 
+    print_runtime_policy(application_policy)
+
     logger.info(
         "Application runtime policy: dry_run=%s max_applications_per_run=%s",
-        application_policy.dry_run,
-        application_policy.max_applications_per_run,
-    )
-
-    application_policy = build_runtime_application_policy()
-
-    logger.info(
-        "Application runtime policy: " "dry_run=%s max_applications_per_run=%s",
         application_policy.dry_run,
         application_policy.max_applications_per_run,
     )
