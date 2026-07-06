@@ -420,9 +420,15 @@ def print_summary(
     already_applied: int,
     skipped_local: int,
     skipped_ext: int,
+    policy_rejected: int,
+    dry_run_skipped: int,
+    run_limit_reached: int,
     failed: int,
 ) -> None:
-    # Prints the final run summary table. Called once at the end of the script.
+    """
+    Print the final deterministic application run summary.
+    """
+
     print_section_title("run summary")
 
     rows = [
@@ -457,11 +463,27 @@ def print_summary(
             Fore.YELLOW,
         ),
         (
+            "Rejected by policy",
+            str(policy_rejected),
+            Fore.YELLOW,
+        ),
+        (
+            "Suppressed by dry run",
+            str(dry_run_skipped),
+            Fore.CYAN,
+        ),
+        (
+            "Skipped (run limit)",
+            str(run_limit_reached),
+            Fore.YELLOW,
+        ),
+        (
             "Failed",
             str(failed),
             Fore.RED,
         ),
     ]
+
     for label, value, color in rows:
         print(
             f"  {Fore.WHITE}"
@@ -1051,6 +1073,43 @@ def run_application_batch(
     )
 
 
+def build_runtime_application_policy() -> ApplicationPolicy:
+    """
+    Build application policy from environment configuration.
+
+    Runtime defaults are intentionally safe:
+        - dry run enabled
+        - maximum one application attempt per run
+    """
+
+    dry_run_value = (
+        os.getenv(
+            "APPLICATION_DRY_RUN",
+            "true",
+        )
+        .strip()
+        .lower()
+    )
+
+    dry_run = dry_run_value not in {
+        "false",
+        "0",
+        "no",
+    }
+
+    max_applications_per_run = int(
+        os.getenv(
+            "MAX_APPLICATIONS_PER_RUN",
+            "1",
+        )
+    )
+
+    return ApplicationPolicy(
+        dry_run=dry_run,
+        max_applications_per_run=max_applications_per_run,
+    )
+
+
 # ----------------------------------------------------------------------------------
 # Main — orchestrates the full agent run
 # ----------------------------------------------------------------------------------
@@ -1148,6 +1207,21 @@ if __name__ == "__main__":
     # --------------------------------------------------------------------------
     # Step 7: Execute tested batch orchestration
     # --------------------------------------------------------------------------
+    application_policy = build_runtime_application_policy()
+
+    logger.info(
+        "Application runtime policy: dry_run=%s max_applications_per_run=%s",
+        application_policy.dry_run,
+        application_policy.max_applications_per_run,
+    )
+
+    application_policy = build_runtime_application_policy()
+
+    logger.info(
+        "Application runtime policy: " "dry_run=%s max_applications_per_run=%s",
+        application_policy.dry_run,
+        application_policy.max_applications_per_run,
+    )
 
     run_summary = run_application_batch(
         jc=jc,
@@ -1155,6 +1229,7 @@ if __name__ == "__main__":
         score_map=score_map,
         questionnaire_resolver=questionnaire_resolver,
         applied_jobs_set=applied_jobs_set,
+        policy=application_policy,
     )
 
     # --------------------------------------------------------------------------
@@ -1168,5 +1243,8 @@ if __name__ == "__main__":
         already_applied=run_summary.already_applied,
         skipped_local=run_summary.skipped_local,
         skipped_ext=run_summary.skipped_external,
+        policy_rejected=run_summary.policy_rejected,
+        dry_run_skipped=run_summary.dry_run_skipped,
+        run_limit_reached=run_summary.run_limit_reached,
         failed=run_summary.failed,
     )
