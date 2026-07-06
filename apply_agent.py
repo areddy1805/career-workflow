@@ -55,6 +55,10 @@ from src.application.policy import (
     ApplicationPolicy,
     evaluate_application_policy,
 )
+from src.application.failure import (
+    FailureKind,
+    classify_application_exception,
+)
 from src.resolution.hybrid_resolver import HybridQuestionResolver
 from src.utils.questionnaire_telemetry import log_unresolved_questions
 
@@ -707,6 +711,52 @@ class ApplicationRunSummary:
     failed: int
 
 
+def execute_with_safe_retry(
+    operation,
+    *,
+    max_retries: int = 2,
+    sleep_fn=time.sleep,
+):
+    """
+    Execute an application operation with bounded retry.
+
+    Only failures classified as RETRYABLE_SAFE are retried.
+    Ambiguous and permanent failures are raised immediately.
+
+    max_retries counts retries after the initial attempt.
+    Therefore max_retries=2 allows at most 3 total attempts.
+    """
+
+    retries_used = 0
+
+    while True:
+        try:
+            return operation()
+
+        except Exception as exc:
+            failure = classify_application_exception(exc)
+
+            if failure.kind != FailureKind.RETRYABLE_SAFE:
+                raise
+
+            if retries_used >= max_retries:
+                raise
+
+            retries_used += 1
+
+            delay_seconds = retries_used
+
+            logger.warning(
+                "Retryable application failure. " "retry=%s/%s delay=%ss reason=%s",
+                retries_used,
+                max_retries,
+                delay_seconds,
+                failure.reason,
+            )
+
+            sleep_fn(delay_seconds)
+
+
 def process_job_application(
     jc: JobApplicationClient,
     job: Any,
@@ -736,11 +786,13 @@ def process_job_application(
     mandatory = job.tags[:2] if job.tags else []
     optional = job.tags[2:] if len(job.tags) > 2 else []
 
-    initial_response = jc.apply_job(
-        job,
-        mandatory_skills=mandatory,
-        optional_skills=optional,
-        source="search",
+    initial_response = execute_with_safe_retry(
+        lambda: jc.apply_job(
+            job,
+            mandatory_skills=mandatory,
+            optional_skills=optional,
+            source="search",
+        ),
     )
 
     initial_outcome = interpret_application_response(
