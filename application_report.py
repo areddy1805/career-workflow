@@ -16,6 +16,9 @@ LEDGER_PATH = os.getenv(
     "APPLICATION_LEDGER_PATH",
     "data/application_ledger.db",
 )
+from src.application.adaptive_strategy import (
+    build_adaptive_strategy,
+)
 
 
 def section(
@@ -68,6 +71,38 @@ def print_overview(
     )
 
     print(f"  Offer rate               " f"{safe_rate(funnel['OFFER'], total):>5.1f}%")
+
+
+def print_adaptive_strategy(
+    rows: list[dict],
+) -> None:
+    section("ADAPTIVE STRATEGY STATE")
+
+    strategy = build_adaptive_strategy(
+        rows,
+    )
+
+    print(f"  Active                   " f"{str(strategy.active):>10}")
+
+    print(f"  Reason                   " f"{strategy.reason}")
+
+    print(f"  Applications             " f"{strategy.total_applications:>10}")
+
+    print(f"  Responses                " f"{strategy.total_responses:>10}")
+
+    print(f"  Minimum score            " f"{strategy.minimum_score:>10}")
+
+    print(f"  Run limit                " f"{strategy.max_applications_per_run:>10}")
+
+    print(
+        f"  Preferred priorities     "
+        f"{', '.join(strategy.preferred_priorities) or 'NONE'}"
+    )
+
+    print(
+        f"  Preferred subtracks      "
+        f"{', '.join(strategy.preferred_subtracks) or 'NONE'}"
+    )
 
 
 def print_breakdown(
@@ -146,6 +181,8 @@ def print_velocity(
 
     print(f"  Last 30 days             " f"{velocity['last_30_days']:>6}")
 
+    print(f"  Unknown timestamp        " f"{velocity['unknown_timestamp']:>6}")
+
 
 def print_response_time(
     rows: list[dict],
@@ -185,6 +222,10 @@ def main() -> None:
     )
 
     print_response_time(
+        rows,
+    )
+
+    print_adaptive_strategy(
         rows,
     )
 

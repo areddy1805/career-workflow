@@ -66,6 +66,11 @@ from src.application.failure import (
 from src.application.response_store import save_response
 from src.application.ledger import ApplicationLedger
 from src.application.diversity import DiversityPolicy, diversify_jobs
+from src.application.adaptive_strategy import (
+    AdaptiveStrategyConfig,
+    build_adaptive_strategy,
+    rank_candidates_adaptively,
+)
 from src.resolution.hybrid_resolver import HybridQuestionResolver
 from src.search.job_search_cache import JobSearchCache
 from src.search.challenge_cooldown import SearchChallengeCooldown
@@ -2017,7 +2022,103 @@ if __name__ == "__main__":
 
     applied_jobs_set = load_applied_jobs() | ledger.applied_job_ids()
 
-    applied_jobs_set = load_applied_jobs() | ledger.applied_job_ids()
+    adaptive_strategy = build_adaptive_strategy(
+        ledger.analytics_rows(),
+        config=AdaptiveStrategyConfig(
+            enabled=(
+                os.getenv(
+                    "ADAPTIVE_STRATEGY_ENABLED",
+                    "true",
+                ).strip().lower()
+                in {
+                    "1",
+                    "true",
+                    "yes",
+                    "on",
+                }
+            ),
+            minimum_applications=int(
+                os.getenv(
+                    "ADAPTIVE_MIN_APPLICATIONS",
+                    "30",
+                )
+            ),
+            minimum_responses=int(
+                os.getenv(
+                    "ADAPTIVE_MIN_RESPONSES",
+                    "5",
+                )
+            ),
+            base_minimum_score=int(
+                os.getenv(
+                    "MIN_APPLICATION_SCORE",
+                    "68",
+                )
+            ),
+            base_max_applications_per_run=int(
+                os.getenv(
+                    "MAX_APPLICATIONS_PER_RUN",
+                    "5",
+                )
+            ),
+            minimum_group_samples=int(
+                os.getenv(
+                    "ADAPTIVE_MIN_GROUP_SAMPLES",
+                    "5",
+                )
+            ),
+            exploration_fraction=float(
+                os.getenv(
+                    "ADAPTIVE_EXPLORATION_FRACTION",
+                    "0.20",
+                )
+            ),
+        ),
+    )
+
+    print_section_title(
+        "adaptive application strategy"
+    )
+
+    print(
+        f"  Active                  "
+        f"{adaptive_strategy.active}"
+    )
+
+    print(
+        f"  Reason                  "
+        f"{adaptive_strategy.reason}"
+    )
+
+    print(
+        f"  Historical applications "
+        f"{adaptive_strategy.total_applications}"
+    )
+
+    print(
+        f"  Historical responses    "
+        f"{adaptive_strategy.total_responses}"
+    )
+
+    print(
+        f"  Minimum score           "
+        f"{adaptive_strategy.minimum_score}"
+    )
+
+    print(
+        f"  Suggested run limit     "
+        f"{adaptive_strategy.max_applications_per_run}"
+    )
+
+    print(
+        f"  Preferred priorities    "
+        f"{', '.join(adaptive_strategy.preferred_priorities) or 'NONE'}"
+    )
+
+    print(
+        f"  Preferred subtracks     "
+        f"{', '.join(adaptive_strategy.preferred_subtracks) or 'NONE'}"
+    )
 
     # --------------------------------------------------------------------------
     # Step 6: Select and diversify filtered application candidates
@@ -2030,6 +2131,12 @@ if __name__ == "__main__":
         for result in final_jobs
         if result["job_id"] in jobs_by_id
     ]
+
+    ranked_allowed_jobs = rank_candidates_adaptively(
+        ranked_allowed_jobs,
+        score_map=score_map,
+        strategy=adaptive_strategy,
+    )
 
     allowed_jobs = diversify_jobs(
         ranked_allowed_jobs,

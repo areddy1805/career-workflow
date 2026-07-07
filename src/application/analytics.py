@@ -4,13 +4,6 @@ from collections import defaultdict
 from datetime import UTC, datetime
 from typing import Any, Iterable
 
-ACTIVE_APPLICATION_STATUSES = {
-    "applied",
-    "already_applied",
-    "server_history",
-}
-
-
 FUNNEL_STAGES = (
     "SUBMITTED",
     "VIEWED",
@@ -65,14 +58,21 @@ def parse_datetime(
         return None
 
     try:
-        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(
+            text.replace(
+                "Z",
+                "+00:00",
+            )
+        )
 
         if parsed.tzinfo is None:
             parsed = parsed.replace(
                 tzinfo=UTC,
             )
 
-        return parsed.astimezone(UTC)
+        return parsed.astimezone(
+            UTC,
+        )
 
     except ValueError:
         pass
@@ -126,12 +126,34 @@ def score_band(
     return "<75"
 
 
+def application_timestamp(
+    row: dict[str, Any],
+) -> datetime | None:
+    """
+    Return a trustworthy application timestamp.
+
+    Important:
+    first_seen_at is deliberately excluded.
+
+    first_seen_at represents ledger ingestion time and must never be used
+    as application submission time for imported server history.
+    """
+
+    return (
+        parse_datetime(row.get("applied_at"))
+        or parse_datetime(row.get("submitted_at"))
+        or parse_datetime(row.get("server_status_at"))
+    )
+
+
 def age_bucket(
     applied_at: str | None,
     *,
     now: datetime | None = None,
 ) -> str:
-    reference = now or datetime.now(UTC)
+    reference = now or datetime.now(
+        UTC,
+    )
 
     parsed = parse_datetime(
         applied_at,
@@ -160,17 +182,6 @@ def age_bucket(
     return "30+"
 
 
-def application_timestamp(
-    row: dict[str, Any],
-) -> datetime | None:
-    return (
-        parse_datetime(row.get("applied_at"))
-        or parse_datetime(row.get("submitted_at"))
-        or parse_datetime(row.get("server_status_at"))
-        or parse_datetime(row.get("first_seen_at"))
-    )
-
-
 def response_timestamp(
     row: dict[str, Any],
 ) -> datetime | None:
@@ -191,7 +202,9 @@ def response_timestamp(
     if not parsed:
         return None
 
-    return min(parsed)
+    return min(
+        parsed,
+    )
 
 
 def has_response(
@@ -255,7 +268,9 @@ def breakdown(
     groups: dict[
         str,
         list[dict[str, Any]],
-    ] = defaultdict(list)
+    ] = defaultdict(
+        list,
+    )
 
     for row in rows:
         if dimension == "score_band":
@@ -278,7 +293,9 @@ def breakdown(
             group,
         )
 
-        total = len(group)
+        total = len(
+            group,
+        )
 
         responded = sum(1 for row in group if has_response(row))
 
@@ -332,8 +349,12 @@ def age_distribution(
     }
 
     for row in rows:
+        timestamp = application_timestamp(
+            row,
+        )
+
         bucket = age_bucket(
-            row.get("applied_at"),
+            (timestamp.isoformat() if timestamp is not None else None),
             now=now,
         )
 
@@ -347,12 +368,15 @@ def application_velocity(
     *,
     now: datetime | None = None,
 ) -> dict[str, int]:
-    reference = now or datetime.now(UTC)
+    reference = now or datetime.now(
+        UTC,
+    )
 
     result = {
         "today": 0,
         "last_7_days": 0,
         "last_30_days": 0,
+        "unknown_timestamp": 0,
     }
 
     for row in rows:
@@ -361,6 +385,8 @@ def application_velocity(
         )
 
         if timestamp is None:
+            result["unknown_timestamp"] += 1
+
             continue
 
         age_days = (reference.date() - timestamp.date()).days

@@ -241,3 +241,30 @@ def test_application_velocity():
     assert result["today"] == 1
     assert result["last_7_days"] == 2
     assert result["last_30_days"] == 3
+
+
+def test_velocity_does_not_use_first_seen_as_application_time():
+    now = datetime(
+        2026,
+        7,
+        7,
+        tzinfo=UTC,
+    )
+
+    rows = [
+        {
+            "applied_at": None,
+            "submitted_at": None,
+            "server_status_at": None,
+            "first_seen_at": now.isoformat(),
+        }
+    ]
+
+    result = application_velocity(
+        rows,
+        now=now,
+    )
+
+    assert result["today"] == 0
+
+    assert result["unknown_timestamp"] == 1

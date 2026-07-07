@@ -515,3 +515,55 @@ def test_lifecycle_event_written_once(
         ).fetchone()[0]
 
     assert count == 1
+
+
+def test_server_history_uses_submission_timestamp_for_applied_at(
+    tmp_path,
+):
+    ledger = ApplicationLedger(str(tmp_path / "ledger.db"))
+
+    class Status:
+        def __init__(
+            self,
+            value,
+            timestamp,
+        ):
+            self.status_value = value
+            self.date_time = timestamp
+
+    class History:
+        job_id = "job-1"
+        job_title = "AI Engineer"
+        company = "Example"
+        location = "Pune"
+
+        statuses = [
+            Status(
+                "Application Sent",
+                "2026-06-01 10:00:00",
+            ),
+            Status(
+                "Not Selected",
+                "2026-06-10 15:00:00",
+            ),
+        ]
+
+    ledger.reconcile_server_history(
+        [
+            History(),
+        ]
+    )
+
+    rows = ledger.analytics_rows()
+
+    assert len(rows) == 1
+
+    row = rows[0]
+
+    assert row["applied_at"] == "2026-06-01 10:00:00"
+
+    assert row["submitted_at"] == "2026-06-01 10:00:00"
+
+    assert row["rejected_at"] == "2026-06-10 15:00:00"
+
+    assert row["lifecycle_stage"] == "REJECTED"

@@ -550,6 +550,61 @@ class ApplicationLedger:
 
         return True
 
+    def _extract_lifecycle_timestamps(
+        self,
+        statuses: Iterable[Any],
+    ) -> dict[str, str]:
+        """
+        Extract the earliest timestamp observed for every normalized lifecycle
+        stage represented in server history.
+        """
+
+        timestamps: dict[str, str] = {}
+
+        for status_item in statuses:
+            raw_status = str(
+                getattr(
+                    status_item,
+                    "status_value",
+                    "",
+                )
+                or ""
+            )
+
+            raw_timestamp = str(
+                getattr(
+                    status_item,
+                    "date_time",
+                    "",
+                )
+                or ""
+            )
+
+            stage = normalize_server_status(
+                raw_status,
+            )
+
+            if stage == LifecycleStage.UNKNOWN or not raw_timestamp:
+                continue
+
+            existing = timestamps.get(stage.value)
+
+            if existing is None:
+                timestamps[stage.value] = raw_timestamp
+
+                continue
+
+            existing_dt = _parse_datetime(existing)
+
+            incoming_dt = _parse_datetime(raw_timestamp)
+
+            if incoming_dt is not None and (
+                existing_dt is None or incoming_dt < existing_dt
+            ):
+                timestamps[stage.value] = raw_timestamp
+
+        return timestamps
+
     def reconcile_server_history(
         self,
         history: Iterable[Any],
@@ -565,6 +620,10 @@ class ApplicationLedger:
                         [],
                     )
                     or []
+                )
+
+                lifecycle_timestamps = self._extract_lifecycle_timestamps(
+                    statuses,
                 )
 
                 latest = statuses[-1] if statuses else None
@@ -587,28 +646,79 @@ class ApplicationLedger:
                     or ""
                 )
 
-                incoming_stage = normalize_server_status(server_status)
+                incoming_stage = normalize_server_status(
+                    server_status,
+                )
 
-                job_id = str(item.job_id)
+                job_id = str(
+                    item.job_id
+                )
 
                 row = conn.execute(
                     """
                     SELECT
                         status,
+                        applied_at,
                         server_status,
                         server_status_at,
                         lifecycle_stage
                     FROM applications
                     WHERE job_id = ?
                     """,
-                    (job_id,),
+                    (
+                        job_id,
+                    ),
                 ).fetchone()
 
+                now = _now()
+
+                submitted_at = lifecycle_timestamps.get(
+                    LifecycleStage.SUBMITTED.value
+                )
+
+                historical_applied_at = (
+                    submitted_at
+                    or server_status_at
+                    or now
+                )
+
+                transition_at = (
+                    lifecycle_timestamps.get(
+                        incoming_stage.value
+                    )
+                    or server_status_at
+                    or now
+                )
+
+                lifecycle_updated_at = (
+                    transition_at
+                    if incoming_stage
+                    != LifecycleStage.UNKNOWN
+                    else None
+                )
+
+                stage_timestamps = {
+                    "submitted_at": lifecycle_timestamps.get(
+                        LifecycleStage.SUBMITTED.value
+                    ),
+                    "viewed_at": lifecycle_timestamps.get(
+                        LifecycleStage.VIEWED.value
+                    ),
+                    "shortlisted_at": lifecycle_timestamps.get(
+                        LifecycleStage.SHORTLISTED.value
+                    ),
+                    "interview_at": lifecycle_timestamps.get(
+                        LifecycleStage.INTERVIEW.value
+                    ),
+                    "rejected_at": lifecycle_timestamps.get(
+                        LifecycleStage.REJECTED.value
+                    ),
+                    "offer_at": lifecycle_timestamps.get(
+                        LifecycleStage.OFFER.value
+                    ),
+                }
+
                 if row is None:
-                    now = _now()
-
-                    transition_at = server_status_at or now
-
                     conn.execute(
                         """
                         INSERT INTO applications(
@@ -662,45 +772,29 @@ class ApplicationLedger:
                             "server_history",
                             now,
                             now,
-                            transition_at,
+                            historical_applied_at,
                             server_status,
                             server_status_at,
                             incoming_stage.value,
-                            (
-                                transition_at
-                                if incoming_stage != LifecycleStage.UNKNOWN
-                                else None
-                            ),
-                            (
-                                transition_at
-                                if incoming_stage == LifecycleStage.SUBMITTED
-                                else None
-                            ),
-                            (
-                                transition_at
-                                if incoming_stage == LifecycleStage.VIEWED
-                                else None
-                            ),
-                            (
-                                transition_at
-                                if incoming_stage == LifecycleStage.SHORTLISTED
-                                else None
-                            ),
-                            (
-                                transition_at
-                                if incoming_stage == LifecycleStage.INTERVIEW
-                                else None
-                            ),
-                            (
-                                transition_at
-                                if incoming_stage == LifecycleStage.REJECTED
-                                else None
-                            ),
-                            (
-                                transition_at
-                                if incoming_stage == LifecycleStage.OFFER
-                                else None
-                            ),
+                            lifecycle_updated_at,
+                            stage_timestamps[
+                                "submitted_at"
+                            ],
+                            stage_timestamps[
+                                "viewed_at"
+                            ],
+                            stage_timestamps[
+                                "shortlisted_at"
+                            ],
+                            stage_timestamps[
+                                "interview_at"
+                            ],
+                            stage_timestamps[
+                                "rejected_at"
+                            ],
+                            stage_timestamps[
+                                "offer_at"
+                            ],
                         ),
                     )
 
@@ -708,8 +802,10 @@ class ApplicationLedger:
                     continue
 
                 raw_changed = (
-                    row["server_status"] != server_status
-                    or row["server_status_at"] != server_status_at
+                    row["server_status"]
+                    != server_status
+                    or row["server_status_at"]
+                    != server_status_at
                 )
 
                 lifecycle_changed = should_advance_lifecycle(
@@ -730,7 +826,7 @@ class ApplicationLedger:
                         (
                             server_status,
                             server_status_at,
-                            _now(),
+                            now,
                             job_id,
                         ),
                     )
@@ -749,22 +845,78 @@ class ApplicationLedger:
                             job_id,
                             "server_status_changed",
                             server_status,
-                            _now(),
+                            now,
                         ),
                     )
 
-                if lifecycle_changed:
-                    transition_at = server_status_at or _now()
+                timestamp_backfilled = False
 
+                for column, timestamp in stage_timestamps.items():
+                    if not timestamp:
+                        continue
+
+                    current = conn.execute(
+                        f"""
+                        SELECT {column}
+                        FROM applications
+                        WHERE job_id = ?
+                        """,
+                        (
+                            job_id,
+                        ),
+                    ).fetchone()
+
+                    if (
+                        current is not None
+                        and not current[column]
+                    ):
+                        conn.execute(
+                            f"""
+                            UPDATE applications
+                            SET
+                                {column} = ?
+                            WHERE job_id = ?
+                            """,
+                            (
+                                timestamp,
+                                job_id,
+                            ),
+                        )
+
+                        timestamp_backfilled = True
+
+                if submitted_at and row["status"] == "server_history":
+                    if row["applied_at"] != submitted_at:
+                        conn.execute(
+                            """
+                            UPDATE applications
+                            SET applied_at = ?
+                            WHERE job_id = ?
+                            """,
+                            (
+                                submitted_at,
+                                job_id,
+                            ),
+                        )
+
+                        timestamp_backfilled = True
+
+                if lifecycle_changed:
                     self._apply_lifecycle_transition(
                         conn,
                         job_id=job_id,
-                        current_stage=row["lifecycle_stage"],
+                        current_stage=row[
+                            "lifecycle_stage"
+                        ],
                         incoming_stage=incoming_stage,
                         transition_at=transition_at,
                     )
 
-                if raw_changed or lifecycle_changed:
+                if (
+                    raw_changed
+                    or lifecycle_changed
+                    or timestamp_backfilled
+                ):
                     changed += 1
 
         return changed
