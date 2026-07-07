@@ -26,7 +26,7 @@
 #   fetch_all_jobs() to tune what gets fetched each run.
 # ----------------------------------------------------------------------------------
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, UTC
 from typing import Any, Protocol
 import csv
@@ -1380,7 +1380,7 @@ def run_application_batch(
     jc,
     jobs: list,
     score_map: dict,
-    questionnaire_resolver: QuestionnaireResolver,
+    questionnaire_resolver: QuestionnaireResolver | None,
     applied_jobs_set: set[str],
     policy: ApplicationPolicy | None = None,
     detail_cache: dict[str, dict] | None = None,
@@ -1549,6 +1549,11 @@ def run_application_batch(
 
             if ledger is not None:
                 ledger.record(job, "applying", meta=meta)
+
+            if questionnaire_resolver is None:
+                raise RuntimeError(
+                    "Questionnaire resolver is required for live application execution"
+                )
 
             outcome = process_job_application(
                 jc=jc,
@@ -1860,7 +1865,17 @@ def enrich_application_metadata(
 # Main — orchestrates the full agent run
 # ----------------------------------------------------------------------------------
 
-if __name__ == "__main__":
+def run_application_cycle(
+    *,
+    dry_run: bool | None = None,
+    max_applications: int | None = None,
+) -> dict[str, Any]:
+    """
+    Execute one complete acquisition, classification, selection,
+    and application cycle.
+
+    Returns structured run data for the orchestration layer.
+    """
 
     username = os.getenv("NAUKRI_USERNAME")
     password = os.getenv("NAUKRI_PASSWORD")
@@ -1949,11 +1964,29 @@ if __name__ == "__main__":
         print(
             f"\n"
             f"{Fore.YELLOW}"
-            f"  No fresh or cached jobs available. Exiting."
+            f"  No fresh or cached jobs available."
             f"{Style.RESET_ALL}"
         )
 
-        raise SystemExit(0)
+        return {
+            "acquired": 0,
+            "classified": 0,
+            "selected": 0,
+            "summary": {
+                "total_candidates": 0,
+                "attempted": 0,
+                "submitted": 0,
+                "applied": 0,
+                "already_applied": 0,
+                "skipped_local": 0,
+                "skipped_external": 0,
+                "policy_rejected": 0,
+                "dry_run_skipped": 0,
+                "run_limit_reached": 0,
+                "failed": 0,
+                "manual_review": 0,
+            },
+        }
 
     # --------------------------------------------------------------------------
     # Step 4: Run AI filtering and ranking pipeline
@@ -2191,6 +2224,18 @@ if __name__ == "__main__":
     # --------------------------------------------------------------------------
     application_policy = build_runtime_application_policy()
 
+    if dry_run is not None:
+        application_policy = replace(
+            application_policy,
+            dry_run=dry_run,
+        )
+
+    if max_applications is not None:
+        application_policy = replace(
+            application_policy,
+            max_applications_per_run=max_applications,
+        )
+
     print_runtime_policy(application_policy)
 
     run_id = ledger.start_run(dry_run=application_policy.dry_run)
@@ -2244,3 +2289,35 @@ if __name__ == "__main__":
         run_limit_reached=run_summary.run_limit_reached,
         failed=run_summary.failed,
     )
+
+    return {
+    "acquired": len(jobs),
+    "classified": len(final_jobs),
+    "selected": len(allowed_jobs),
+    "summary": {
+        "total_candidates": run_summary.total_candidates,
+        "attempted": (
+            run_summary.applied
+            + run_summary.already_applied
+            + run_summary.skipped_external
+            + run_summary.failed
+        ),
+        "submitted": run_summary.applied,
+        "applied": run_summary.applied,
+        "already_applied": run_summary.already_applied,
+        "skipped_local": run_summary.skipped_local,
+        "skipped_external": run_summary.skipped_external,
+        "policy_rejected": run_summary.policy_rejected,
+        "dry_run_skipped": run_summary.dry_run_skipped,
+        "run_limit_reached": run_summary.run_limit_reached,
+        "failed": run_summary.failed,
+        "manual_review": 0,
+    },
+    }
+
+def main() -> None:
+    run_application_cycle()
+
+
+if __name__ == "__main__":
+    main()
