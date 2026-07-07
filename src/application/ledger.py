@@ -132,6 +132,16 @@ class ApplicationLedger:
                 CREATE INDEX IF NOT EXISTS idx_applications_company
                 ON applications(company);
 
+                CREATE TABLE IF NOT EXISTS strategy_decisions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    run_id INTEGER,
+                    strategy_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_strategy_decisions_run_id
+                ON strategy_decisions(run_id);
+
                 CREATE TABLE IF NOT EXISTS runs (
                     run_id INTEGER PRIMARY KEY AUTOINCREMENT,
                     started_at TEXT NOT NULL,
@@ -920,6 +930,36 @@ class ApplicationLedger:
                     changed += 1
 
         return changed
+
+    def record_strategy_decision(
+        self,
+        *,
+        run_id: int | None,
+        strategy: dict[str, Any],
+    ) -> None:
+        """
+        Persist the exact strategy decision used for a run.
+        """
+
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO strategy_decisions(
+                    run_id,
+                    strategy_json,
+                    created_at
+                )
+                VALUES (?, ?, ?)
+                """,
+                (
+                    run_id,
+                    json.dumps(
+                        strategy,
+                        sort_keys=True,
+                    ),
+                    _now(),
+                ),
+            )
 
     def applied_job_ids(self) -> set[str]:
         with self._connect() as conn:

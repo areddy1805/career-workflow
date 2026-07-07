@@ -70,6 +70,8 @@ from src.application.adaptive_strategy import (
     AdaptiveStrategyConfig,
     build_adaptive_strategy,
     rank_candidates_adaptively,
+    select_candidates_with_exploration,
+    strategy_audit_payload,
 )
 from src.resolution.hybrid_resolver import HybridQuestionResolver
 from src.search.job_search_cache import JobSearchCache
@@ -2073,6 +2075,30 @@ if __name__ == "__main__":
                     "0.20",
                 )
             ),
+            prior_strength=float(
+                os.getenv(
+                    "ADAPTIVE_PRIOR_STRENGTH",
+                    "8.0",
+                )
+            ),
+            decay_half_life_days=float(
+                os.getenv(
+                    "ADAPTIVE_DECAY_HALF_LIFE_DAYS",
+                    "45.0",
+                )
+            ),
+            response_weight=float(
+                os.getenv(
+                    "ADAPTIVE_RESPONSE_WEIGHT",
+                    "1.0",
+                )
+            ),
+            outcome_weight=float(
+                os.getenv(
+                    "ADAPTIVE_OUTCOME_WEIGHT",
+                    "1.0",
+                )
+            ),
         ),
     )
 
@@ -2151,6 +2177,13 @@ if __name__ == "__main__":
         ),
     )
 
+    allowed_jobs = select_candidates_with_exploration(
+        allowed_jobs,
+        score_map=score_map,
+        strategy=adaptive_strategy,
+        limit=adaptive_strategy.max_applications_per_run,
+    )
+
     print_section_title(f"applying to {len(allowed_jobs)} filtered jobs")
 
     # --------------------------------------------------------------------------
@@ -2161,6 +2194,13 @@ if __name__ == "__main__":
     print_runtime_policy(application_policy)
 
     run_id = ledger.start_run(dry_run=application_policy.dry_run)
+
+    ledger.record_strategy_decision(
+        run_id=run_id,
+        strategy=strategy_audit_payload(
+            adaptive_strategy,
+        ),
+    )
 
     logger.info(
         "Application runtime policy: dry_run=%s max_applications_per_run=%s",
