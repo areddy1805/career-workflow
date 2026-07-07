@@ -1,205 +1,209 @@
 from __future__ import annotations
 
-import argparse
 import os
-from typing import Any
 
+from src.application.analytics import (
+    age_distribution,
+    application_velocity,
+    breakdown,
+    cumulative_funnel,
+    response_time_summary,
+    safe_rate,
+)
 from src.application.ledger import ApplicationLedger
 
+LEDGER_PATH = os.getenv(
+    "APPLICATION_LEDGER_PATH",
+    "data/application_ledger.db",
+)
 
-def print_table(
-    headers: list[str],
-    rows: list[list[Any]],
+
+def section(
+    title: str,
 ) -> None:
-    if not rows:
-        print("No records.")
-        return
+    print()
 
-    widths = [len(header) for header in headers]
+    print("─" * 78)
 
-    for row in rows:
-        for index, value in enumerate(row):
-            widths[index] = max(
-                widths[index],
-                len(str(value)),
-            )
+    print(f"  {title}")
 
-    header_line = "  ".join(
-        header.ljust(widths[index]) for index, header in enumerate(headers)
+    print("─" * 78)
+
+
+def print_overview(
+    rows: list[dict],
+) -> None:
+    section("APPLICATION INTELLIGENCE OVERVIEW")
+
+    funnel = cumulative_funnel(
+        rows,
     )
 
-    separator = "  ".join("-" * width for width in widths)
+    total = len(rows)
 
-    print(header_line)
-    print(separator)
+    responded = funnel["VIEWED"] + funnel["REJECTED"]
 
-    for row in rows:
+    print(f"  Total applications       {total:>6}")
+
+    print(f"  Submitted                {funnel['SUBMITTED']:>6}")
+
+    print(f"  Viewed                   {funnel['VIEWED']:>6}")
+
+    print(f"  Shortlisted              {funnel['SHORTLISTED']:>6}")
+
+    print(f"  Interview                {funnel['INTERVIEW']:>6}")
+
+    print(f"  Rejected                 {funnel['REJECTED']:>6}")
+
+    print(f"  Offer                    {funnel['OFFER']:>6}")
+
+    print(f"  Unknown                  {funnel['UNKNOWN']:>6}")
+
+    print()
+
+    print(f"  Response rate            " f"{safe_rate(responded, total):>5.1f}%")
+
+    print(
+        f"  Interview rate           " f"{safe_rate(funnel['INTERVIEW'], total):>5.1f}%"
+    )
+
+    print(f"  Offer rate               " f"{safe_rate(funnel['OFFER'], total):>5.1f}%")
+
+
+def print_breakdown(
+    rows: list[dict],
+    *,
+    dimension: str,
+    title: str,
+) -> None:
+    section(title)
+
+    report = breakdown(
+        rows,
+        dimension=dimension,
+    )
+
+    print(
+        "  "
+        f"{dimension.upper():<22} "
+        f"{'TOTAL':>5} "
+        f"{'RESP%':>6} "
+        f"{'VIEW':>5} "
+        f"{'SHORT':>5} "
+        f"{'INT':>5} "
+        f"{'REJ':>5} "
+        f"{'OFFER':>5}"
+    )
+
+    for row in report:
         print(
-            "  ".join(
-                str(value).ljust(widths[index]) for index, value in enumerate(row)
-            )
+            "  "
+            f"{str(row['dimension_value']):<22} "
+            f"{int(row['total']):>5} "
+            f"{float(row['response_rate']):>5.1f}% "
+            f"{int(row['viewed']):>5} "
+            f"{int(row['shortlisted']):>5} "
+            f"{int(row['interview']):>5} "
+            f"{int(row['rejected']):>5} "
+            f"{int(row['offer']):>5}"
         )
 
 
-def print_lifecycle_summary(
-    ledger: ApplicationLedger,
+def print_age_distribution(
+    rows: list[dict],
 ) -> None:
-    print("APPLICATION LIFECYCLE")
-    print()
+    section("APPLICATION AGE DISTRIBUTION")
 
-    summary = ledger.lifecycle_summary()
+    distribution = age_distribution(
+        rows,
+    )
 
     order = (
-        "SUBMITTED",
-        "VIEWED",
-        "SHORTLISTED",
-        "INTERVIEW",
-        "REJECTED",
-        "OFFER",
+        "0-3",
+        "4-7",
+        "8-14",
+        "15-30",
+        "30+",
         "UNKNOWN",
     )
 
-    rows = [
-        [
-            stage,
-            summary.get(stage, 0),
-        ]
-        for stage in order
-    ]
-
-    print_table(
-        ["Stage", "Count"],
-        rows,
-    )
+    for bucket in order:
+        print(f"  {bucket:<20} " f"{distribution[bucket]:>6}")
 
 
-def print_funnel(
-    ledger: ApplicationLedger,
-    dimension: str,
+def print_velocity(
+    rows: list[dict],
 ) -> None:
-    print(f"FUNNEL BY {dimension.upper()}")
+    section("APPLICATION VELOCITY")
 
-    print()
-
-    data = ledger.funnel_breakdown(dimension)
-
-    rows = [
-        [
-            row["dimension_value"],
-            row["total"],
-            row["submitted"],
-            row["viewed"],
-            row["shortlisted"],
-            row["interview"],
-            row["rejected"],
-            row["offer"],
-        ]
-        for row in data
-    ]
-
-    print_table(
-        [
-            dimension.title(),
-            "Total",
-            "Submitted",
-            "Viewed",
-            "Shortlisted",
-            "Interview",
-            "Rejected",
-            "Offer",
-        ],
+    velocity = application_velocity(
         rows,
     )
 
+    print(f"  Today                    " f"{velocity['today']:>6}")
 
-def print_stale(
-    ledger: ApplicationLedger,
-    days: int,
+    print(f"  Last 7 days              " f"{velocity['last_7_days']:>6}")
+
+    print(f"  Last 30 days             " f"{velocity['last_30_days']:>6}")
+
+
+def print_response_time(
+    rows: list[dict],
 ) -> None:
-    print(f"STALE APPLICATIONS > {days} DAYS")
+    section("TIME TO FIRST RESPONSE")
 
-    print()
-
-    data = ledger.stale_applications(stale_after_days=days)
-
-    rows = [
-        [
-            row["job_id"],
-            row["title"],
-            row["company"],
-            row["priority"],
-            row["subtrack"],
-            row["lifecycle_stage"],
-            row["server_status"] or "",
-        ]
-        for row in data
-    ]
-
-    print_table(
-        [
-            "Job ID",
-            "Title",
-            "Company",
-            "Priority",
-            "Subtrack",
-            "Lifecycle",
-            "Server Status",
-        ],
+    summary = response_time_summary(
         rows,
     )
+
+    print(f"  Measured responses       " f"{int(summary['count']):>6}")
+
+    print(f"  Average hours            " f"{float(summary['average_hours']):>6.1f}")
+
+    print(f"  Fastest hours            " f"{float(summary['minimum_hours']):>6.1f}")
+
+    print(f"  Slowest hours            " f"{float(summary['maximum_hours']):>6.1f}")
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description=("Application lifecycle and " "conversion reporting")
-    )
-
-    parser.add_argument(
-        "--dimension",
-        choices=(
-            "priority",
-            "subtrack",
-            "company",
-        ),
-        default="priority",
-    )
-
-    parser.add_argument(
-        "--stale-days",
-        type=int,
-        default=int(
-            os.getenv(
-                "STALE_APPLICATION_DAYS",
-                "14",
-            )
-        ),
-    )
-
-    args = parser.parse_args()
-
     ledger = ApplicationLedger(
-        os.getenv(
-            "APPLICATION_LEDGER_PATH",
-            "data/application_ledger.db",
-        )
+        LEDGER_PATH,
     )
 
-    print_lifecycle_summary(ledger)
+    rows = ledger.analytics_rows()
 
-    print()
-    print()
-
-    print_funnel(
-        ledger,
-        args.dimension,
+    print_overview(
+        rows,
     )
 
-    print()
-    print()
+    print_velocity(
+        rows,
+    )
 
-    print_stale(
-        ledger,
-        args.stale_days,
+    print_age_distribution(
+        rows,
+    )
+
+    print_response_time(
+        rows,
+    )
+
+    print_breakdown(
+        rows,
+        dimension="priority",
+        title="PERFORMANCE BY PRIORITY",
+    )
+
+    print_breakdown(
+        rows,
+        dimension="subtrack",
+        title="PERFORMANCE BY SUBTRACK",
+    )
+
+    print_breakdown(
+        rows,
+        dimension="score_band",
+        title="PERFORMANCE BY SCORE BAND",
     )
 
 

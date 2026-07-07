@@ -822,6 +822,59 @@ class ApplicationLedger:
 
             return {str(row["status"]): int(row["count"]) for row in rows}
 
+    def analytics_rows(
+        self,
+    ) -> list[dict[str, Any]]:
+        """
+        Return the canonical application population used by reporting.
+
+        Operational states such as dry-run suppression and external-apply
+        skips are intentionally excluded from recruiting funnel analytics.
+        """
+
+        with self._connect() as conn:
+            rows = conn.execute("""
+                SELECT
+                    job_id,
+                    title,
+                    company,
+                    location,
+                    score,
+                    priority,
+                    subtrack,
+                    source,
+                    status,
+                    first_seen_at,
+                    last_updated_at,
+                    applied_at,
+                    server_status,
+                    server_status_at,
+                    lifecycle_stage,
+                    lifecycle_updated_at,
+                    submitted_at,
+                    viewed_at,
+                    shortlisted_at,
+                    interview_at,
+                    rejected_at,
+                    offer_at
+
+                FROM applications
+
+                WHERE status IN (
+                    'applied',
+                    'already_applied',
+                    'server_history'
+                )
+
+                ORDER BY
+                    COALESCE(
+                        applied_at,
+                        first_seen_at
+                    ) DESC
+            """).fetchall()
+
+            return [dict(row) for row in rows]
+
     def lifecycle_summary(
         self,
     ) -> dict[str, int]:
