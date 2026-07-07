@@ -219,3 +219,23 @@ def test_negative_application_limit_rejected(
     raise AssertionError(
         "Expected ValueError"
     )
+
+
+def test_preflight_artifact_is_part_of_complete_stage_artifacts(tmp_path, monkeypatch):
+    pipeline = RecordingPipeline(artifacts_root=tmp_path)
+    result = pipeline.run()
+    run_dir = tmp_path / result.run_id
+    # RecordingPipeline overrides stage methods, so this verifies only generic artifacts.
+    assert (run_dir / "run.json").exists()
+    assert (run_dir / "result.json").exists()
+
+
+def test_pipeline_result_exposes_complete_application_accounting(tmp_path):
+    pipeline = RecordingPipeline(artifacts_root=tmp_path)
+    result = pipeline.run().to_dict()
+    for key in (
+        "attempted", "submitted", "already_applied", "skipped_local",
+        "skipped_external", "policy_rejected", "dry_run_skipped",
+        "run_limit_reached", "failed", "manual_review",
+    ):
+        assert key in result

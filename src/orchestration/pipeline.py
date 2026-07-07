@@ -30,7 +30,10 @@ from src.application.adaptive_strategy import (
 )
 from src.application.diversity import (
     DiversityPolicy,
+    allocate_detail_budget,
+    deduplicate_enriched_jobs,
     diversify_jobs,
+    exclude_job_ids,
 )
 from src.application.ledger import ApplicationLedger
 from src.application.policy import ApplicationPolicy
@@ -45,6 +48,10 @@ from src.orchestration.stages import (
     PIPELINE_STAGES,
     PipelineStatus,
     StageStatus,
+)
+from src.application.eligibility import (
+    annotate_auto_apply_eligibility,
+    eligibility_rejection_summary,
 )
 from src.resolution.hybrid_resolver import HybridQuestionResolver
 from src.search.challenge_cooldown import SearchChallengeCooldown
@@ -139,6 +146,11 @@ class CareerWorkflowPipeline:
         filename: str,
         payload,
     ) -> None:
+        self.run_dir.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
         target = self.run_dir / filename
 
         temporary = target.with_suffix(target.suffix + ".tmp")
@@ -241,6 +253,11 @@ class CareerWorkflowPipeline:
             "ledger_path": ledger_path,
         }
 
+        self._write_artifact(
+            "preflight.json",
+            self.context.stage_results["preflight"],
+        )
+
     # ------------------------------------------------------------------
     # Acquisition
     # ------------------------------------------------------------------
@@ -330,11 +347,31 @@ class CareerWorkflowPipeline:
 
         candidates = classifier.pre_filter(self.context.acquired_jobs)
 
+        detail_fetch_budget = int(os.getenv("DETAIL_FETCH_BUDGET", "60"))
+        if detail_fetch_budget < 1:
+            raise ValueError("DETAIL_FETCH_BUDGET must be at least 1")
+
+        candidates_before_suppression = len(candidates)
+
+        excluded_ids = load_applied_jobs() | self.context.ledger.applied_job_ids()
+        candidates = exclude_job_ids(candidates, excluded_ids)
+        candidates_after_history_suppression = len(candidates)
+
+        candidates = allocate_detail_budget(
+            candidates,
+            budget=detail_fetch_budget,
+            max_per_company=int(os.getenv("DETAIL_BUDGET_MAX_PER_COMPANY", "8")),
+            max_per_family=int(os.getenv("DETAIL_BUDGET_MAX_PER_FAMILY", "2")),
+        )
+
         enriched_candidates = enrich_jobs_with_details(
             jc=self.context.job_client,
             jobs=candidates,
             detail_cache=(self.context.detail_cache),
         )
+
+        enriched_before_dedup = len(enriched_candidates)
+        enriched_candidates = deduplicate_enriched_jobs(enriched_candidates)
 
         final_jobs = classifier.score_and_select(enriched_candidates)
 
@@ -376,7 +413,16 @@ class CareerWorkflowPipeline:
         print_pipeline_results(final_jobs)
 
         self.context.stage_results["classification"] = {
-            "prefiltered": len(candidates),
+            "prefiltered": candidates_before_suppression,
+            "history_suppressed": candidates_before_suppression
+            - candidates_after_history_suppression,
+            "eligible_after_history_suppression": candidates_after_history_suppression,
+            "detail_fetch_budget": detail_fetch_budget,
+            "detail_candidates": len(candidates),
+            "enriched_before_description_dedup": enriched_before_dedup,
+            "description_duplicates_removed": enriched_before_dedup
+            - len(enriched_candidates),
+            "detail_cache_entries": len(self.context.detail_cache),
             "classified": len(final_jobs),
         }
 
@@ -428,7 +474,7 @@ class CareerWorkflowPipeline:
                 ),
                 base_minimum_score=int(
                     os.getenv(
-                        "MIN_APPLICATION_SCORE",
+                        "AUTO_APPLY_MIN_SCORE",
                         "68",
                     )
                 ),
@@ -477,7 +523,31 @@ class CareerWorkflowPipeline:
 
         self.context.applied_job_ids = load_applied_jobs() | ledger.applied_job_ids()
 
+        metadata_quality = ledger.metadata_completeness()
+
+        minimum_coverage = float(
+            os.getenv(
+                "ADAPTIVE_MIN_METADATA_COVERAGE",
+                "0.80",
+            )
+        )
+
         strategy = self._build_adaptive_strategy()
+
+        if metadata_quality["coverage"] < minimum_coverage:
+            strategy = build_adaptive_strategy(
+                [],
+                config=AdaptiveStrategyConfig(
+                    enabled=False,
+                    base_minimum_score=int(
+                        os.getenv(
+                            "AUTO_APPLY_MIN_SCORE",
+                            "68",
+                        )
+                    ),
+                    base_max_applications_per_run=(self.context.max_applications),
+                ),
+            )
 
         self.context.adaptive_strategy = strategy
 
@@ -491,12 +561,60 @@ class CareerWorkflowPipeline:
 
         ranked_jobs = rank_candidates_adaptively(
             ranked_jobs,
-            score_map=(self.context.score_map),
+            score_map=self.context.score_map,
             strategy=strategy,
         )
 
-        diversified_jobs = diversify_jobs(
+        print(f"RANKED CANDIDATES: {len(ranked_jobs)}")
+
+        auto_apply_min_score = int(
+            os.getenv(
+                "AUTO_APPLY_MIN_SCORE",
+                os.getenv(
+                    "AUTO_APPLY_MIN_SCORE",
+                    "68",
+                ),
+            )
+        )
+
+        eligible_jobs, eligibility_decisions = annotate_auto_apply_eligibility(
             ranked_jobs,
+            score_map=self.context.score_map,
+            minimum_score=auto_apply_min_score,
+        )
+
+        rejected_decisions = [
+            decision for decision in eligibility_decisions if not decision["eligible"]
+        ]
+
+        rejection_summary = eligibility_rejection_summary(eligibility_decisions)
+
+        print(f"AUTO-APPLY ELIGIBLE: " f"{len(eligible_jobs)}")
+
+        print(f"AUTO-APPLY REJECTED: " f"{len(rejected_decisions)}")
+
+        for decision in rejected_decisions:
+            reasons = ",".join(decision["reasons"])
+
+            print(
+                "  [AUTO-APPLY REJECT] "
+                f"{decision['title']} "
+                f"@ {decision['company']} "
+                f"| score={decision['score']} "
+                f"| {reasons}"
+            )
+
+        if rejection_summary:
+            print("AUTO-APPLY REJECTION SUMMARY:")
+
+            for (
+                reason,
+                count,
+            ) in rejection_summary.items():
+                print(f"  {reason}: {count}")
+
+        diversified_jobs = diversify_jobs(
+            eligible_jobs,
             historical_company_counts=(ledger.company_application_counts()),
             policy=DiversityPolicy(
                 max_per_company_per_run=int(
@@ -511,17 +629,40 @@ class CareerWorkflowPipeline:
                         "1",
                     )
                 ),
+                max_per_vacancy_fingerprint=int(
+                    os.getenv(
+                        "MAX_PER_VACANCY_FINGERPRINT",
+                        "1",
+                    )
+                ),
             ),
+        )
+
+        attempt_budget = min(
+            strategy.max_applications_per_run,
+            self.context.max_applications,
+        )
+
+        scan_multiplier = max(
+            1,
+            int(
+                os.getenv(
+                    "APPLICATION_SCAN_MULTIPLIER",
+                    "5",
+                )
+            ),
+        )
+
+        candidate_scan_budget = min(
+            len(diversified_jobs),
+            attempt_budget * scan_multiplier,
         )
 
         selected_jobs = select_candidates_with_exploration(
             diversified_jobs,
-            score_map=(self.context.score_map),
+            score_map=self.context.score_map,
             strategy=strategy,
-            limit=min(
-                strategy.max_applications_per_run,
-                self.context.max_applications,
-            ),
+            limit=candidate_scan_budget,
         )
 
         self.context.selected_jobs = selected_jobs
@@ -531,8 +672,18 @@ class CareerWorkflowPipeline:
         self.context.stage_results["selection"] = {
             "classified": len(self.context.classified_jobs),
             "ranked": len(ranked_jobs),
+            "auto_apply_min_score": (auto_apply_min_score),
+            "auto_apply_eligible": len(eligible_jobs),
+            "auto_apply_rejected": len(rejected_decisions),
+            "rejection_summary": (rejection_summary),
+            "eligibility_decisions": (eligibility_decisions),
             "diversified": len(diversified_jobs),
             "selected": len(selected_jobs),
+            "attempt_budget": (attempt_budget),
+            "candidate_scan_budget": (candidate_scan_budget),
+            "scan_multiplier": (scan_multiplier),
+            "metadata_quality": (metadata_quality),
+            "minimum_metadata_coverage": (minimum_coverage),
             "strategy": strategy_payload,
         }
 
@@ -571,7 +722,14 @@ class CareerWorkflowPipeline:
                 "message": ("No selected jobs available"),
                 "attempted": 0,
                 "submitted": 0,
+                "already_applied": 0,
+                "skipped_local": 0,
+                "skipped_external": 0,
+                "policy_rejected": 0,
+                "dry_run_skipped": 0,
+                "run_limit_reached": 0,
                 "failed": 0,
+                "manual_review": 0,
             }
 
             self._write_artifact(
@@ -695,6 +853,7 @@ class CareerWorkflowPipeline:
         self.context.updated_strategy = strategy
 
         payload = strategy_audit_payload(strategy)
+        payload["metadata_quality"] = self.context.ledger.metadata_completeness()
 
         self.context.stage_results["strategy"] = payload
 
@@ -824,20 +983,38 @@ class CareerWorkflowPipeline:
 
         summary = self.context.application_summary
 
-        if summary is None:
-            attempted = 0
-            submitted = 0
-            failed = 0
-        else:
-            attempted = (
-                summary.applied
-                + summary.already_applied
-                + summary.skipped_external
-                + summary.failed
-            )
+        counts = {
+            "attempted": 0,
+            "submitted": 0,
+            "already_applied": 0,
+            "skipped_local": 0,
+            "skipped_external": 0,
+            "policy_rejected": 0,
+            "dry_run_skipped": 0,
+            "run_limit_reached": 0,
+            "failed": 0,
+            "manual_review": 0,
+        }
 
-            submitted = summary.applied
-            failed = summary.failed
+        if summary is not None:
+            counts.update(
+                {
+                    "attempted": (
+                        summary.applied
+                        + summary.already_applied
+                        + summary.skipped_external
+                        + summary.failed
+                    ),
+                    "submitted": summary.applied,
+                    "already_applied": summary.already_applied,
+                    "skipped_local": summary.skipped_local,
+                    "skipped_external": summary.skipped_external,
+                    "policy_rejected": summary.policy_rejected,
+                    "dry_run_skipped": summary.dry_run_skipped,
+                    "run_limit_reached": summary.run_limit_reached,
+                    "failed": summary.failed,
+                }
+            )
 
         return PipelineResult(
             run_id=self.context.run_id,
@@ -845,10 +1022,16 @@ class CareerWorkflowPipeline:
             acquired=len(self.context.acquired_jobs),
             classified=len(self.context.classified_jobs),
             selected=len(self.context.selected_jobs),
-            attempted=attempted,
-            submitted=submitted,
-            failed=failed,
-            manual_review=0,
+            attempted=counts["attempted"],
+            submitted=counts["submitted"],
+            already_applied=counts["already_applied"],
+            skipped_local=counts["skipped_local"],
+            skipped_external=counts["skipped_external"],
+            policy_rejected=counts["policy_rejected"],
+            dry_run_skipped=counts["dry_run_skipped"],
+            run_limit_reached=counts["run_limit_reached"],
+            failed=counts["failed"],
+            manual_review=counts["manual_review"],
             started_at=(self.context.started_at),
             completed_at=completed_at,
             stage_results={

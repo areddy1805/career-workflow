@@ -273,6 +273,8 @@ class JobFilterPipeline2:
         "genai engineer",
         "gen ai engineer",
         "llm engineer",
+        "llm operations engineer",
+        "llm model developer",
         "rag engineer",
         "ai developer",
         "genai developer",
@@ -883,6 +885,9 @@ class JobFilterPipeline2:
         if f["ai_hits"] >= 4 and (f["backend_hits"] >= 2 or f["ai_title"]):
             return max(score, 78)
 
+        if f["ai_hits"] >= 2 and f["backend_hits"] >= 2:
+            return max(score, 72)
+
         if f["ai_hits"] >= 2 and (
             f["backend_hits"] >= 1 or f["frontend_hits"] >= 1
         ):
@@ -1203,23 +1208,76 @@ Jobs:
 
     def post_score_guard(self, jobs):
         """
-        Preserve every job that passed the genuine-AI relevance and location
-        gates. Stack family, seniority, and specialization only affect priority.
+        Enforce deterministic consistency between job evidence and score.
+
+        The model may refine ordering inside evidence bands, but it cannot:
+        - promote incidental-AI generic software above direct AI work;
+        - keep obvious VBA/content roles because the title contains AI;
+        - leave concrete LLM/RAG/agentic backend roles below their evidence floor.
         """
         clean = []
+
         for job in jobs:
             features = self._fit_features(job)
+            text = self._job_text(job)
+            title = (job.get("title") or "").lower()
+            score = int(job.get("ai_score", 0) or 0)
 
-            # Prevent incidental AI mentions in generic software jobs from being
-            # auto-applied. Explicit AI titles are never capped here.
+            vba_automation_hits = sum(
+                term in text
+                for term in (
+                    "vba", "excel macros", "advanced excel",
+                    "power query", "macro automation",
+                )
+            )
+            content_role_hits = sum(
+                term in text
+                for term in (
+                    "copywriter", "copywriting", "brand copy",
+                    "marketing copy", "content writer", "social media content",
+                )
+            )
+            engineering_hits = features["backend_hits"] + features["ai_hits"]
+
+            # Misleading AI titles: the actual work is office automation or content.
+            if vba_automation_hits >= 2 and features["ai_hits"] <= 1:
+                print(
+                    f"  [POST-SCORE REJECT - INCIDENTAL AUTOMATION] "
+                    f"{job.get('title')} @ {job.get('company')}"
+                )
+                continue
+
+            if content_role_hits >= 2 and engineering_hits <= 2:
+                print(
+                    f"  [POST-SCORE REJECT - NON-ENGINEERING AI] "
+                    f"{job.get('title')} @ {job.get('company')}"
+                )
+                continue
+
+            # Generic software with one weak AI mention stays below application floor.
             if features["ai_hits"] <= 1 and not features["ai_title"]:
-                job["ai_score"] = min(job.get("ai_score", 0), 49)
+                score = min(score, 49)
 
-            # Explicit AI titles get a minimum eligible score. This implements
-            # spray-and-pray within the AI domain while retaining useful ranking.
+            # Concrete applied-AI backend work gets deterministic floors even when
+            # the title is generic (for example an agentic manufacturing platform).
+            if features["ai_hits"] >= 4 and (
+                features["backend_hits"] >= 2 or features["ai_title"]
+            ):
+                score = max(score, 78)
+            elif features["ai_hits"] >= 2 and features["backend_hits"] >= 2:
+                score = max(score, 72)
+            elif features["ai_hits"] >= 2 and (
+                features["backend_hits"] >= 1
+                or features["frontend_hits"] >= 1
+            ):
+                score = max(score, 65)
+
+            # Explicit AI engineering titles remain eligible, but only after the
+            # misleading-title rejection rules above have run.
             if features["ai_title"]:
-                job["ai_score"] = max(job.get("ai_score", 0), self.min_apply_score)
+                score = max(score, self.min_apply_score)
 
+            job["ai_score"] = max(0, min(100, score))
             clean.append(job)
 
         return clean

@@ -14,6 +14,12 @@ class PipelineResult:
 
     attempted: int = 0
     submitted: int = 0
+    already_applied: int = 0
+    skipped_local: int = 0
+    skipped_external: int = 0
+    policy_rejected: int = 0
+    dry_run_skipped: int = 0
+    run_limit_reached: int = 0
     failed: int = 0
     manual_review: int = 0
 
@@ -25,11 +31,8 @@ class PipelineResult:
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
-
         if self.started_at is not None:
             data["started_at"] = self.started_at.isoformat()
-
         if self.completed_at is not None:
             data["completed_at"] = self.completed_at.isoformat()
-
         return data
