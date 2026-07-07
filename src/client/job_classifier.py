@@ -729,36 +729,83 @@ class JobFilterPipeline2:
 
     @staticmethod
     def _classify_work_mode(job):
-        text = " ".join(
+        structured = " ".join(
             str(job.get(key) or "")
-            for key in ("work_mode", "workMode", "location", "description")
-        ).lower()
+            for key in ("work_mode", "workMode")
+        ).lower().strip()
 
-        remote_signals = (
-            "remote", "work from home", "work-from-home", "wfh",
-            "anywhere", "distributed team",
-        )
-        hybrid_signals = ("hybrid", "hybrid working", "hybrid work")
-        office_signals = (
-            "work from office", "work-from-office", "wfo",
-            "onsite", "on-site", "in office", "office based",
-        )
+        if structured:
+            if re.search(r"\b(remote|wfh|work from home)\b", structured):
+                return "remote"
+            if re.search(r"\bhybrid\b", structured):
+                return "hybrid"
+            if re.search(r"\b(office|onsite|on-site|wfo)\b", structured):
+                return "office"
 
-        if any(signal in text for signal in remote_signals):
-            return "remote"
-        if any(signal in text for signal in hybrid_signals):
-            return "hybrid"
-        if any(signal in text for signal in office_signals):
-            return "office"
-        return "unknown"
-
-    @staticmethod
-    def _is_pune_location(job):
         text = " ".join(
             str(job.get(key) or "")
             for key in ("location", "description")
         ).lower()
-        return bool(re.search(r"\bpune\b|pimpri|chinchwad|hinjawadi|hinjewadi", text))
+
+        negative_remote = (
+            r"\bnot remote\b",
+            r"\bno remote (?:work|working|option)\b",
+            r"\bremote (?:work|working) (?:is )?not available\b",
+            r"\bno work[- ]from[- ]home\b",
+            r"\bwfh (?:is )?not available\b",
+            r"\bmust relocate\b",
+        )
+        hybrid_signals = (
+            r"\bhybrid (?:role|position|work|working|model|mode)\b",
+            r"\bhybrid\b",
+        )
+        office_signals = (
+            r"\bwork[- ]from[- ]office\b",
+            r"\bwfo\b",
+            r"\bon[- ]site\b",
+            r"\bin[- ]office\b",
+            r"\boffice[- ]based\b",
+        )
+        remote_signals = (
+            r"\bfully remote\b",
+            r"\b100% remote\b",
+            r"\bremote (?:role|position|job|work|working)\b",
+            r"\bwork remotely\b",
+            r"\bwork[- ]from[- ]home\b",
+            r"\bwfh\b",
+            r"\blocation independent\b",
+            r"\bwork from anywhere\b",
+        )
+
+        if any(re.search(pattern, text) for pattern in negative_remote):
+            if any(re.search(pattern, text) for pattern in hybrid_signals):
+                return "hybrid"
+            if any(re.search(pattern, text) for pattern in office_signals):
+                return "office"
+            return "office"
+        if any(re.search(pattern, text) for pattern in hybrid_signals):
+            return "hybrid"
+        if any(re.search(pattern, text) for pattern in office_signals):
+            return "office"
+        if any(re.search(pattern, text) for pattern in remote_signals):
+            return "remote"
+        return "unknown"
+
+    @staticmethod
+    def _is_pune_location(job):
+        pune_pattern = r"\bpune\b|\bpimpri\b|\bchinchwad\b|\bhinja?wadi\b"
+
+        location = str(job.get("location") or "").lower()
+        if re.search(pune_pattern, location):
+            return True
+
+        description = str(job.get("description") or "").lower()
+        explicit_location_patterns = (
+            rf"\b(?:job|work|base|office) location\s*[:\-]\s*[^.\n]{{0,100}}(?:{pune_pattern})",
+            rf"\bbased in\s+(?:{pune_pattern})",
+            rf"\bposition is based in\s+(?:{pune_pattern})",
+        )
+        return any(re.search(pattern, description) for pattern in explicit_location_patterns)
 
     def location_work_mode_gate(self, jobs):
         """

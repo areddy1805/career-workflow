@@ -625,9 +625,33 @@ def fetch_all_jobs(
         {"keyword": "LangChain Developer", "location": "", "track": "TIER_A"},
     ]
 
-    EXPERIENCE_LEVELS = [2]
-    PAGES = 1
-    JOB_AGE = 3
+    def _env_int_list(name: str, default: str) -> list[int]:
+        raw = os.getenv(name, default)
+        values: list[int] = []
+        for part in raw.split(","):
+            part = part.strip()
+            if not part:
+                continue
+            value = int(part)
+            if value < 0:
+                raise ValueError(f"{name} values must be non-negative")
+            if value not in values:
+                values.append(value)
+        if not values:
+            raise ValueError(f"{name} must contain at least one integer")
+        return values
+
+    EXPERIENCE_LEVELS = _env_int_list("SEARCH_EXPERIENCE_LEVELS", "2,4,6,8")
+    PAGES = int(os.getenv("SEARCH_MAX_PAGES", "3"))
+    JOB_AGE = int(os.getenv("SEARCH_JOB_AGE_DAYS", "3"))
+    RESULTS_PER_PAGE = int(os.getenv("SEARCH_RESULTS_PER_PAGE", "20"))
+
+    if PAGES < 1:
+        raise ValueError("SEARCH_MAX_PAGES must be at least 1")
+    if JOB_AGE < 0:
+        raise ValueError("SEARCH_JOB_AGE_DAYS must be non-negative")
+    if RESULTS_PER_PAGE < 1:
+        raise ValueError("SEARCH_RESULTS_PER_PAGE must be at least 1")
 
     seen_ids: set[str] = set()
     all_jobs = []
@@ -650,10 +674,9 @@ def fetch_all_jobs(
             if challenge_encountered:
                 break
 
-            for page in range(
-                1,
-                PAGES + 1,
-            ):
+            previous_page_signature: tuple[str, ...] | None = None
+
+            for page in range(1, PAGES + 1):
                 try:
                     search_requests_attempted += 1
 
@@ -663,8 +686,26 @@ def fetch_all_jobs(
                         experience=exp,
                         job_age=JOB_AGE,
                         page=page,
+                        results_per_page=RESULTS_PER_PAGE,
                     )
 
+                    page_signature = tuple(
+                        str(
+                            getattr(job, "id", None)
+                            or getattr(job, "job_id", None)
+                            or ""
+                        )
+                        for job in jobs
+                    )
+
+                    if jobs and page_signature == previous_page_signature:
+                        print_fetch_progress(
+                            query["keyword"], query["location"], exp, page,
+                            fetched=len(jobs), new=0,
+                        )
+                        break
+
+                    previous_page_signature = page_signature
                     new_jobs = []
 
                     for job in jobs:
@@ -715,7 +756,7 @@ def fetch_all_jobs(
                         new=len(new_jobs),
                     )
 
-                    if not jobs:
+                    if not jobs or len(jobs) < RESULTS_PER_PAGE:
                         break
 
                     time.sleep(1.2)

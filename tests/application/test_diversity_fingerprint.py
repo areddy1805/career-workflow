@@ -135,3 +135,38 @@ def test_detail_budget_family_cap_is_diversity_first_not_destructive():
         "a2",
         "a3",
     ]
+
+
+def test_vacancy_fingerprint_distinguishes_materially_different_search_metadata():
+    a = {
+        "title": "LLM Engineer",
+        "company": "Acme",
+        "location": "Pune",
+        "experience": "3-5 Yrs",
+        "tags": ["Python", "RAG"],
+    }
+    b = {
+        "title": "LLM Engineer",
+        "company": "Acme",
+        "location": "Pune",
+        "experience": "6-9 Yrs",
+        "tags": ["Java", "Spring AI"],
+    }
+    assert vacancy_fingerprint(a) != vacancy_fingerprint(b)
+
+
+def test_configured_vacancy_fingerprint_limit_is_honored():
+    jobs = [
+        Job("LLM Engineer", "Acme", "Pune"),
+        Job("Senior LLM Engineer", "Acme", "Pune"),
+        Job("LLM Engineer", "Acme", "Pune"),
+    ]
+    result = diversify_jobs(
+        jobs,
+        policy=DiversityPolicy(
+            max_per_company_per_run=10,
+            max_per_role_family_per_company=10,
+            max_per_vacancy_fingerprint=2,
+        ),
+    )
+    assert len(result) == 2

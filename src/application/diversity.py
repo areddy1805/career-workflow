@@ -46,12 +46,36 @@ def normalize_location(value: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9]+", " ", text)).strip()
 
 
+def normalize_experience(value: str) -> str:
+    numbers = re.findall(r"\d+", value or "")
+    return "-".join(numbers[:2])
+
+
+def normalize_tag_signature(job: Any) -> str:
+    if isinstance(job, dict):
+        raw_tags = job.get("tags") or []
+    else:
+        raw_tags = getattr(job, "tags", None) or []
+
+    if isinstance(raw_tags, str):
+        raw_tags = re.split(r"[,|]", raw_tags)
+
+    normalized = {
+        re.sub(r"\s+", " ", re.sub(r"[^a-z0-9+#.]+", " ", str(tag).lower())).strip()
+        for tag in raw_tags
+        if str(tag).strip()
+    }
+    return ",".join(sorted(tag for tag in normalized if tag))
+
+
 def vacancy_fingerprint(job: Any) -> str:
     return "|".join(
         (
             normalize_company(_value(job, "company")),
             normalize_role_family(_value(job, "title")),
             normalize_location(_value(job, "location")),
+            normalize_experience(_value(job, "experience")),
+            normalize_tag_signature(job),
         )
     )
 
@@ -203,7 +227,7 @@ def diversify_jobs(
     history = historical_company_counts or {}
     company_run_counts: dict[str, int] = defaultdict(int)
     family_counts: dict[tuple[str, str], int] = defaultdict(int)
-    seen_fingerprints: set[str] = set()
+    fingerprint_counts: dict[str, int] = defaultdict(int)
 
     ranked = sorted(
         enumerate(jobs),
@@ -221,9 +245,9 @@ def diversify_jobs(
         family = normalize_role_family(_value(job, "title"))
         fingerprint = vacancy_fingerprint(job)
 
-        if fingerprint in seen_fingerprints:
+        if fingerprint_counts[fingerprint] >= policy.max_per_vacancy_fingerprint:
             continue
-        seen_fingerprints.add(fingerprint)
+        fingerprint_counts[fingerprint] += 1
 
         within_company = company_run_counts[company] < policy.max_per_company_per_run
         within_family = (
