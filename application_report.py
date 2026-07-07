@@ -12,12 +12,13 @@ from src.application.analytics import (
 )
 from src.application.ledger import ApplicationLedger
 
+from src.application.adaptive_strategy import (
+    build_adaptive_strategy,
+)
+
 LEDGER_PATH = os.getenv(
     "APPLICATION_LEDGER_PATH",
     "data/application_ledger.db",
-)
-from src.application.adaptive_strategy import (
-    build_adaptive_strategy,
 )
 
 
@@ -200,6 +201,61 @@ def print_response_time(
     print(f"  Fastest hours            " f"{float(summary['minimum_hours']):>6.1f}")
 
     print(f"  Slowest hours            " f"{float(summary['maximum_hours']):>6.1f}")
+
+
+def build_report_snapshot(
+    rows: list[dict],
+) -> dict:
+    """
+    Build a serializable analytics snapshot for orchestration artifacts.
+
+    Terminal formatting remains separate from report computation.
+    """
+
+    funnel = cumulative_funnel(rows)
+    total = len(rows)
+
+    responded = funnel["VIEWED"] + funnel["REJECTED"]
+
+    return {
+        "overview": {
+            "total_applications": total,
+            "submitted": funnel["SUBMITTED"],
+            "viewed": funnel["VIEWED"],
+            "shortlisted": funnel["SHORTLISTED"],
+            "interview": funnel["INTERVIEW"],
+            "rejected": funnel["REJECTED"],
+            "offer": funnel["OFFER"],
+            "unknown": funnel["UNKNOWN"],
+            "response_rate": safe_rate(
+                responded,
+                total,
+            ),
+            "interview_rate": safe_rate(
+                funnel["INTERVIEW"],
+                total,
+            ),
+            "offer_rate": safe_rate(
+                funnel["OFFER"],
+                total,
+            ),
+        },
+        "velocity": application_velocity(rows),
+        "age_distribution": age_distribution(rows),
+        "response_time": response_time_summary(rows),
+        "priority": breakdown(
+            rows,
+            dimension="priority",
+        ),
+        "subtrack": breakdown(
+            rows,
+            dimension="subtrack",
+        ),
+        "score_band": breakdown(
+            rows,
+            dimension="score_band",
+        ),
+    }
 
 
 def main() -> None:

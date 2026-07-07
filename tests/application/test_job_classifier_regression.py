@@ -117,3 +117,48 @@ def test_rank_prefers_fit_score(tmp_path):
     a = {"ai_score": 90, "ai_signal_count": 2, "days_old": 7}
     b = {"ai_score": 70, "ai_signal_count": 8, "days_old": 0}
     assert p.rank([b, a])[0] is a
+
+
+def test_remote_sensing_does_not_count_as_remote_work(tmp_path):
+    p = pipeline(tmp_path)
+    raw = norm(p, job(
+        "10", "AI Engineer", ["ai"],
+        "Build remote sensing models for satellite imagery.",
+        "Bengaluru",
+    ))
+    assert p._classify_work_mode(raw) == "unknown"
+    assert p.location_work_mode_gate([raw]) == []
+
+
+def test_negative_remote_language_does_not_pass_worldwide_gate(tmp_path):
+    p = pipeline(tmp_path)
+    raw = norm(p, job(
+        "11", "AI Engineer", ["ai"],
+        "This role is not remote. Work from office in Bengaluru.",
+        "Bengaluru",
+    ))
+    assert p._classify_work_mode(raw) == "office"
+    assert p.location_work_mode_gate([raw]) == []
+
+
+def test_incidental_pune_office_mention_does_not_make_bengaluru_job_pune(tmp_path):
+    p = pipeline(tmp_path)
+    raw = norm(p, job(
+        "12", "AI Engineer", ["ai"],
+        "This position is based in Bengaluru. Our offices are in Pune and Hyderabad.",
+        "Bengaluru",
+        work_mode="Hybrid",
+    ))
+    assert p._is_pune_location(raw) is False
+    assert p.location_work_mode_gate([raw]) == []
+
+
+def test_explicit_description_work_location_pune_is_accepted(tmp_path):
+    p = pipeline(tmp_path)
+    raw = norm(p, job(
+        "13", "AI Engineer", ["ai"],
+        "Work location: Pune. Hybrid working model.",
+        "",
+    ))
+    assert p._is_pune_location(raw) is True
+    assert p.location_work_mode_gate([raw]) == [raw]

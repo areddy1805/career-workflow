@@ -1067,6 +1067,25 @@ class ApplicationLedger:
 
             return [dict(row) for row in rows]
 
+
+    def metadata_completeness(self) -> dict[str, int | float]:
+        """Measure classification metadata coverage for funnel applications."""
+        rows = self.analytics_rows()
+        total = len(rows)
+        complete = sum(
+            1
+            for row in rows
+            if row.get("score") is not None
+            and str(row.get("priority") or "").strip()
+            and str(row.get("subtrack") or "").strip()
+        )
+        return {
+            "total": total,
+            "complete": complete,
+            "incomplete": total - complete,
+            "coverage": 1.0 if total == 0 else complete / total,
+        }
+
     def lifecycle_summary(
         self,
     ) -> dict[str, int]:

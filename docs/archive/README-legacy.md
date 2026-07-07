@@ -1,5 +1,24 @@
 
 <!--
+python run_pipeline.py --max-applications 5
+→ DRY RUN
+
+python run_pipeline.py \
+  --live \
+  --confirm-live APPLY_LIVE \
+  --max-applications 5
+→ LIVE RUN
+
+python run_pipeline.py \
+  --live \
+  --confirm-live APPLY_LIVE \
+  --canary \
+  --max-applications 1
+→ LIVE CANARY
+ -->
+
+
+<!--
 
 rm -f data/search_challenge_state.json
 
@@ -11,6 +30,36 @@ python apply_agent.py
 APPLICATION_DRY_RUN=false \
 MAX_APPLICATIONS_PER_RUN=1 \
 python apply_agent.py
+
+
+
+python run_pipeline.py \
+  --max-applications 3
+
+
+python run_pipeline.py \
+  --live \
+  --canary \
+  --max-applications 1 \
+  --confirm-live APPLY_LIVE
+
+python run_pipeline.py \
+  --live \
+  --confirm-live APPLY_LIVE \
+  --canary \
+  --max-applications 1
+
+
+python run_pipeline.py \
+  --live \
+  --confirm-live \
+  --max-applications 1
+
+
+python run_pipeline.py \
+  --live \
+  --confirm-live \
+  --max-applications 3
 
  -->
 

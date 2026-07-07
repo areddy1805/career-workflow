@@ -1,32 +1,4 @@
-# ----------------------------------------------------------------------------------
-# apply_agent.py
-#
-# Entry point for the automated Naukri job application agent.
-#
-# What this script does end to end:
-#   1. Logs in to Naukri using credentials from the environment.
-#   2. Searches for jobs across a curated set of keyword/location queries.
-#   3. Deduplicates results and passes them through an AI scoring pipeline.
-#   4. Iterates over jobs that passed the filter and applies to each one.
-#   5. Handles questionnaires automatically using the hybrid questionnaire resolver.
-#   6. Skips jobs that redirect to an external company apply page.
-#   7. Persists applied job IDs to a CSV so they are never applied to twice.
-#   8. Prints a structured terminal summary at the end of each run.
-#
-# Dependencies:
-#   - NaukriLoginClient       : handles login and session management
-#   - NaukriJobClient         : wraps Naukri's internal job/apply APIs
-#   - JobFilterPipeline2      : AI-based job relevance scorer
-#   - HybridQuestionResolver  : deterministic + evidence-grounded LLM questionnaire resolver
-#   - colorama                : terminal color output
-#
-# Configuration:
-#   Set USERNAME, PASSWORD, and OPEN_API_KEY in a .env file.
-#   Adjust BQUERIES, EXPERIENCE_LEVELS, PAGES, and JOB_AGE inside
-#   fetch_all_jobs() to tune what gets fetched each run.
-# ----------------------------------------------------------------------------------
-
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, UTC
 from typing import Any, Protocol
 import csv
@@ -72,6 +44,9 @@ from src.application.adaptive_strategy import (
     rank_candidates_adaptively,
     select_candidates_with_exploration,
     strategy_audit_payload,
+)
+from src.application.manual_action_queue import (
+    ManualActionQueue,
 )
 from src.resolution.hybrid_resolver import HybridQuestionResolver
 from src.search.job_search_cache import JobSearchCache
@@ -650,9 +625,33 @@ def fetch_all_jobs(
         {"keyword": "LangChain Developer", "location": "", "track": "TIER_A"},
     ]
 
-    EXPERIENCE_LEVELS = [2]
-    PAGES = 1
-    JOB_AGE = 3
+    def _env_int_list(name: str, default: str) -> list[int]:
+        raw = os.getenv(name, default)
+        values: list[int] = []
+        for part in raw.split(","):
+            part = part.strip()
+            if not part:
+                continue
+            value = int(part)
+            if value < 0:
+                raise ValueError(f"{name} values must be non-negative")
+            if value not in values:
+                values.append(value)
+        if not values:
+            raise ValueError(f"{name} must contain at least one integer")
+        return values
+
+    EXPERIENCE_LEVELS = _env_int_list("SEARCH_EXPERIENCE_LEVELS", "2,4,6,8")
+    PAGES = int(os.getenv("SEARCH_MAX_PAGES", "3"))
+    JOB_AGE = int(os.getenv("SEARCH_JOB_AGE_DAYS", "3"))
+    RESULTS_PER_PAGE = int(os.getenv("SEARCH_RESULTS_PER_PAGE", "20"))
+
+    if PAGES < 1:
+        raise ValueError("SEARCH_MAX_PAGES must be at least 1")
+    if JOB_AGE < 0:
+        raise ValueError("SEARCH_JOB_AGE_DAYS must be non-negative")
+    if RESULTS_PER_PAGE < 1:
+        raise ValueError("SEARCH_RESULTS_PER_PAGE must be at least 1")
 
     seen_ids: set[str] = set()
     all_jobs = []
@@ -675,10 +674,9 @@ def fetch_all_jobs(
             if challenge_encountered:
                 break
 
-            for page in range(
-                1,
-                PAGES + 1,
-            ):
+            previous_page_signature: tuple[str, ...] | None = None
+
+            for page in range(1, PAGES + 1):
                 try:
                     search_requests_attempted += 1
 
@@ -688,8 +686,26 @@ def fetch_all_jobs(
                         experience=exp,
                         job_age=JOB_AGE,
                         page=page,
+                        results_per_page=RESULTS_PER_PAGE,
                     )
 
+                    page_signature = tuple(
+                        str(
+                            getattr(job, "id", None)
+                            or getattr(job, "job_id", None)
+                            or ""
+                        )
+                        for job in jobs
+                    )
+
+                    if jobs and page_signature == previous_page_signature:
+                        print_fetch_progress(
+                            query["keyword"], query["location"], exp, page,
+                            fetched=len(jobs), new=0,
+                        )
+                        break
+
+                    previous_page_signature = page_signature
                     new_jobs = []
 
                     for job in jobs:
@@ -740,7 +756,7 @@ def fetch_all_jobs(
                         new=len(new_jobs),
                     )
 
-                    if not jobs:
+                    if not jobs or len(jobs) < RESULTS_PER_PAGE:
                         break
 
                     time.sleep(1.2)
@@ -1380,7 +1396,7 @@ def run_application_batch(
     jc,
     jobs: list,
     score_map: dict,
-    questionnaire_resolver: QuestionnaireResolver,
+    questionnaire_resolver: QuestionnaireResolver | None,
     applied_jobs_set: set[str],
     policy: ApplicationPolicy | None = None,
     detail_cache: dict[str, dict] | None = None,
@@ -1421,6 +1437,13 @@ def run_application_batch(
     application_attempts = 0
 
     total_candidates = len(jobs)
+
+    manual_action_queue = ManualActionQueue(
+        os.getenv(
+            "MANUAL_ACTION_QUEUE_PATH",
+            "data/manual_action_queue.json",
+        )
+    )
 
     for index, job in enumerate(
         jobs,
@@ -1530,6 +1553,36 @@ def run_application_batch(
                 skipped_external_count += 1
                 if ledger is not None:
                     ledger.record(job, "external_apply", meta=meta)
+                job_id = str(job.job_id)
+
+                score_result = score_map.get(
+                    job_id,
+                    {},
+                )
+
+                manual_action_queue.enqueue_external_apply(
+                    job=job,
+                    score=int(
+                        score_result.get(
+                            "score",
+                            score_result.get(
+                                "ai_score",
+                                0,
+                            ),
+                        )
+                        or 0
+                    ),
+                    reason=str(
+                        score_result.get(
+                            "ai_detail",
+                            score_result.get(
+                                "ai_reason",
+                                "",
+                            ),
+                        )
+                        or ""
+                    ),
+                )
                 continue
 
         except Exception as exc:
@@ -1549,6 +1602,11 @@ def run_application_batch(
 
             if ledger is not None:
                 ledger.record(job, "applying", meta=meta)
+
+            if questionnaire_resolver is None:
+                raise RuntimeError(
+                    "Questionnaire resolver is required for live application execution"
+                )
 
             outcome = process_job_application(
                 jc=jc,
@@ -1860,7 +1918,18 @@ def enrich_application_metadata(
 # Main — orchestrates the full agent run
 # ----------------------------------------------------------------------------------
 
-if __name__ == "__main__":
+
+def run_application_cycle(
+    *,
+    dry_run: bool | None = None,
+    max_applications: int | None = None,
+) -> dict[str, Any]:
+    """
+    Execute one complete acquisition, classification, selection,
+    and application cycle.
+
+    Returns structured run data for the orchestration layer.
+    """
 
     username = os.getenv("NAUKRI_USERNAME")
     password = os.getenv("NAUKRI_PASSWORD")
@@ -1949,11 +2018,29 @@ if __name__ == "__main__":
         print(
             f"\n"
             f"{Fore.YELLOW}"
-            f"  No fresh or cached jobs available. Exiting."
+            f"  No fresh or cached jobs available."
             f"{Style.RESET_ALL}"
         )
 
-        raise SystemExit(0)
+        return {
+            "acquired": 0,
+            "classified": 0,
+            "selected": 0,
+            "summary": {
+                "total_candidates": 0,
+                "attempted": 0,
+                "submitted": 0,
+                "applied": 0,
+                "already_applied": 0,
+                "skipped_local": 0,
+                "skipped_external": 0,
+                "policy_rejected": 0,
+                "dry_run_skipped": 0,
+                "run_limit_reached": 0,
+                "failed": 0,
+                "manual_review": 0,
+            },
+        }
 
     # --------------------------------------------------------------------------
     # Step 4: Run AI filtering and ranking pipeline
@@ -2031,7 +2118,9 @@ if __name__ == "__main__":
                 os.getenv(
                     "ADAPTIVE_STRATEGY_ENABLED",
                     "true",
-                ).strip().lower()
+                )
+                .strip()
+                .lower()
                 in {
                     "1",
                     "true",
@@ -2053,7 +2142,7 @@ if __name__ == "__main__":
             ),
             base_minimum_score=int(
                 os.getenv(
-                    "MIN_APPLICATION_SCORE",
+                    "AUTO_APPLY_MIN_SCORE",
                     "68",
                 )
             ),
@@ -2102,39 +2191,19 @@ if __name__ == "__main__":
         ),
     )
 
-    print_section_title(
-        "adaptive application strategy"
-    )
+    print_section_title("adaptive application strategy")
 
-    print(
-        f"  Active                  "
-        f"{adaptive_strategy.active}"
-    )
+    print(f"  Active                  " f"{adaptive_strategy.active}")
 
-    print(
-        f"  Reason                  "
-        f"{adaptive_strategy.reason}"
-    )
+    print(f"  Reason                  " f"{adaptive_strategy.reason}")
 
-    print(
-        f"  Historical applications "
-        f"{adaptive_strategy.total_applications}"
-    )
+    print(f"  Historical applications " f"{adaptive_strategy.total_applications}")
 
-    print(
-        f"  Historical responses    "
-        f"{adaptive_strategy.total_responses}"
-    )
+    print(f"  Historical responses    " f"{adaptive_strategy.total_responses}")
 
-    print(
-        f"  Minimum score           "
-        f"{adaptive_strategy.minimum_score}"
-    )
+    print(f"  Minimum score           " f"{adaptive_strategy.minimum_score}")
 
-    print(
-        f"  Suggested run limit     "
-        f"{adaptive_strategy.max_applications_per_run}"
-    )
+    print(f"  Suggested run limit     " f"{adaptive_strategy.max_applications_per_run}")
 
     print(
         f"  Preferred priorities    "
@@ -2191,6 +2260,18 @@ if __name__ == "__main__":
     # --------------------------------------------------------------------------
     application_policy = build_runtime_application_policy()
 
+    if dry_run is not None:
+        application_policy = replace(
+            application_policy,
+            dry_run=dry_run,
+        )
+
+    if max_applications is not None:
+        application_policy = replace(
+            application_policy,
+            max_applications_per_run=max_applications,
+        )
+
     print_runtime_policy(application_policy)
 
     run_id = ledger.start_run(dry_run=application_policy.dry_run)
@@ -2244,3 +2325,36 @@ if __name__ == "__main__":
         run_limit_reached=run_summary.run_limit_reached,
         failed=run_summary.failed,
     )
+
+    return {
+        "acquired": len(jobs),
+        "classified": len(final_jobs),
+        "selected": len(allowed_jobs),
+        "summary": {
+            "total_candidates": run_summary.total_candidates,
+            "attempted": (
+                run_summary.applied
+                + run_summary.already_applied
+                + run_summary.skipped_external
+                + run_summary.failed
+            ),
+            "submitted": run_summary.applied,
+            "applied": run_summary.applied,
+            "already_applied": run_summary.already_applied,
+            "skipped_local": run_summary.skipped_local,
+            "skipped_external": run_summary.skipped_external,
+            "policy_rejected": run_summary.policy_rejected,
+            "dry_run_skipped": run_summary.dry_run_skipped,
+            "run_limit_reached": run_summary.run_limit_reached,
+            "failed": run_summary.failed,
+            "manual_review": 0,
+        },
+    }
+
+
+def main() -> None:
+    run_application_cycle()
+
+
+if __name__ == "__main__":
+    main()

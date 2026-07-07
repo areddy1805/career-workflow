@@ -38,7 +38,7 @@ resolver = HybridQuestionResolver(
 
 
 @dataclass
-class TestCase:
+class ResolverCase:
     name: str
 
     question: dict[str, Any]
@@ -74,7 +74,7 @@ def make_question(
 
 
 def print_result(
-    test_case: TestCase,
+    test_case: ResolverCase,
     result: HybridResolution,
 ) -> None:
     print("=" * 100)
@@ -104,7 +104,7 @@ def print_result(
 
 
 def validate_result(
-    test_case: TestCase,
+    test_case: ResolverCase,
     result: HybridResolution,
 ) -> list[str]:
     failures = []
@@ -168,7 +168,7 @@ TEST_CASES = [
     # ------------------------------------------------------------------
     # Deterministic resolution
     # ------------------------------------------------------------------
-    TestCase(
+    ResolverCase(
         name="Deterministic RAG experience",
         question=make_question(
             question_id="1",
@@ -180,7 +180,7 @@ TEST_CASES = [
         check_semantic_answer=True,
         minimum_confidence=1.0,
     ),
-    TestCase(
+    ResolverCase(
         name="Deterministic notice period serialization",
         question=make_question(
             question_id="2",
@@ -201,7 +201,7 @@ TEST_CASES = [
     # ------------------------------------------------------------------
     # Verified capability evidence
     # ------------------------------------------------------------------
-    TestCase(
+    ResolverCase(
         name="FastAPI model serving capability",
         question=make_question(
             question_id="3",
@@ -215,7 +215,7 @@ TEST_CASES = [
         check_semantic_answer=True,
         minimum_confidence=0.85,
     ),
-    TestCase(
+    ResolverCase(
         name="Advanced RAG capability",
         question=make_question(
             question_id="4",
@@ -230,7 +230,7 @@ TEST_CASES = [
         check_semantic_answer=True,
         minimum_confidence=0.85,
     ),
-    TestCase(
+    ResolverCase(
         name="Rule engine capability",
         question=make_question(
             question_id="5",
@@ -246,7 +246,7 @@ TEST_CASES = [
         check_semantic_answer=True,
         minimum_confidence=0.85,
     ),
-    TestCase(
+    ResolverCase(
         name="LLM application deployment capability",
         question=make_question(
             question_id="6",
@@ -258,7 +258,7 @@ TEST_CASES = [
         check_semantic_answer=True,
         minimum_confidence=0.85,
     ),
-    TestCase(
+    ResolverCase(
         name="Ollama capability",
         question=make_question(
             question_id="7",
@@ -273,7 +273,7 @@ TEST_CASES = [
     # ------------------------------------------------------------------
     # Unsupported specific technology
     # ------------------------------------------------------------------
-    TestCase(
+    ResolverCase(
         name="Unsupported vLLM capability",
         question=make_question(
             question_id="8",
@@ -282,7 +282,7 @@ TEST_CASES = [
         expected_status="manual_review",
         expected_source="llm_abstain",
     ),
-    TestCase(
+    ResolverCase(
         name="Mixed supported and unsupported frameworks",
         question=make_question(
             question_id="9",
@@ -294,7 +294,7 @@ TEST_CASES = [
     # ------------------------------------------------------------------
     # Exact production facts
     # ------------------------------------------------------------------
-    TestCase(
+    ResolverCase(
         name="Unknown production deployment duration",
         question=make_question(
             question_id="10",
@@ -305,7 +305,7 @@ TEST_CASES = [
         expected_status="manual_review",
         expected_source="llm_abstain",
     ),
-    TestCase(
+    ResolverCase(
         name="Unknown production user count",
         question=make_question(
             question_id="11",
@@ -317,7 +317,7 @@ TEST_CASES = [
         expected_status="manual_review",
         expected_source="llm_abstain",
     ),
-    TestCase(
+    ResolverCase(
         name="Unknown exact ROI metric",
         question=make_question(
             question_id="12",
@@ -329,7 +329,7 @@ TEST_CASES = [
         expected_status="manual_review",
         expected_source="llm_abstain",
     ),
-    TestCase(
+    ResolverCase(
         name="Unknown production traffic",
         question=make_question(
             question_id="13",
@@ -344,7 +344,7 @@ TEST_CASES = [
     # ------------------------------------------------------------------
     # Availability and relocation
     # ------------------------------------------------------------------
-    TestCase(
+    ResolverCase(
         name="Interview availability",
         question=make_question(
             question_id="14",
@@ -361,7 +361,7 @@ TEST_CASES = [
         expected_semantic_answer="Yes",
         check_semantic_answer=True,
     ),
-    TestCase(
+    ResolverCase(
         name="Relocation willingness",
         question=make_question(
             question_id="15",
@@ -376,7 +376,7 @@ TEST_CASES = [
         expected_semantic_answer="Yes",
         check_semantic_answer=True,
     ),
-    TestCase(
+    ResolverCase(
         name="Contract role willingness",
         question=make_question(
             question_id="16",
@@ -391,7 +391,7 @@ TEST_CASES = [
         expected_semantic_answer="Yes",
         check_semantic_answer=True,
     ),
-    TestCase(
+    ResolverCase(
         name="Remote work with office visit",
         question=make_question(
             question_id="17",
@@ -412,7 +412,7 @@ TEST_CASES = [
     # ------------------------------------------------------------------
     # Sensitive information
     # ------------------------------------------------------------------
-    TestCase(
+    ResolverCase(
         name="PAN number protection",
         question=make_question(
             question_id="18",
@@ -420,7 +420,7 @@ TEST_CASES = [
         ),
         expected_status="manual_review",
     ),
-    TestCase(
+    ResolverCase(
         name="Date of birth protection",
         question=make_question(
             question_id="19",
@@ -428,7 +428,7 @@ TEST_CASES = [
         ),
         expected_status="manual_review",
     ),
-    TestCase(
+    ResolverCase(
         name="Exact address protection",
         question=make_question(
             question_id="20",
@@ -439,7 +439,7 @@ TEST_CASES = [
     # ------------------------------------------------------------------
     # Descriptive technical answers
     # ------------------------------------------------------------------
-    TestCase(
+    ResolverCase(
         name="Descriptive RAG architecture",
         question=make_question(
             question_id="21",
@@ -449,7 +449,7 @@ TEST_CASES = [
         expected_source="llm",
         minimum_confidence=0.85,
     ),
-    TestCase(
+    ResolverCase(
         name="Non-functional requirements",
         question=make_question(
             question_id="22",
@@ -462,7 +462,7 @@ TEST_CASES = [
         expected_source="llm",
         minimum_confidence=0.85,
     ),
-    TestCase(
+    ResolverCase(
         name="NFR descriptive answer shape",
         question=make_question(
             question_id="23",
@@ -475,7 +475,7 @@ TEST_CASES = [
         expected_source="llm",
         minimum_confidence=0.85,
     ),
-    TestCase(
+    ResolverCase(
         name="RAG description answer shape",
         question=make_question(
             question_id="24",

@@ -273,6 +273,8 @@ class JobFilterPipeline2:
         "genai engineer",
         "gen ai engineer",
         "llm engineer",
+        "llm operations engineer",
+        "llm model developer",
         "rag engineer",
         "ai developer",
         "genai developer",
@@ -352,7 +354,8 @@ class JobFilterPipeline2:
         jobs = self.hard_veto(jobs)
         print("AFTER HARD VETO:", len(jobs))
 
-        jobs = self.experience_filter(jobs)
+        # Experience is ranking-only; never reject locally.
+        # jobs = self.experience_filter(jobs)
         print("AFTER EXP FILTER:", len(jobs))
 
         jobs = self.desc_red_flag_check(jobs)
@@ -361,7 +364,8 @@ class JobFilterPipeline2:
         jobs = self.title_filter(jobs)
         print("AFTER TITLE FILTER:", len(jobs))
 
-        jobs = self.company_veto(jobs)
+        # Company is not an application eligibility gate.
+        # jobs = self.company_veto(jobs)
         print("AFTER COMPANY VETO:", len(jobs))
 
         jobs = self.ai_relevance_gate(jobs)
@@ -725,46 +729,95 @@ class JobFilterPipeline2:
 
     @staticmethod
     def _classify_work_mode(job):
-        text = " ".join(
+        structured = " ".join(
             str(job.get(key) or "")
-            for key in ("work_mode", "workMode", "location", "description")
-        ).lower()
+            for key in ("work_mode", "workMode")
+        ).lower().strip()
 
-        remote_signals = (
-            "remote", "work from home", "work-from-home", "wfh",
-            "anywhere", "distributed team",
-        )
-        hybrid_signals = ("hybrid", "hybrid working", "hybrid work")
-        office_signals = (
-            "work from office", "work-from-office", "wfo",
-            "onsite", "on-site", "in office", "office based",
-        )
+        if structured:
+            if re.search(r"\b(remote|wfh|work from home)\b", structured):
+                return "remote"
+            if re.search(r"\bhybrid\b", structured):
+                return "hybrid"
+            if re.search(r"\b(office|onsite|on-site|wfo)\b", structured):
+                return "office"
 
-        if any(signal in text for signal in remote_signals):
-            return "remote"
-        if any(signal in text for signal in hybrid_signals):
-            return "hybrid"
-        if any(signal in text for signal in office_signals):
-            return "office"
-        return "unknown"
-
-    @staticmethod
-    def _is_pune_location(job):
         text = " ".join(
             str(job.get(key) or "")
             for key in ("location", "description")
         ).lower()
-        return bool(re.search(r"\bpune\b|pimpri|chinchwad|hinjawadi|hinjewadi", text))
+
+        negative_remote = (
+            r"\bnot remote\b",
+            r"\bno remote (?:work|working|option)\b",
+            r"\bremote (?:work|working) (?:is )?not available\b",
+            r"\bno work[- ]from[- ]home\b",
+            r"\bwfh (?:is )?not available\b",
+            r"\bmust relocate\b",
+        )
+        hybrid_signals = (
+            r"\bhybrid (?:role|position|work|working|model|mode)\b",
+            r"\bhybrid\b",
+        )
+        office_signals = (
+            r"\bwork[- ]from[- ]office\b",
+            r"\bwfo\b",
+            r"\bon[- ]site\b",
+            r"\bin[- ]office\b",
+            r"\boffice[- ]based\b",
+        )
+        remote_signals = (
+            r"\bfully remote\b",
+            r"\b100% remote\b",
+            r"\bremote (?:role|position|job|work|working)\b",
+            r"\bwork remotely\b",
+            r"\bwork[- ]from[- ]home\b",
+            r"\bwfh\b",
+            r"\blocation independent\b",
+            r"\bwork from anywhere\b",
+        )
+
+        if any(re.search(pattern, text) for pattern in negative_remote):
+            if any(re.search(pattern, text) for pattern in hybrid_signals):
+                return "hybrid"
+            if any(re.search(pattern, text) for pattern in office_signals):
+                return "office"
+            return "office"
+        if any(re.search(pattern, text) for pattern in hybrid_signals):
+            return "hybrid"
+        if any(re.search(pattern, text) for pattern in office_signals):
+            return "office"
+        if any(re.search(pattern, text) for pattern in remote_signals):
+            return "remote"
+        return "unknown"
+
+    @staticmethod
+    def _is_pune_location(job):
+        pune_pattern = r"\bpune\b|\bpimpri\b|\bchinchwad\b|\bhinja?wadi\b"
+
+        location = str(job.get("location") or "").lower()
+        if re.search(pune_pattern, location):
+            return True
+
+        description = str(job.get("description") or "").lower()
+        explicit_location_patterns = (
+            rf"\b(?:job|work|base|office) location\s*[:\-]\s*[^.\n]{{0,100}}(?:{pune_pattern})",
+            rf"\bbased in\s+(?:{pune_pattern})",
+            rf"\bposition is based in\s+(?:{pune_pattern})",
+        )
+        return any(re.search(pattern, description) for pattern in explicit_location_patterns)
 
     def location_work_mode_gate(self, jobs):
         """
-        Eligibility policy:
-        - remote/WFH: eligible from anywhere;
+        Hard location/work-mode policy:
+
+        - remote/WFH: eligible worldwide;
         - office/hybrid: eligible only when Pune is explicitly present;
-        - unknown mode: eligible regardless of listed location, because the
-          listing does not prove office attendance is required.
+        - unknown mode: eligible only when Pune is explicitly present.
+
+        This is the only hard job-selection gate.
         """
-        clean = []
+        eligible = []
 
         for job in jobs:
             mode = self._classify_work_mode(job)
@@ -775,12 +828,12 @@ class JobFilterPipeline2:
             job["is_pune_location"] = is_pune
 
             if mode == "remote":
-                clean.append(job)
+                eligible.append(job)
                 continue
 
             if mode in {"office", "hybrid"}:
                 if is_pune:
-                    clean.append(job)
+                    eligible.append(job)
                 else:
                     print(
                         f"  [LOCATION REJECT - {mode}] "
@@ -788,11 +841,15 @@ class JobFilterPipeline2:
                     )
                 continue
 
-            # Unknown mode is permissive: location metadata alone does not
-            # prove that office attendance is required.
-            clean.append(job)
+            if is_pune:
+                eligible.append(job)
+            else:
+                print(
+                    "  [LOCATION REJECT - unknown-mode-non-pune] "
+                    f"{job.get('title')} @ {job.get('company')} | {location}"
+                )
 
-        return clean
+        return eligible
 
     def tag_presort(self, jobs):
         my_stack = set(self.MY_STACK)
@@ -882,6 +939,9 @@ class JobFilterPipeline2:
 
         if f["ai_hits"] >= 4 and (f["backend_hits"] >= 2 or f["ai_title"]):
             return max(score, 78)
+
+        if f["ai_hits"] >= 2 and f["backend_hits"] >= 2:
+            return max(score, 72)
 
         if f["ai_hits"] >= 2 and (
             f["backend_hits"] >= 1 or f["frontend_hits"] >= 1
@@ -1203,23 +1263,76 @@ Jobs:
 
     def post_score_guard(self, jobs):
         """
-        Preserve every job that passed the genuine-AI relevance and location
-        gates. Stack family, seniority, and specialization only affect priority.
+        Enforce deterministic consistency between job evidence and score.
+
+        The model may refine ordering inside evidence bands, but it cannot:
+        - promote incidental-AI generic software above direct AI work;
+        - keep obvious VBA/content roles because the title contains AI;
+        - leave concrete LLM/RAG/agentic backend roles below their evidence floor.
         """
         clean = []
+
         for job in jobs:
             features = self._fit_features(job)
+            text = self._job_text(job)
+            title = (job.get("title") or "").lower()
+            score = int(job.get("ai_score", 0) or 0)
 
-            # Prevent incidental AI mentions in generic software jobs from being
-            # auto-applied. Explicit AI titles are never capped here.
+            vba_automation_hits = sum(
+                term in text
+                for term in (
+                    "vba", "excel macros", "advanced excel",
+                    "power query", "macro automation",
+                )
+            )
+            content_role_hits = sum(
+                term in text
+                for term in (
+                    "copywriter", "copywriting", "brand copy",
+                    "marketing copy", "content writer", "social media content",
+                )
+            )
+            engineering_hits = features["backend_hits"] + features["ai_hits"]
+
+            # Misleading AI titles: the actual work is office automation or content.
+            if vba_automation_hits >= 2 and features["ai_hits"] <= 1:
+                print(
+                    f"  [POST-SCORE REJECT - INCIDENTAL AUTOMATION] "
+                    f"{job.get('title')} @ {job.get('company')}"
+                )
+                continue
+
+            if content_role_hits >= 2 and engineering_hits <= 2:
+                print(
+                    f"  [POST-SCORE REJECT - NON-ENGINEERING AI] "
+                    f"{job.get('title')} @ {job.get('company')}"
+                )
+                continue
+
+            # Generic software with one weak AI mention stays below application floor.
             if features["ai_hits"] <= 1 and not features["ai_title"]:
-                job["ai_score"] = min(job.get("ai_score", 0), 49)
+                score = min(score, 49)
 
-            # Explicit AI titles get a minimum eligible score. This implements
-            # spray-and-pray within the AI domain while retaining useful ranking.
+            # Concrete applied-AI backend work gets deterministic floors even when
+            # the title is generic (for example an agentic manufacturing platform).
+            if features["ai_hits"] >= 4 and (
+                features["backend_hits"] >= 2 or features["ai_title"]
+            ):
+                score = max(score, 78)
+            elif features["ai_hits"] >= 2 and features["backend_hits"] >= 2:
+                score = max(score, 72)
+            elif features["ai_hits"] >= 2 and (
+                features["backend_hits"] >= 1
+                or features["frontend_hits"] >= 1
+            ):
+                score = max(score, 65)
+
+            # Explicit AI engineering titles remain eligible, but only after the
+            # misleading-title rejection rules above have run.
             if features["ai_title"]:
-                job["ai_score"] = max(job.get("ai_score", 0), self.min_apply_score)
+                score = max(score, self.min_apply_score)
 
+            job["ai_score"] = max(0, min(100, score))
             clean.append(job)
 
         return clean
