@@ -64,8 +64,6 @@ from src.application.failure import (
     classify_application_exception,
 )
 from src.application.response_store import save_response
-from src.application.ledger import ApplicationLedger
-from src.application.diversity import DiversityPolicy, diversify_jobs
 from src.resolution.hybrid_resolver import HybridQuestionResolver
 from src.search.job_search_cache import JobSearchCache
 from src.search.challenge_cooldown import SearchChallengeCooldown
@@ -1379,7 +1377,6 @@ def run_application_batch(
     detail_cache: dict[str, dict] | None = None,
     sleep_fn=time.sleep,
     save_fn=save_applied_job,
-    ledger: ApplicationLedger | None = None,
 ) -> ApplicationRunSummary:
     """
     Execute the application workflow for a batch of filtered jobs.
@@ -1424,9 +1421,6 @@ def run_application_batch(
             {},
         )
 
-        if ledger is not None:
-            ledger.record(job, "qualified", meta=meta)
-
         score = meta.get("score")
         ai_detail = meta.get("ai_detail")
 
@@ -1449,8 +1443,6 @@ def run_application_batch(
             )
 
             skipped_local_count += 1
-            if ledger is not None:
-                ledger.record(job, "skipped_local", meta=meta)
             continue
 
         # ----------------------------------------------------------
@@ -1471,13 +1463,6 @@ def run_application_batch(
             )
 
             policy_rejected_count += 1
-            if ledger is not None:
-                ledger.record(
-                    job,
-                    "policy_rejected",
-                    meta=meta,
-                    detail=policy_evaluation.reason.value,
-                )
             continue
 
         if effective_policy.dry_run:
@@ -1487,8 +1472,6 @@ def run_application_batch(
             )
 
             dry_run_skipped_count += 1
-            if ledger is not None:
-                ledger.record(job, "dry_run_suppressed", meta=meta)
             continue
 
         # ----------------------------------------------------------
@@ -1503,8 +1486,6 @@ def run_application_batch(
             )
 
             run_limit_reached_count += 1
-            if ledger is not None:
-                ledger.record(job, "run_limit_suppressed", meta=meta)
             continue
 
         # ----------------------------------------------------------
@@ -1521,16 +1502,12 @@ def run_application_batch(
                 print_status_skipped_external()
 
                 skipped_external_count += 1
-                if ledger is not None:
-                    ledger.record(job, "external_apply", meta=meta)
                 continue
 
         except Exception as exc:
             print_status_failed(exc)
 
             failed_count += 1
-            if ledger is not None:
-                ledger.record(job, "detail_check_failed", meta=meta, error=str(exc))
             continue
 
         # ----------------------------------------------------------
@@ -1539,9 +1516,6 @@ def run_application_batch(
 
         try:
             application_attempts += 1
-
-            if ledger is not None:
-                ledger.record(job, "applying", meta=meta)
 
             outcome = process_job_application(
                 jc=jc,
@@ -1562,9 +1536,6 @@ def run_application_batch(
 
                 already_applied_count += 1
 
-                if ledger is not None:
-                    ledger.record(job, "already_applied", meta=meta)
-
                 continue
 
             if outcome.status != ApplicationStatus.APPLIED:
@@ -1584,22 +1555,10 @@ def run_application_batch(
 
             applied_count += 1
 
-            if ledger is not None:
-                ledger.record(job, "applied", meta=meta)
-
         except Exception as exc:
             print_status_failed(exc)
 
             failed_count += 1
-
-            if ledger is not None:
-                failure = classify_application_exception(exc)
-                status = (
-                    "retryable_failure"
-                    if failure.kind == FailureKind.RETRYABLE_SAFE
-                    else "permanent_failure"
-                )
-                ledger.record(job, status, meta=meta, error=str(exc))
 
         finally:
             sleep_fn(3)
@@ -1681,172 +1640,6 @@ def print_runtime_policy(
         f"{policy.max_applications_per_run}"
         f"{Style.RESET_ALL}"
     )
-
-
-def classify_application_subtrack(result: dict) -> str:
-    """
-    Classify a scored job into one stable application subtrack.
-
-    This metadata is used for:
-        - application ledger analytics
-        - application policy
-        - portfolio balancing
-        - conversion analysis
-
-    Classification is deterministic and intentionally independent of
-    acquisition query wording.
-    """
-
-    text = " ".join(
-        [
-            str(result.get("title") or ""),
-            str(result.get("description") or ""),
-        ]
-    ).lower()
-
-    if any(
-        term in text
-        for term in (
-            "agentic ai",
-            "ai agent",
-            "multi-agent",
-            "multi agent",
-            "autogen",
-            "langgraph",
-            "semantic kernel",
-        )
-    ):
-        return "AGENTIC_AI"
-
-    if any(
-        term in text
-        for term in (
-            "retrieval augmented generation",
-            "retrieval-augmented generation",
-            "rag ",
-            "vector search",
-            "vector database",
-            "azure ai search",
-            "semantic search",
-            "embedding",
-        )
-    ):
-        return "RAG_SEARCH"
-
-    if any(
-        term in text
-        for term in (
-            "llm",
-            "large language model",
-            "generative ai",
-            "genai",
-            "gen ai",
-            "prompt engineering",
-            "langchain",
-            "azure openai",
-            "openai",
-        )
-    ):
-        return "GENAI_LLM"
-
-    if any(
-        term in text
-        for term in (
-            "full stack",
-            "fullstack",
-            "angular",
-            "react",
-            "node.js",
-            "nodejs",
-            "frontend",
-            "backend",
-        )
-    ):
-        return "FULLSTACK_AI"
-
-    if any(
-        term in text
-        for term in (
-            "mlops",
-            "llmops",
-            "ai platform",
-            "machine learning platform",
-            "model deployment",
-            "model serving",
-            "kubeflow",
-            "mlflow",
-        )
-    ):
-        return "AI_PLATFORM"
-
-    if any(
-        term in text
-        for term in (
-            "machine learning",
-            "deep learning",
-            "computer vision",
-            "data scientist",
-            "nlp",
-            "pytorch",
-            "tensorflow",
-        )
-    ):
-        return "TRADITIONAL_ML"
-
-    return "GENERAL_AI"
-
-
-def classify_application_priority(
-    result: dict,
-    *,
-    subtrack: str,
-) -> str:
-    """
-    Convert job score and strategic role family into a stable priority tier.
-    """
-
-    score = int(
-        result.get(
-            "ai_score",
-            result.get("score", 0),
-        )
-        or 0
-    )
-
-    strategic_subtracks = {
-        "AGENTIC_AI",
-        "RAG_SEARCH",
-        "GENAI_LLM",
-        "FULLSTACK_AI",
-    }
-
-    if score >= 85 and subtrack in strategic_subtracks:
-        return "TIER_A"
-
-    if score >= 75:
-        return "TIER_B"
-
-    return "TIER_C"
-
-
-def enrich_application_metadata(
-    results: list[dict],
-) -> list[dict]:
-    """
-    Attach stable application metadata to scored pipeline results.
-    """
-
-    for result in results:
-        subtrack = classify_application_subtrack(result)
-
-        result["subtrack"] = subtrack
-
-        result["priority"] = classify_application_priority(
-            result,
-            subtrack=subtrack,
-        )
-
-    return results
 
 
 # ----------------------------------------------------------------------------------
@@ -1967,7 +1760,6 @@ if __name__ == "__main__":
     )
 
     final_jobs = pipeline.score_and_select(enriched_candidates)
-
     for result in final_jobs:
 
         result["score"] = result.get(
@@ -1979,12 +1771,6 @@ if __name__ == "__main__":
             "ai_reason",
             result.get("ai_detail", ""),
         )
-
-    # --------------------------------------------------------------------------
-    # Attach stable application metadata
-    # --------------------------------------------------------------------------
-
-    final_jobs = enrich_application_metadata(final_jobs)
 
     # Lookup containing score, AI detail, priority, subtrack, and other
     # classification metadata produced by the filtering pipeline.
@@ -1998,51 +1784,19 @@ if __name__ == "__main__":
     # Step 5: Load local application history
     # --------------------------------------------------------------------------
 
-    ledger = ApplicationLedger(
-        os.getenv(
-            "APPLICATION_LEDGER_PATH",
-            "data/application_ledger.db",
-        )
-    )
-
-    # Backfill classification metadata for previously known jobs without
-    # mutating their lifecycle status.
-    for result in final_jobs:
-        ledger.update_metadata(
-            result["job_id"],
-            score=result.get("score"),
-            priority=str(result.get("priority") or ""),
-            subtrack=str(result.get("subtrack") or ""),
-        )
-
-    applied_jobs_set = load_applied_jobs() | ledger.applied_job_ids()
-
-    applied_jobs_set = load_applied_jobs() | ledger.applied_job_ids()
+    applied_jobs_set = load_applied_jobs()
 
     # --------------------------------------------------------------------------
-    # Step 6: Select and diversify filtered application candidates
+    # Step 6: Select filtered application candidates
     # --------------------------------------------------------------------------
 
     jobs_by_id = {job.job_id: job for job in jobs}
 
-    ranked_allowed_jobs = [
+    allowed_jobs = [
         jobs_by_id[result["job_id"]]
         for result in final_jobs
         if result["job_id"] in jobs_by_id
     ]
-
-    allowed_jobs = diversify_jobs(
-        ranked_allowed_jobs,
-        historical_company_counts=ledger.company_application_counts(),
-        policy=DiversityPolicy(
-            max_per_company_per_run=int(
-                os.getenv("MAX_APPLICATIONS_PER_COMPANY_PER_RUN", "2")
-            ),
-            max_per_role_family_per_company=int(
-                os.getenv("MAX_ROLE_FAMILY_PER_COMPANY", "1")
-            ),
-        ),
-    )
 
     print_section_title(f"applying to {len(allowed_jobs)} filtered jobs")
 
@@ -2052,8 +1806,6 @@ if __name__ == "__main__":
     application_policy = build_runtime_application_policy()
 
     print_runtime_policy(application_policy)
-
-    run_id = ledger.start_run(dry_run=application_policy.dry_run)
 
     logger.info(
         "Application runtime policy: dry_run=%s max_applications_per_run=%s",
@@ -2069,16 +1821,6 @@ if __name__ == "__main__":
         applied_jobs_set=applied_jobs_set,
         policy=application_policy,
         detail_cache=detail_cache,
-        ledger=ledger,
-    )
-
-    ledger.finish_run(
-        run_id,
-        fetched=len(jobs),
-        qualified=run_summary.total_candidates,
-        applied=run_summary.applied,
-        already_applied=run_summary.already_applied,
-        failed=run_summary.failed,
     )
 
     # --------------------------------------------------------------------------

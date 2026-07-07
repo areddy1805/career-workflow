@@ -203,4 +203,4 @@ def test_fetch_all_jobs_reports_normal_completion(
     assert result.challenge_encountered is False
     assert result.completed_normally is True
 
-    assert client.search_jobs.call_count == 20
+    assert client.search_jobs.call_count == 21
