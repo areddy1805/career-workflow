@@ -25,7 +25,7 @@
 </p>
 
 <p align="center">
-  <sub>Originally derived from the NopeRi API client foundation and substantially extended into a policy-driven application orchestration, lifecycle intelligence, and adaptive strategy system.</sub>
+  <sub>Originally derived from the NopeRi API-client foundation and substantially extended into a policy-driven application orchestration, lifecycle intelligence, and adaptive strategy system.</sub>
 </p>
 
 ---
@@ -1300,24 +1300,33 @@ The architecture separates platform access, decisioning, execution, tracking, an
 
 ---
 
-## Origin
+## Origin and Attribution
 
-Career Workflow is built on top of the Noperi / NopeRi Naukri API client foundation.
+Career Workflow originated as a fork of the NopeRi project by Traverser25.
 
-The original client provided the low-level capabilities that made this system possible:
+The upstream project provided the initial API-client foundation, including authentication, session handling, profile operations, job search, job details, and application-related API integration.
 
-- authentication;
-- session handling;
-- profile operations;
-- resume operations;
-- search APIs;
-- job details;
-- application APIs;
-- OTP/MFA support.
+This repository has since been substantially extended with independently developed systems for:
 
-This fork extends that foundation into a full application intelligence system with resilient acquisition, candidate-aware decisioning, policy and diversity controls, adaptive strategy, questionnaire resolution, failure handling, lifecycle tracking, analytics, and outcome feedback.
+- resilient multi-query and paginated acquisition;
+- search caching, challenge handling, and cooldown state;
+- candidate-aware classification and AI relevance gating;
+- LLM-assisted fit scoring and deterministic scoring guards;
+- application policy and diversity controls;
+- vacancy fingerprinting;
+- hybrid questionnaire resolution;
+- evidence retrieval and answer validation;
+- semantic response interpretation;
+- bounded retry and failure classification;
+- persistent application ledger;
+- recruiting lifecycle reconciliation;
+- application analytics;
+- evidence-gated adaptive strategy;
+- staged pipeline orchestration and structured run summaries.
 
-Repository history preserves the implementation evolution.
+Repository history is preserved to maintain implementation provenance and attribution.
+
+The upstream repository did not include a license file in the history inherited by this fork. Accordingly, no repository-wide open-source license is currently asserted here. Licensing of original contributions and upstream-derived portions should be considered separately unless explicit upstream permission is obtained.
 
 ---
 
