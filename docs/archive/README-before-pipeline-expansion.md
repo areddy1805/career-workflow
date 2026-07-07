@@ -9,8 +9,8 @@
 </p>
 
 <p align="center">
-  Acquire broadly. Qualify intelligently. Rank by fit. Enforce policy. Apply safely.<br/>
-  Resolve questionnaires. Track lifecycle state. Reconcile outcomes. Adapt from evidence.
+  Search jobs. Rank fit. Enforce policy. Apply safely. Resolve questionnaires.<br/>
+  Track recruiting outcomes. Learn from response data. Improve the next run.
 </p>
 
 <p align="center">
@@ -69,14 +69,12 @@ The objective is a controlled system that sends better applications, avoids repe
 | Layer | What it does | State |
 |---|---|:---:|
 | Authentication | Session login, bearer token, cookies, OTP/MFA | ✅ |
-| Search | Multi-query, multi-experience, paginated API acquisition | ✅ |
-| Search termination | Empty-page, partial-page, repeated-page and challenge stop conditions | ✅ |
-| Resilience | Search cache, challenge detection, cooldown, partial-result preservation and fallback | ✅ |
-| Classification | AI relevance, title quality, red flags, candidate fit and transition-role compatibility | ✅ |
-| Work-mode policy | Remote-anywhere; office/hybrid/unknown only when Pune-compatible | ✅ |
-| Ranking | LLM-assisted fit scoring, deterministic guards and score caching | ✅ |
-| Policy | Thresholds, duplicate prevention, run limits and dry-run controls | ✅ |
-| Diversity | Company, role-family and vacancy-fingerprint concentration control | ✅ |
+| Search | API search and recommended-job acquisition | ✅ |
+| Resilience | Search cache, challenge detection, cooldown, fallback | ✅ |
+| Classification | AI relevance, candidate fit, transition-role compatibility | ✅ |
+| Ranking | Score-based ordering and application prioritization | ✅ |
+| Policy | Thresholds, duplicate prevention, run limits | ✅ |
+| Diversity | Company and role-family concentration control | ✅ |
 | Strategy | Evidence-gated adaptive thresholds and allocation | ✅ |
 | Execution | Direct application and questionnaire application flows | ✅ |
 | Resolution | Deterministic evidence + constraints + LLM fallback | ✅ |
@@ -235,42 +233,16 @@ flowchart LR
     I --> F
 ```
 
-The acquisition layer is a bounded search matrix rather than a single search call.
+The acquisition layer provides:
 
-```text
-search queries
-    × experience buckets
-    × result pages
-    × configured locations
-        ↓
-live search requests
-        ↓
-cross-query / cross-page deduplication
-        ↓
-partial-result preservation
-        ↓
-cache merge and source attribution
-```
-
-Current acquisition capabilities include:
-
-- a broad portfolio of AI, GenAI, LLM, RAG, agentic AI, ML, MLOps, NLP, computer-vision and AI-enabled full-stack search families;
-- configurable experience buckets instead of a single hard-coded experience search;
-- configurable pagination depth;
-- per-page result sizing;
-- deduplication across overlapping queries, experience buckets and pages;
-- early termination on empty result pages;
-- early termination on partial terminal pages;
-- repeated-page fingerprint detection to prevent useless pagination loops;
-- persistent search-result caching with TTL;
-- source attribution for live-only, cache-only and live-plus-cache jobs;
-- challenge detection with partial results preserved;
-- persistent challenge cooldown state;
-- suppression of aggressive live search during cooldown;
-- cached fallback when live search cannot continue;
-- acquisition telemetry including request count, challenge state and source composition.
-
-A real broad dry run can acquire hundreds of unique jobs before downstream gates. The pipeline is intentionally recall-oriented at acquisition time: broad discovery happens first, while expensive detail fetching, scoring and application execution happen only after progressively stronger gates.
+- multiple search queries and pages;
+- recommended-job acquisition;
+- deduplication across sources;
+- persistent result caching;
+- challenge detection;
+- challenge cooldown state;
+- cached fallback during temporary search failure;
+- orchestration around live and fallback acquisition paths.
 
 Relevant modules:
 
@@ -289,66 +261,19 @@ src/search/
 
 It evaluates jobs against the target candidate profile and transition strategy.
 
-The classification pipeline is deliberately staged so cheap deterministic rejection happens before expensive full-JD scoring.
-
-```text
-raw jobs
-    ↓ normalize
-deduplicate
-    ↓
-hard vetoes
-    ↓
-title-quality filter
-    ↓
-company vetoes
-    ↓
-AI relevance gate
-    ↓
-detail-fetch budget and diversity allocation
-    ↓
-full JD red-flag analysis
-    ↓
-structured work-mode + location policy
-    ↓
-LLM-assisted fit scoring
-    ↓
-post-score deterministic guards
-    ↓
-ranked candidates
-```
-
 The classifier handles:
 
-- explicit AI, GenAI, LLM, RAG, agentic AI and applied-ML relevance;
-- genuine AI engineering versus incidental AI terminology;
-- AI-enabled full-stack and backend transition roles;
-- non-software title rejection;
-- research-primary and unrealistic executive-scope vetoes;
-- candidate-aware stack overlap;
-- stack mismatch as a ranking factor rather than a default hard rejection;
-- experience requirements as ranking context rather than a blanket local veto;
-- seniority and role-scope compatibility;
-- full-JD red-flag detection;
-- structured work-mode inference;
-- false-positive protection for phrases such as `remote sensing`;
-- fit-dominant LLM-assisted scoring;
-- deterministic post-score guards;
-- score caching and evidence-based score explanations.
-
-The current candidate strategy encoded by the system is intentionally broad:
-
-> Genuine AI-related roles remain eligible even when the exact stack is imperfect. Stack fit changes ranking priority; it normally does not eliminate the opportunity.
-
-Location policy is asymmetric by design:
-
-| Work mode | Eligibility rule |
-|---|---|
-| Remote | Eligible regardless of geography |
-| Office | Eligible only when Pune-compatible |
-| Hybrid | Eligible only when Pune-compatible |
-| Unknown | Conservatively eligible only when Pune-compatible |
-
-This prevents a broad national search from turning into applications for office-bound roles in unrelated cities while retaining globally remote opportunities.
+- explicit AI and GenAI relevance;
+- applied AI versus incidental AI mentions;
+- AI-enabled full-stack transition roles;
+- research-primary role vetoes;
+- unrealistic executive-scope rejection;
+- location compatibility;
+- stack conflicts without unnecessary hard rejection;
+- seniority compatibility;
+- fit-dominant ranking;
+- scoring floors for strong applied-AI roles;
+- score caching.
 
 Current application subtracks include:
 
@@ -382,21 +307,15 @@ flowchart TD
 
 Controls include:
 
-- configurable minimum score gates;
+- minimum score gates;
 - duplicate application prevention;
 - maximum applications per run;
-- maximum applications per company per run;
+- maximum applications per company;
 - role-family concentration limits;
-- vacancy-fingerprint deduplication;
-- same-company/same-family concentration protection;
-- bounded detail-fetch allocation by company and role family;
 - priority-aware selection;
 - subtrack-aware selection;
-- deterministic exploration/exploitation allocation;
 - dry-run suppression;
 - retry-aware execution.
-
-Vacancy fingerprints solve a problem that ordinary job-ID deduplication cannot: employers may publish many technically distinct listings representing the same underlying vacancy. The diversity layer can collapse or cap those duplicates before they consume application capacity or detail-fetch budget.
 
 Relevant modules:
 
@@ -648,8 +567,7 @@ flowchart LR
 
 ```text
 career-workflow/
-├── run_pipeline.py                 # Staged end-to-end orchestration entry point
-├── apply_agent.py                  # Acquisition and application-domain workflow
+├── apply_agent.py                  # Main application orchestrator
 ├── monitor_applications.py         # Server history + lifecycle reconciliation
 ├── application_report.py           # Analytics and strategy report
 ├── README.md
@@ -768,66 +686,23 @@ The LLM endpoint is used as a fallback for unresolved questionnaire cases. Core 
 
 ## Running the Pipeline
 
-`run_pipeline.py` is the staged orchestration entry point. `apply_agent.py` contains acquisition and application-domain functionality used by the pipeline.
-
-### Broad validation dry run
+### Safe dry run
 
 ```bash
-APPLICATION_DRY_RUN=true python run_pipeline.py --max-applications 500
+APPLICATION_DRY_RUN=true \
+MAX_APPLICATIONS_PER_RUN=1 \
+python apply_agent.py
 ```
 
-A broad dry run exercises the complete staged pipeline without submitting applications:
-
-```text
-PREFLIGHT
-    ↓
-ACQUISITION
-    ↓
-CLASSIFICATION
-    ↓
-SELECTION
-    ↓
-APPLICATION (suppressed by dry-run policy)
-    ↓
-RECONCILIATION
-    ↓
-STRATEGY
-    ↓
-REPORT
-```
-
-The run summary records stage status and execution counters:
-
-```json
-{
-  "status": "SUCCESS",
-  "acquired": 799,
-  "classified": 35,
-  "selected": 35,
-  "attempted": 0,
-  "submitted": 0,
-  "dry_run_skipped": 35,
-  "failed": 0
-}
-```
-
-The exact counts depend on live search results, cache state and configured search breadth. The example demonstrates the intended funnel shape: broad acquisition followed by aggressive qualification.
-
-### Small live canary
-
-```bash
-APPLICATION_DRY_RUN=false python run_pipeline.py --max-applications 3
-```
-
-Use small live batches while validating questionnaire handling, response interpretation, ledger writes and server reconciliation.
+This exercises acquisition, classification, scoring, ranking, policy, diversity, and selection without intentionally submitting live applications.
 
 ### Controlled live run
 
 ```bash
-APPLICATION_DRY_RUN=false python run_pipeline.py --max-applications 15
+APPLICATION_DRY_RUN=false \
+MAX_APPLICATIONS_PER_RUN=1 \
+python apply_agent.py
 ```
-
-`--max-applications` is a safety ceiling, not an application target. The pipeline may select fewer jobs when fewer candidates survive qualification and policy.
 
 ### Reconcile recruiting outcomes
 
@@ -859,128 +734,6 @@ git diff --check
 ```
 
 ---
-
-## Operating Model
-
-The system is designed for different execution modes rather than one permanently aggressive setting.
-
-| Mode | Purpose | Typical ceiling |
-|---|---|---:|
-| Broad dry run | Validate acquisition, classification and selection behavior | 500 |
-| Live canary | Validate real execution and questionnaire behavior | 1–3 |
-| Controlled live batch | Normal application operation after canary validation | 10–25 |
-| Reconciliation | Import server-side recruiter/application state | N/A |
-| Analytics | Inspect funnel health and adaptive strategy | N/A |
-
-A normal operating cycle is:
-
-```text
-1. Broad or incremental acquisition
-2. Classification and ranking
-3. Controlled application batch
-4. Persist local outcomes
-5. Reconcile server history
-6. Inspect lifecycle funnel
-7. Allow adaptive strategy only when evidence thresholds are met
-```
-
-The system does not assume every run should exhaust its configured application limit. Eligibility, diversity and available fresh supply determine the actual batch size.
-
----
-
-## Progressive Cost Control
-
-The pipeline orders work so expensive operations are concentrated on plausible candidates.
-
-```text
-CHEAP / BROAD
-    search acquisition
-    normalization
-    deduplication
-    title and hard vetoes
-    AI relevance gate
-        ↓
-MODERATE / NARROWER
-    detail-fetch budgeting
-    full JD retrieval
-    red-flag analysis
-    work-mode and location policy
-        ↓
-EXPENSIVE / SMALL SET
-    fit scoring
-    application execution
-    questionnaire resolution
-    local LLM fallback
-```
-
-This matters for local-first operation. A broad search can discover hundreds of jobs, but the local model is not invoked for every acquired result. Questionnaire LLM inference is a fallback path for unresolved application fields, not the default processing path for the entire search corpus.
-
----
-
-## Configuration Surface
-
-The runtime behavior is controlled primarily through `.env` and the CLI safety ceiling.
-
-Representative controls:
-
-```env
-APPLICATION_DRY_RUN=true
-MAX_APPLICATIONS_PER_RUN=500
-
-JOB_SEARCH_CACHE_PATH=data/job_search_cache.json
-JOB_SEARCH_CACHE_TTL_DAYS=3
-
-SEARCH_CHALLENGE_STATE_PATH=data/search_challenge_state.json
-SEARCH_CHALLENGE_COOLDOWN_MINUTES=60
-
-ADAPTIVE_STRATEGY_ENABLED=true
-ADAPTIVE_MIN_APPLICATIONS=30
-ADAPTIVE_MIN_RESPONSES=5
-ADAPTIVE_MIN_GROUP_SAMPLES=5
-ADAPTIVE_EXPLORATION_FRACTION=0.20
-
-AUTO_APPLY_MIN_SCORE=0
-
-DETAIL_FETCH_BUDGET=500
-DETAIL_BUDGET_MAX_PER_COMPANY=8
-DETAIL_BUDGET_MAX_PER_FAMILY=2
-
-MAX_APPLICATIONS_PER_COMPANY_PER_RUN=50
-MAX_ROLE_FAMILY_PER_COMPANY=1
-MAX_PER_VACANCY_FINGERPRINT=1
-
-APPLICATION_SCAN_MULTIPLIER=5
-MANUAL_ACTION_QUEUE_PATH=data/manual_action_queue.json
-```
-
-These values are operational policy, not universal recommendations. The repository keeps the mechanism configurable so search breadth, detail-fetch cost, application throughput and diversity constraints can evolve independently.
-
----
-
-## Observability and Run Summaries
-
-Every staged run produces a machine-readable summary with:
-
-- run ID;
-- overall status;
-- acquired count;
-- classified count;
-- selected count;
-- attempted count;
-- submitted count;
-- already-applied count;
-- local and external skips;
-- policy rejections;
-- dry-run suppressions;
-- run-limit suppressions;
-- failures;
-- manual-review count;
-- start and completion timestamps;
-- per-stage status;
-- captured errors.
-
-This makes pipeline behavior auditable. A successful dry run can prove that all stages completed while still showing `attempted: 0` and `submitted: 0`, distinguishing execution correctness from live side effects.
-
 
 ## Operational Data Model
 
@@ -1312,22 +1065,9 @@ timeline
 - [x] adaptive strategy
 - [x] outcome-driven strategy optimization
 
-### Orchestration
-
-- [x] staged pipeline execution
-- [x] preflight validation
-- [x] acquisition stage
-- [x] classification stage
-- [x] selection stage
-- [x] application stage
-- [x] reconciliation stage
-- [x] strategy stage
-- [x] reporting stage
-- [x] structured run summaries
-- [x] stage-level success/failure reporting
-
 ### Next Operational Phase
 
+- [ ] single-command daily cycle
 - [ ] run locking and overlap protection
 - [ ] structured runtime logging
 - [ ] unattended scheduling
