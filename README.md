@@ -5,33 +5,50 @@
 <h1 align="center">Career Workflow</h1>
 
 <p align="center">
-  <strong>An adaptive, resilient, end-to-end job application intelligence system.</strong>
+  <strong>AI-Assisted Job Discovery, Evaluation, and Application Orchestration</strong>
 </p>
 
 <p align="center">
-  Acquire broadly. Qualify intelligently. Rank by fit. Enforce policy. Apply safely.<br/>
-  Resolve questionnaires. Track lifecycle state. Reconcile outcomes. Adapt from evidence.
+  A policy-driven automation system for acquiring, evaluating, ranking,
+  applying to, tracking, and learning from job opportunities.
 </p>
 
 <p align="center">
   <img alt="Python" src="https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white">
-  <img alt="Tests" src="https://img.shields.io/badge/tests-146%20passing-brightgreen">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-passing-brightgreen">
+  <img alt="Pipeline" src="https://img.shields.io/badge/pipeline-8%20stages-success">
   <img alt="Architecture" src="https://img.shields.io/badge/architecture-modular-blueviolet">
-  <img alt="Browserless" src="https://img.shields.io/badge/core%20flow-browserless-success">
+  <img alt="Core Flow" src="https://img.shields.io/badge/core%20flow-browserless-success">
   <img alt="Tracking" src="https://img.shields.io/badge/tracking-SQLite-003B57?logo=sqlite&logoColor=white">
   <img alt="LLM" src="https://img.shields.io/badge/LLM-local--first-orange">
   <img alt="Status" src="https://img.shields.io/badge/status-active%20development-blue">
 </p>
 
 <p align="center">
-  <sub>Built on top of the Noperi / NopeRi API client foundation and expanded into a complete decision, execution, tracking, analytics, and feedback system.</sub>
+  <sub>Originally derived from the NopeRi API client foundation and substantially extended into a policy-driven application orchestration, lifecycle intelligence, and adaptive strategy system.</sub>
 </p>
 
 ---
 
 ## Overview
 
-Career Workflow is no longer a script that searches jobs and clicks Apply.
+Career Workflow is a closed-loop job application orchestration system that combines resilient job discovery, candidate-aware qualification, policy-controlled selection, application execution, questionnaire resolution, lifecycle tracking, funnel analytics, and evidence-gated strategy adaptation.
+
+### Current capabilities
+
+- resilient multi-query, multi-page job acquisition;
+- candidate-aware AI-role qualification and fit scoring;
+- configurable work-mode and location policy;
+- policy-controlled application selection;
+- company, role-family, and vacancy-level diversity controls;
+- direct and questionnaire-based application flows;
+- deterministic questionnaire resolution with local LLM fallback;
+- semantic response interpretation and bounded retry handling;
+- persistent SQLite application and lifecycle tracking;
+- server-side history reconciliation;
+- funnel, velocity, aging, and response-time analytics;
+- evidence-gated adaptive strategy;
+- staged orchestration with machine-readable run summaries.
 
 It is a closed-loop application system:
 
@@ -55,6 +72,7 @@ DISCOVER → ACQUIRE → QUALIFY → SCORE → RANK → SELECT → APPLY
                                                        │
                                                        └──────► NEXT RUN
 ```
+
 
 The system combines API-level automation, candidate-aware job classification, resilient search acquisition, application policy, diversity controls, hybrid questionnaire resolution, retry and failure handling, persistent lifecycle tracking, funnel analytics, and evidence-gated adaptive strategy.
 
@@ -773,7 +791,7 @@ The LLM endpoint is used as a fallback for unresolved questionnaire cases. Core 
 ### Broad validation dry run
 
 ```bash
-APPLICATION_DRY_RUN=true python run_pipeline.py --max-applications 500
+APPLICATION_DRY_RUN=true python run_pipeline.py --max-applications 50
 ```
 
 A broad dry run exercises the complete staged pipeline without submitting applications:
@@ -925,7 +943,7 @@ Representative controls:
 
 ```env
 APPLICATION_DRY_RUN=true
-MAX_APPLICATIONS_PER_RUN=500
+MAX_APPLICATIONS_PER_RUN=10
 
 JOB_SEARCH_CACHE_PATH=data/job_search_cache.json
 JOB_SEARCH_CACHE_TTL_DAYS=3
@@ -939,18 +957,15 @@ ADAPTIVE_MIN_RESPONSES=5
 ADAPTIVE_MIN_GROUP_SAMPLES=5
 ADAPTIVE_EXPLORATION_FRACTION=0.20
 
-AUTO_APPLY_MIN_SCORE=0
+AUTO_APPLY_MIN_SCORE=70
 
-DETAIL_FETCH_BUDGET=500
-DETAIL_BUDGET_MAX_PER_COMPANY=8
+DETAIL_FETCH_BUDGET=100
+DETAIL_BUDGET_MAX_PER_COMPANY=5
 DETAIL_BUDGET_MAX_PER_FAMILY=2
 
-MAX_APPLICATIONS_PER_COMPANY_PER_RUN=50
+MAX_APPLICATIONS_PER_COMPANY_PER_RUN=2
 MAX_ROLE_FAMILY_PER_COMPANY=1
 MAX_PER_VACANCY_FINGERPRINT=1
-
-APPLICATION_SCAN_MULTIPLIER=5
-MANUAL_ACTION_QUEUE_PATH=data/manual_action_queue.json
 ```
 
 These values are operational policy, not universal recommendations. The repository keeps the mechanism configurable so search breadth, detail-fetch cost, application throughput and diversity constraints can evolve independently.
@@ -1243,88 +1258,33 @@ timeline
 
 ---
 
+## Current Boundaries
+
+The current system is intentionally scoped around a single candidate workflow and a specific job-platform integration.
+
+Current boundaries include:
+
+- no hosted multi-user service;
+- no web dashboard;
+- no distributed worker architecture;
+- no autonomous credential management;
+- no guarantee of compatibility with future upstream API changes;
+- no claim that LLM-generated questionnaire answers are authoritative without candidate evidence;
+- no unattended scheduler or notification subsystem yet;
+- no automatic strategy adaptation before minimum evidence thresholds are satisfied.
+
+The architecture separates platform access, decisioning, execution, tracking, and analytics so these boundaries can evolve independently.
+
 ## Roadmap
 
-### Foundation
+### Completed
 
-- [x] API authentication and session management
-- [x] OTP/MFA support
-- [x] profile operations
-- [x] API job search
-- [x] recommended jobs
-- [x] one-click application
-
-### Intelligence
-
-- [x] candidate-aware job classification
-- [x] AI relevance gates
-- [x] fit scoring and ranking
-- [x] score caching
-- [x] application subtracks
-- [x] application priority tiers
-
-### Resilience
-
-- [x] search result cache
-- [x] challenge detection
-- [x] cooldown state
-- [x] cached fallback
-- [x] acquisition orchestration
-
-### Safe Application Execution
-
-- [x] dry-run mode
-- [x] run limits
-- [x] duplicate prevention
-- [x] company diversity
-- [x] role-family diversity
-- [x] failure classification
-- [x] retry policy
-- [x] semantic response interpretation
-
-### Questionnaire Intelligence
-
-- [x] candidate evidence model
-- [x] evidence retrieval
-- [x] deterministic resolver
-- [x] canonicalization
-- [x] answer constraints
-- [x] answer-shape validation
-- [x] local LLM fallback
-- [x] schema validation
-- [x] telemetry
-- [x] raw-response capture
-
-### Lifecycle and Analytics
-
-- [x] SQLite application ledger
-- [x] status event history
-- [x] server application-history reconciliation
-- [x] lifecycle normalization
-- [x] per-stage timestamps
-- [x] stale-application detection
-- [x] velocity analytics
-- [x] age distribution
-- [x] time-to-response measurement
-- [x] priority funnel
-- [x] subtrack funnel
-- [x] score-band performance
-- [x] adaptive strategy
-- [x] outcome-driven strategy optimization
-
-### Orchestration
-
-- [x] staged pipeline execution
-- [x] preflight validation
-- [x] acquisition stage
-- [x] classification stage
-- [x] selection stage
-- [x] application stage
-- [x] reconciliation stage
-- [x] strategy stage
-- [x] reporting stage
-- [x] structured run summaries
-- [x] stage-level success/failure reporting
+- [x] API authentication, session management, search and application flows
+- [x] resilient multi-query acquisition with cache and challenge handling
+- [x] candidate-aware classification, scoring, policy and diversity controls
+- [x] hybrid deterministic and local-LLM questionnaire resolution
+- [x] persistent application ledger and lifecycle reconciliation
+- [x] analytics, adaptive strategy and staged pipeline orchestration
 
 ### Next Operational Phase
 
@@ -1332,7 +1292,7 @@ timeline
 - [ ] structured runtime logging
 - [ ] unattended scheduling
 - [ ] failure notifications
-- [ ] daily operational summary
+- [ ] daily operational summaries
 - [ ] response-capture retention policy
 - [ ] sanitized regression fixtures
 - [ ] further decomposition of `apply_agent.py`
@@ -1372,5 +1332,5 @@ Never commit credentials, session tokens, cookies, candidate evidence, raw appli
 ---
 
 <p align="center">
-  <strong>Search intelligently. Apply selectively. Track everything. Adapt from evidence.</strong>
+  <strong>Discover broadly. Decide carefully. Execute safely. Adapt from evidence.</strong>
 </p>
