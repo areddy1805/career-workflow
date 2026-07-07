@@ -567,15 +567,8 @@ class CareerWorkflowPipeline:
 
         print(f"RANKED CANDIDATES: {len(ranked_jobs)}")
 
-        auto_apply_min_score = int(
-            os.getenv(
-                "AUTO_APPLY_MIN_SCORE",
-                os.getenv(
-                    "AUTO_APPLY_MIN_SCORE",
-                    "68",
-                ),
-            )
-        )
+        # Compatibility/audit value only. Eligibility is deliberately score-agnostic.
+        auto_apply_min_score = int(os.getenv("AUTO_APPLY_MIN_SCORE", "0"))
 
         eligible_jobs, eligibility_decisions = annotate_auto_apply_eligibility(
             ranked_jobs,
@@ -589,15 +582,15 @@ class CareerWorkflowPipeline:
 
         rejection_summary = eligibility_rejection_summary(eligibility_decisions)
 
-        print(f"AUTO-APPLY ELIGIBLE: " f"{len(eligible_jobs)}")
+        print(f"HARD-GATE ELIGIBLE: {len(eligible_jobs)}")
 
-        print(f"AUTO-APPLY REJECTED: " f"{len(rejected_decisions)}")
+        print(f"HARD-GATE REJECTED: {len(rejected_decisions)}")
 
         for decision in rejected_decisions:
             reasons = ",".join(decision["reasons"])
 
             print(
-                "  [AUTO-APPLY REJECT] "
+                "  [HARD-GATE REJECT] "
                 f"{decision['title']} "
                 f"@ {decision['company']} "
                 f"| score={decision['score']} "
@@ -605,7 +598,7 @@ class CareerWorkflowPipeline:
             )
 
         if rejection_summary:
-            print("AUTO-APPLY REJECTION SUMMARY:")
+            print("HARD-GATE REJECTION SUMMARY:")
 
             for (
                 reason,
@@ -672,9 +665,9 @@ class CareerWorkflowPipeline:
         self.context.stage_results["selection"] = {
             "classified": len(self.context.classified_jobs),
             "ranked": len(ranked_jobs),
-            "auto_apply_min_score": (auto_apply_min_score),
-            "auto_apply_eligible": len(eligible_jobs),
-            "auto_apply_rejected": len(rejected_decisions),
+            "score_floor_for_audit_only": auto_apply_min_score,
+            "hard_gate_eligible": len(eligible_jobs),
+            "hard_gate_rejected": len(rejected_decisions),
             "rejection_summary": (rejection_summary),
             "eligibility_decisions": (eligibility_decisions),
             "diversified": len(diversified_jobs),

@@ -354,7 +354,8 @@ class JobFilterPipeline2:
         jobs = self.hard_veto(jobs)
         print("AFTER HARD VETO:", len(jobs))
 
-        jobs = self.experience_filter(jobs)
+        # Experience is ranking-only; never reject locally.
+        # jobs = self.experience_filter(jobs)
         print("AFTER EXP FILTER:", len(jobs))
 
         jobs = self.desc_red_flag_check(jobs)
@@ -363,7 +364,8 @@ class JobFilterPipeline2:
         jobs = self.title_filter(jobs)
         print("AFTER TITLE FILTER:", len(jobs))
 
-        jobs = self.company_veto(jobs)
+        # Company is not an application eligibility gate.
+        # jobs = self.company_veto(jobs)
         print("AFTER COMPANY VETO:", len(jobs))
 
         jobs = self.ai_relevance_gate(jobs)
@@ -760,13 +762,15 @@ class JobFilterPipeline2:
 
     def location_work_mode_gate(self, jobs):
         """
-        Eligibility policy:
-        - remote/WFH: eligible from anywhere;
+        Hard location/work-mode policy:
+
+        - remote/WFH: eligible worldwide;
         - office/hybrid: eligible only when Pune is explicitly present;
-        - unknown mode: eligible regardless of listed location, because the
-          listing does not prove office attendance is required.
+        - unknown mode: eligible only when Pune is explicitly present.
+
+        This is the only hard job-selection gate.
         """
-        clean = []
+        eligible = []
 
         for job in jobs:
             mode = self._classify_work_mode(job)
@@ -777,12 +781,12 @@ class JobFilterPipeline2:
             job["is_pune_location"] = is_pune
 
             if mode == "remote":
-                clean.append(job)
+                eligible.append(job)
                 continue
 
             if mode in {"office", "hybrid"}:
                 if is_pune:
-                    clean.append(job)
+                    eligible.append(job)
                 else:
                     print(
                         f"  [LOCATION REJECT - {mode}] "
@@ -790,11 +794,15 @@ class JobFilterPipeline2:
                     )
                 continue
 
-            # Unknown mode is permissive: location metadata alone does not
-            # prove that office attendance is required.
-            clean.append(job)
+            if is_pune:
+                eligible.append(job)
+            else:
+                print(
+                    "  [LOCATION REJECT - unknown-mode-non-pune] "
+                    f"{job.get('title')} @ {job.get('company')} | {location}"
+                )
 
-        return clean
+        return eligible
 
     def tag_presort(self, jobs):
         my_stack = set(self.MY_STACK)

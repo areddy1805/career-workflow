@@ -21,13 +21,21 @@ def _value(job: Any, name: str, default: str = "") -> str:
 
 
 def normalize_company(value: str) -> str:
-    text = re.sub(r"\b(pvt|private|ltd|limited|llp|inc|corp|corporation)\b", " ", (value or "").lower())
+    text = re.sub(
+        r"\b(pvt|private|ltd|limited|llp|inc|corp|corporation)\b",
+        " ",
+        (value or "").lower(),
+    )
     return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9]+", " ", text)).strip()
 
 
 def normalize_role_family(value: str) -> str:
     text = (value or "").lower()
-    text = re.sub(r"\b(senior|sr|junior|jr|lead|principal|staff|hiring for|opening at|immediate joiner)\b", " ", text)
+    text = re.sub(
+        r"\b(senior|sr|junior|jr|lead|principal|staff|hiring for|opening at|immediate joiner)\b",
+        " ",
+        text,
+    )
     text = re.sub(r"[^a-z0-9+#]+", " ", text)
     return re.sub(r"\s+", " ", text).strip()
 
@@ -39,19 +47,23 @@ def normalize_location(value: str) -> str:
 
 
 def vacancy_fingerprint(job: Any) -> str:
-    return "|".join((
-        normalize_company(_value(job, "company")),
-        normalize_role_family(_value(job, "title")),
-        normalize_location(_value(job, "location")),
-    ))
+    return "|".join(
+        (
+            normalize_company(_value(job, "company")),
+            normalize_role_family(_value(job, "title")),
+            normalize_location(_value(job, "location")),
+        )
+    )
 
 
 def vacancy_family_fingerprint(job: Any) -> str:
     """Cheap pre-detail grouping key. Location is intentionally excluded."""
-    return "|".join((
-        normalize_company(_value(job, "company")),
-        normalize_role_family(_value(job, "title")),
-    ))
+    return "|".join(
+        (
+            normalize_company(_value(job, "company")),
+            normalize_role_family(_value(job, "title")),
+        )
+    )
 
 
 def normalize_description(value: str) -> str:
@@ -82,36 +94,75 @@ def allocate_detail_budget(
     max_per_company: int = 8,
     max_per_family: int = 2,
 ) -> list[Any]:
-    """Round-robin companies while limiting duplicate company/title families."""
+    """
+    Allocate detail-fetch budget with diversity-first ordering.
+
+    Company and role-family caps shape the first pass only.
+    Candidates exceeding those caps are retained in overflow and used
+    to backfill any remaining budget.
+
+    This function must not silently discard otherwise eligible jobs.
+    """
     if budget < 1:
         return []
 
     company_queues: dict[str, deque[Any]] = defaultdict(deque)
     company_order: list[str] = []
+
     family_counts: dict[str, int] = defaultdict(int)
+    overflow: list[Any] = []
 
     for job in jobs:
-        family = vacancy_family_fingerprint(job)
-        if family_counts[family] >= max_per_family:
-            continue
-        family_counts[family] += 1
         company = normalize_company(_value(job, "company")) or "__unknown__"
+        family = vacancy_family_fingerprint(job)
+
+        if family_counts[family] >= max_per_family:
+            overflow.append(job)
+            continue
+
+        family_counts[family] += 1
+
         if company not in company_queues:
             company_order.append(company)
+
         company_queues[company].append(job)
 
     selected: list[Any] = []
+    selected_ids: set[str] = set()
     company_counts: dict[str, int] = defaultdict(int)
+
     active = deque(company_order)
 
     while active and len(selected) < budget:
         company = active.popleft()
         queue = company_queues[company]
+
         if queue and company_counts[company] < max_per_company:
-            selected.append(queue.popleft())
+            job = queue.popleft()
+            selected.append(job)
+            selected_ids.add(str(_value(job, "job_id")))
             company_counts[company] += 1
+
         if queue and company_counts[company] < max_per_company:
             active.append(company)
+
+    for company in company_order:
+        queue = company_queues[company]
+
+        while queue:
+            overflow.append(queue.popleft())
+
+    for job in overflow:
+        if len(selected) >= budget:
+            break
+
+        job_id = str(_value(job, "job_id"))
+
+        if job_id in selected_ids:
+            continue
+
+        selected.append(job)
+        selected_ids.add(job_id)
 
     return selected
 
@@ -143,11 +194,16 @@ def diversify_jobs(
     historical_company_counts: dict[str, int] | None = None,
     policy: DiversityPolicy | None = None,
 ) -> list[Any]:
+    """Reorder for diversity without discarding valid opportunities.
+
+    Company and role-family caps shape the first pass only. Overflow candidates
+    are appended in ranked order. Exact vacancy fingerprints remain suppressed.
+    """
     policy = policy or DiversityPolicy()
     history = historical_company_counts or {}
     company_run_counts: dict[str, int] = defaultdict(int)
     family_counts: dict[tuple[str, str], int] = defaultdict(int)
-    fingerprint_counts: dict[str, int] = defaultdict(int)
+    seen_fingerprints: set[str] = set()
 
     ranked = sorted(
         enumerate(jobs),
@@ -157,22 +213,28 @@ def diversify_jobs(
         ),
     )
 
-    selected: list[Any] = []
+    primary: list[Any] = []
+    overflow: list[Any] = []
+
     for _, job in ranked:
         company = normalize_company(_value(job, "company"))
         family = normalize_role_family(_value(job, "title"))
         fingerprint = vacancy_fingerprint(job)
 
-        if company_run_counts[company] >= policy.max_per_company_per_run:
+        if fingerprint in seen_fingerprints:
             continue
-        if family_counts[(company, family)] >= policy.max_per_role_family_per_company:
-            continue
-        if fingerprint_counts[fingerprint] >= policy.max_per_vacancy_fingerprint:
-            continue
+        seen_fingerprints.add(fingerprint)
 
-        selected.append(job)
-        company_run_counts[company] += 1
-        family_counts[(company, family)] += 1
-        fingerprint_counts[fingerprint] += 1
+        within_company = company_run_counts[company] < policy.max_per_company_per_run
+        within_family = (
+            family_counts[(company, family)] < policy.max_per_role_family_per_company
+        )
 
-    return selected
+        if within_company and within_family:
+            primary.append(job)
+            company_run_counts[company] += 1
+            family_counts[(company, family)] += 1
+        else:
+            overflow.append(job)
+
+    return primary + overflow
