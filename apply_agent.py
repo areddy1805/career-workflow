@@ -39,7 +39,7 @@ from dotenv import load_dotenv
 
 from config.candidate_profile import CANDIDATE_PROFILE
 from src.client.job_client import NaukriJobClient
-from src.client.jop_classifier import JobFilterPipeline2
+from src.client.job_classifier import JobFilterPipeline2
 from src.client.naukri_client import NaukriLoginClient
 from src.exceptions.exceptions import (
     NaukriAuthError,
@@ -95,7 +95,7 @@ logger = logging.getLogger(__name__)
 # The file is appended to, never rewritten, so historical records are preserved.
 # ----------------------------------------------------------------------------------
 
-CSV_FILE = "applied_jobs.csv"
+CSV_FILE = "data/applied_jobs.csv"
 
 
 def load_applied_jobs() -> set[str]:

@@ -292,6 +292,13 @@ class JobFilterPipeline2:
         "prompt engineer",
         "ml scientist",
         "applied scientist",
+        "mlops engineer",
+        "llmops engineer",
+        "ai lead",
+        "ai architect",
+        "ai full stack engineer",
+        "full stack ai engineer",
+        "fullstack ai engineer",
     }
 
     def __init__(
@@ -299,7 +306,7 @@ class JobFilterPipeline2:
         api_key: str | None = None,
         base_url: str | None = None,
         model: str | None = None,
-        cache_file: str = "score_cache.json",
+        cache_file: str = "data/score_cache.json",
         daily_apply_limit: int = 50,
         min_apply_score: int = 50,
         ai_score_limit: int = 300,
@@ -613,11 +620,24 @@ class JobFilterPipeline2:
         for job in jobs:
             title = (job.get("title") or "").lower()
 
-            if not any(keyword in title for keyword in self.SOFTWARE_KEYWORDS):
-                print(f"  [TITLE FILTER - not software] {job.get('title')}")
+            explicit_ai_title = any(
+                signal in title for signal in self.AI_TITLE_SIGNALS
+            )
+
+            if (
+                not explicit_ai_title
+                and not any(keyword in title for keyword in self.SOFTWARE_KEYWORDS)
+            ):
+                print(f"  [TITLE FILTER - not software/AI] {job.get('title')}")
                 continue
 
-            if any(keyword in title for keyword in self.WRONG_TRACK_TITLE_KEYWORDS):
+            if (
+                not explicit_ai_title
+                and any(
+                    keyword in title
+                    for keyword in self.WRONG_TRACK_TITLE_KEYWORDS
+                )
+            ):
                 print(f"  [TITLE FILTER - wrong track] {job.get('title')}")
                 continue
 
@@ -741,8 +761,8 @@ class JobFilterPipeline2:
         Eligibility policy:
         - remote/WFH: eligible from anywhere;
         - office/hybrid: eligible only when Pune is explicitly present;
-        - unknown mode: keep Pune roles; reject explicit non-Pune locations;
-          keep truly location-unknown roles to avoid false negatives.
+        - unknown mode: eligible regardless of listed location, because the
+          listing does not prove office attendance is required.
         """
         clean = []
 
@@ -768,14 +788,9 @@ class JobFilterPipeline2:
                     )
                 continue
 
-            if is_pune or not location:
-                clean.append(job)
-                continue
-
-            print(
-                f"  [LOCATION REJECT - non-Pune, mode unknown] "
-                f"{job.get('title')} @ {job.get('company')} | {location}"
-            )
+            # Unknown mode is permissive: location metadata alone does not
+            # prove that office attendance is required.
+            clean.append(job)
 
         return clean
 
@@ -1227,20 +1242,13 @@ Jobs:
     # SELECT
     # =========================================================
     def select(self, jobs):
-        apply_list = [j for j in jobs if j.get("ai_score", 0) >= self.min_apply_score]
-        review_list = [
-            j for j in jobs if 10 <= j.get("ai_score", 0) < self.min_apply_score
-        ]
+        """
+        Every job reaching this stage has already passed the hard-veto,
+        genuine-AI relevance, and location/work-mode eligibility gates.
 
-        if review_list:
-            print(f"\n── REVIEW MANUALLY ({len(review_list)}) ──")
-            for j in review_list:
-                print(
-                    f"  score={j.get('ai_score')}  {j.get('title')} @ {j.get('company')}"
-                    f"  |  {j.get('ai_reason', '')}"
-                )
-
-        return apply_list[: self.daily_apply_limit]
+        AI score controls ordering only; it is not an eligibility threshold.
+        """
+        return jobs[: self.daily_apply_limit]
 
     # =========================================================
     # CACHE

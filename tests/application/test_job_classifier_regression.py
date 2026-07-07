@@ -1,4 +1,4 @@
-from src.client import jop_classifier as module
+from src.client import job_classifier as module
 
 Pipeline = module.JobFilterPipeline2
 

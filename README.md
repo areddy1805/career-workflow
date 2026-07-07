@@ -1,427 +1,1116 @@
-
-<!--
-
-rm -f data/search_challenge_state.json
-
-APPLICATION_DRY_RUN=true \
-MAX_APPLICATIONS_PER_RUN=1 \
-python apply_agent.py
-
-
-APPLICATION_DRY_RUN=false \
-MAX_APPLICATIONS_PER_RUN=1 \
-python apply_agent.py
-
- -->
-
-
-
-
 <p align="center">
-  <img src="assests/logo2.svg" alt="naukri-api-client" width="680"/>
+  <img src="assets/logo.png" alt="Career Workflow" width="720"/>
 </p>
 
-# Noperi
+<h1 align="center">Career Workflow</h1>
 
-A lightweight and Selenium-free Python API client for Naukri.com, designed to help you update your profile, upload your resume, search jobs, and apply to jobs (easy apply) programmatically.
+<p align="center">
+  <strong>An adaptive, resilient, end-to-end job application intelligence system.</strong>
+</p>
+
+<p align="center">
+  Search jobs. Rank fit. Enforce policy. Apply safely. Resolve questionnaires.<br/>
+  Track recruiting outcomes. Learn from response data. Improve the next run.
+</p>
+
+<p align="center">
+  <img alt="Python" src="https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-146%20passing-brightgreen">
+  <img alt="Architecture" src="https://img.shields.io/badge/architecture-modular-blueviolet">
+  <img alt="Browserless" src="https://img.shields.io/badge/core%20flow-browserless-success">
+  <img alt="Tracking" src="https://img.shields.io/badge/tracking-SQLite-003B57?logo=sqlite&logoColor=white">
+  <img alt="LLM" src="https://img.shields.io/badge/LLM-local--first-orange">
+  <img alt="Status" src="https://img.shields.io/badge/status-active%20development-blue">
+</p>
+
+<p align="center">
+  <sub>Built on top of the Noperi / NopeRi API client foundation and expanded into a complete decision, execution, tracking, analytics, and feedback system.</sub>
+</p>
 
 ---
 
-**Status:** 🟢 Working (Last tested: July 2026)
+## Overview
+
+Career Workflow is no longer a script that searches jobs and clicks Apply.
+
+It is a closed-loop application system:
+
+```text
+DISCOVER → ACQUIRE → QUALIFY → SCORE → RANK → SELECT → APPLY
+                                                       │
+                                                       ▼
+                                              RESOLVE QUESTIONS
+                                                       │
+                                                       ▼
+                                                  TRACK STATE
+                                                       │
+                                                       ▼
+                                              RECONCILE OUTCOMES
+                                                       │
+                                                       ▼
+                                                ANALYZE FUNNEL
+                                                       │
+                                                       ▼
+                                               ADAPT STRATEGY
+                                                       │
+                                                       └──────► NEXT RUN
+```
+
+The system combines API-level automation, candidate-aware job classification, resilient search acquisition, application policy, diversity controls, hybrid questionnaire resolution, retry and failure handling, persistent lifecycle tracking, funnel analytics, and evidence-gated adaptive strategy.
+
+The objective is not maximum application volume.
+
+The objective is a controlled system that sends better applications, avoids repeated mistakes, survives partial failures, observes recruiting outcomes, and changes strategy only when enough evidence exists.
 
 ---
 
-## ✨ Features
+## System at a Glance
 
-| Feature | Status |
+| Layer | What it does | State |
+|---|---|:---:|
+| Authentication | Session login, bearer token, cookies, OTP/MFA | ✅ |
+| Search | API search and recommended-job acquisition | ✅ |
+| Resilience | Search cache, challenge detection, cooldown, fallback | ✅ |
+| Classification | AI relevance, candidate fit, transition-role compatibility | ✅ |
+| Ranking | Score-based ordering and application prioritization | ✅ |
+| Policy | Thresholds, duplicate prevention, run limits | ✅ |
+| Diversity | Company and role-family concentration control | ✅ |
+| Strategy | Evidence-gated adaptive thresholds and allocation | ✅ |
+| Execution | Direct application and questionnaire application flows | ✅ |
+| Resolution | Deterministic evidence + constraints + LLM fallback | ✅ |
+| Failure handling | Response interpretation, retry policy, terminal states | ✅ |
+| Ledger | SQLite state, event history, run summaries | ✅ |
+| Monitoring | Server application-history reconciliation | ✅ |
+| Lifecycle | Submitted → Viewed → Shortlisted → Interview → Outcome | ✅ |
+| Analytics | Velocity, age, response time, funnel and segment performance | ✅ |
+| Automation | Unattended scheduled operation and notifications | 🚧 |
+
+---
+
+## Architecture
+
+```mermaid
+flowchart TD
+    A[Candidate Profile & Evidence] --> D[Job Classifier]
+
+    S1[Naukri Search API] --> B[Acquisition Orchestrator]
+    S2[Recommended Jobs] --> B
+    B --> C{Search Healthy?}
+
+    C -->|Yes| D
+    C -->|Challenge| E[Challenge Cooldown]
+    E --> F[Search Cache Fallback]
+    F --> D
+
+    D --> G[Fit Scoring & AI Relevance]
+    G --> H[Application Policy]
+    H --> I[Diversity Controls]
+    I --> J[Adaptive Strategy]
+    J --> K[Ranked Application Batch]
+
+    K --> L[Application Executor]
+    L --> M{Response Type}
+
+    M -->|Success| N[Application Ledger]
+    M -->|Already Applied| N
+    M -->|Questionnaire| O[Hybrid Questionnaire Resolver]
+    M -->|Failure| P[Failure Classifier]
+
+    O --> Q[Evidence Retrieval]
+    Q --> R[Deterministic Resolution]
+    R --> T[Constraint & Shape Validation]
+    T -->|Resolved| U[Questionnaire Submission]
+    T -->|Unresolved| V[Local LLM Fallback]
+    V --> U
+    U --> N
+
+    P --> W{Recoverable?}
+    W -->|Yes| X[Retry Policy]
+    X --> L
+    W -->|No| N
+
+    N --> Y[Server History Monitor]
+    Y --> Z[Lifecycle Reconciliation]
+    Z --> AA[Application Analytics]
+    AA --> AB[Strategy Optimization]
+    AB --> J
+```
+
+---
+
+## Closed-Loop Strategy
+
+The defining feature of the system is the feedback loop.
+
+```mermaid
+flowchart LR
+    A[Search Strategy] --> B[Applications]
+    B --> C[Recruiter Outcomes]
+    C --> D[Lifecycle Ledger]
+    D --> E[Analytics]
+    E --> F{Enough Evidence?}
+    F -->|No| G[Keep Baseline Strategy]
+    F -->|Yes| H[Optimize Thresholds]
+    H --> I[Prefer Better Segments]
+    I --> J[Adjust Run Limits]
+    J --> A
+    G --> A
+```
+
+Adaptive behavior is deliberately evidence-gated. A rejection or two does not cause the system to thrash. Strategy changes only after sufficient outcome evidence exists.
+
+Current adaptive controls include:
+
+- minimum score threshold;
+- maximum applications per run;
+- preferred priority tiers;
+- preferred role subtracks;
+- allocation toward stronger-performing segments.
+
+---
+
+## Why This Is Different From a Basic Auto-Apply Bot
+
+A basic bot:
+
+```text
+search → keyword match → apply → repeat
+```
+
+Career Workflow:
+
+```text
+resilient acquisition
+        ↓
+candidate-aware classification
+        ↓
+fit scoring + AI relevance gates
+        ↓
+application policy
+        ↓
+company + role-family diversity
+        ↓
+adaptive strategy
+        ↓
+safe execution
+        ↓
+questionnaire intelligence
+        ↓
+response interpretation
+        ↓
+failure classification + retry
+        ↓
+persistent application ledger
+        ↓
+server lifecycle reconciliation
+        ↓
+funnel analytics
+        ↓
+outcome-driven strategy feedback
+```
+
+This distinction matters. The system treats job application as a decision pipeline with state and feedback, not a loop over search results.
+
+---
+
+## Core Capabilities
+
+### 1. Resilient Job Acquisition
+
+Search acquisition is built to degrade safely.
+
+```mermaid
+flowchart LR
+    A[Search Queries] --> B[Live API Search]
+    B --> C{Result}
+    C -->|Success| D[Normalize & Deduplicate]
+    D --> E[Persist Cache]
+    E --> F[Classifier]
+
+    C -->|Challenge| G[Record Cooldown]
+    G --> H[Suppress Aggressive Retry]
+    H --> I[Load Cached Jobs]
+    I --> F
+```
+
+The acquisition layer provides:
+
+- multiple search queries and pages;
+- recommended-job acquisition;
+- deduplication across sources;
+- persistent result caching;
+- challenge detection;
+- challenge cooldown state;
+- cached fallback during temporary search failure;
+- orchestration around live and fallback acquisition paths.
+
+Relevant modules:
+
+```text
+src/search/
+├── challenge_cooldown.py
+├── job_cache_codec.py
+└── job_search_cache.py
+```
+
+---
+
+### 2. Candidate-Aware Job Intelligence
+
+`src/client/job_classifier.py` is not a generic keyword filter.
+
+It evaluates jobs against the target candidate profile and transition strategy.
+
+The classifier handles:
+
+- explicit AI and GenAI relevance;
+- applied AI versus incidental AI mentions;
+- AI-enabled full-stack transition roles;
+- research-primary role vetoes;
+- unrealistic executive-scope rejection;
+- location compatibility;
+- stack conflicts without unnecessary hard rejection;
+- seniority compatibility;
+- fit-dominant ranking;
+- scoring floors for strong applied-AI roles;
+- score caching.
+
+Current application subtracks include:
+
+| Subtrack | Purpose |
 |---|---|
-| Login & session management (Bearer token) | ✅ Working |
-| Resume upload (PDF) | ✅ Working |
-| Profile update (headline, name, summary) | ✅ Working |
-| Recommended jobs feed | ✅ Working |
-| `nkparam` token harvester (Selenium utility) | ✅ Working |
-| `nkparam` token generator (pure API, no Selenium) | ✅ Working |
-| Job search (`/jobapi/v3/search`) | ✅ Working |
-| Job details  (`jobapi/v1/job/`) | ✅ Working |
-| One-click job apply | ✅ Working |
-| Job questionnaire while applying| ✅ Working Partially (harcoded answer) |
-| OTP login/MFA | ✅ Working |
-
-
-> **Updated on April 13 2026**
-> **No Selenium required** for core features.
-> The `nkparam` token is generated via API.
-> Selenium-based harvester is kept only as a backup utility.
-
-> **No Selenium required** for features 1–4. The Selenium script is only needed as a helper to harvest fresh `nkparam` tokens for the search endpoint.
+| `GENAI_LLM` | LLM application engineering, RAG, GenAI systems |
+| `AGENTIC_AI` | agent workflows, orchestration, tool-using systems |
+| `TRADITIONAL_ML` | suitable applied ML transition opportunities |
+| Other classified paths | transition-compatible engineering roles |
 
 ---
 
-## 🗂️ Project Structure
+### 3. Policy and Diversity Engine
 
+The system does not let a ranking score directly trigger unlimited applications.
+
+```mermaid
+flowchart TD
+    A[Ranked Job] --> B{Minimum Score?}
+    B -->|No| X[Reject]
+    B -->|Yes| C{Already Applied?}
+    C -->|Yes| X
+    C -->|No| D{Company Cap?}
+    D -->|Exceeded| X
+    D -->|Allowed| E{Role Family Cap?}
+    E -->|Exceeded| X
+    E -->|Allowed| F{Run Limit?}
+    F -->|Exceeded| X
+    F -->|Allowed| G[Eligible for Batch]
 ```
-naukri-api-client/
-├── main.py                     # Entry point — demo of all features
-├── nkPool.txt                  # Pool of captured nkparam tokens
-├── .env                        # Credentials
-├── src/
-│   ├── client/
-│   │   ├── naukri_client.py    # Core auth + profile + resume client
-│   │   ├── job_client.py       # Recommended jobs + search + apply
-│   │   └── session.py          # requests.Session factory
-│   ├── config/
-│   │   └── constants.py        # URLs, regex patterns, app IDs
-│   ├── exceptions/
-│   │   └── exceptions.py       # Custom exception classes
-│   ├── models/
-│   │   └── models.py           # Dataclasses: Job, NaukriSession, etc.
-│   └── utils/
-│       ├── extractors.py       # HTML / JS parsing helpers
-│       └── request_helper.py   # Exponential-retry decorator
-        ├── get_Nkparam.py      # Selenium helper to harvest nkparam tokens
-        ├── nkparam_generator.py   #generate nkparam tokens
+
+Controls include:
+
+- minimum score gates;
+- duplicate application prevention;
+- maximum applications per run;
+- maximum applications per company;
+- role-family concentration limits;
+- priority-aware selection;
+- subtrack-aware selection;
+- dry-run suppression;
+- retry-aware execution.
+
+Relevant modules:
+
+```text
+src/application/
+├── policy.py
+├── diversity.py
+├── adaptive_strategy.py
+├── failure.py
+└── outcome.py
 ```
 
 ---
 
-## ⚠️ IP & Hosting Advice
+### 4. Hybrid Questionnaire Intelligence
 
-Naukri fingerprints IPs for every request. Many cloud providers trigger MFA or get blocked.
+Questionnaires are handled as a constrained resolution problem.
 
-**Avoid:**
-- Azure (all regions)
-- GitHub Actions / CI
-- Some Google Cloud regions
-- Datacenter IP ranges
+```mermaid
+flowchart TD
+    A[Questionnaire Field] --> B[Canonicalize Question]
+    B --> C[Retrieve Candidate Evidence]
+    C --> D[Deterministic Resolver]
+    D --> E[Answer Constraints]
+    E --> F[Shape Validation]
+    F -->|Valid| G[Serialize Answer]
+    F -->|Unresolved| H[Local LLM Resolver]
+    H --> I[Schema Validation]
+    I --> E
+    G --> J[Submit Questionnaire]
+    J --> K[Interpret Response]
+```
 
-**Works:**
-- AWS (EC2 with Elastic IP)
-- Home broadband / personal IP (best)
-- Mobile hotspot (testing)
-- Residential proxy
+Resolution combines:
 
-**Note:**
-- Sessions are IP-bound — changing IP will invalidate login
-- Avoid GitHub Actions completely (IP pool is flagged)
+1. candidate profile data;
+2. candidate evidence retrieval;
+3. deterministic matching;
+4. canonicalization;
+5. allowed-answer constraints;
+6. answer-shape validation;
+7. local OpenAI-compatible LLM fallback;
+8. schema validation;
+9. response interpretation;
+10. telemetry and raw-response capture for unresolved cases.
 
+Relevant modules:
 
+```text
+src/resolution/
+├── answer_canonicalizer.py
+├── answer_constraints.py
+├── answer_shape_validator.py
+├── evidence_retriever.py
+└── hybrid_resolver.py
 
+src/llm/
+├── client.py
+├── question_resolver.py
+└── schemas.py
 
-## ⚙️ Installation
+config/
+├── candidate_profile.py
+└── candidate_evidence.py
+```
 
-**Requirements:** Python 3.10+
+The resolver is designed around candidate-grounded evidence. It should not fabricate qualifications merely to complete an application.
+
+---
+
+### 5. Application Execution and Failure Handling
+
+The executor interprets application responses semantically rather than treating every HTTP response as a binary success or failure.
+
+Recognized outcome categories include:
+
+- applied;
+- already applied;
+- questionnaire required;
+- questionnaire submitted;
+- recoverable failure;
+- terminal failure;
+- validation failure;
+- unknown response;
+- manual-review case.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Attempt
+    Attempt --> Applied: success
+    Attempt --> AlreadyApplied: duplicate server state
+    Attempt --> Questionnaire: questionnaire required
+    Attempt --> RecoverableFailure: retryable
+    Attempt --> TerminalFailure: non-retryable
+    Attempt --> ManualReview: unresolved state
+
+    Questionnaire --> Applied: resolved and submitted
+    Questionnaire --> ManualReview: unresolved
+
+    RecoverableFailure --> Attempt: retry budget available
+    RecoverableFailure --> TerminalFailure: retry exhausted
+
+    Applied --> [*]
+    AlreadyApplied --> [*]
+    TerminalFailure --> [*]
+    ManualReview --> [*]
+```
+
+This prevents ambiguous API payloads from being silently counted as successful applications.
+
+---
+
+### 6. Persistent Application Ledger
+
+The SQLite ledger is the durable state layer of the system.
+
+Default database:
+
+```text
+data/application_ledger.db
+```
+
+It stores:
+
+- job identity and metadata;
+- title, company, and location;
+- fit score;
+- priority tier;
+- application subtrack;
+- acquisition source;
+- local execution status;
+- first-seen timestamp;
+- last-update timestamp;
+- application timestamp;
+- failure information;
+- server-side status;
+- server status timestamp;
+- normalized lifecycle stage;
+- lifecycle update timestamp;
+- per-stage timestamps;
+- run summaries;
+- append-only status events.
+
+Lifecycle stages:
+
+```mermaid
+stateDiagram-v2
+    [*] --> UNKNOWN
+    UNKNOWN --> SUBMITTED
+    SUBMITTED --> VIEWED
+    VIEWED --> SHORTLISTED
+    SHORTLISTED --> INTERVIEW
+    INTERVIEW --> OFFER
+
+    SUBMITTED --> REJECTED
+    VIEWED --> REJECTED
+    SHORTLISTED --> REJECTED
+    INTERVIEW --> REJECTED
+
+    OFFER --> [*]
+    REJECTED --> [*]
+```
+
+Lifecycle rules protect against accidental regression from a later recruiting stage to an earlier one.
+
+---
+
+### 7. Server-Side Lifecycle Reconciliation
+
+Run:
 
 ```bash
-git https://github.com/Traverser25/NopeRi.git
-cd Noperi
+python monitor_applications.py
+```
+
+The monitor:
+
+1. authenticates;
+2. fetches complete application history;
+3. parses status history;
+4. normalizes server statuses;
+5. reconciles existing ledger records;
+6. inserts server-only historical applications;
+7. records lifecycle transitions;
+8. reports stale applications;
+9. prints lifecycle funnels.
+
+Example output:
+
+```text
+Server applications fetched : 54
+New/changed records         : 0
+
+Recruiting lifecycle summary:
+  SUBMITTED                53
+  REJECTED                  1
+  UNKNOWN                   2
+
+Stale applications (>14 days) : 0
+```
+
+Repeated runs are designed to be idempotent. Unchanged server history should produce zero changed records.
+
+---
+
+### 8. Application Intelligence
+
+Run:
+
+```bash
+python application_report.py
+```
+
+The report includes:
+
+- total application count;
+- lifecycle distribution;
+- response rate;
+- interview rate;
+- offer rate;
+- application velocity;
+- application age distribution;
+- time to first response;
+- adaptive strategy state;
+- performance by priority;
+- performance by subtrack;
+- performance by score band.
+
+```mermaid
+flowchart LR
+    A[Ledger] --> B[Lifecycle Summary]
+    A --> C[Velocity]
+    A --> D[Age Distribution]
+    A --> E[Time to Response]
+    A --> F[Segment Funnels]
+
+    B --> G[Application Intelligence]
+    C --> G
+    D --> G
+    E --> G
+    F --> G
+
+    G --> H[Adaptive Strategy]
+```
+
+---
+
+## Repository Structure
+
+```text
+career-workflow/
+├── apply_agent.py                  # Main application orchestrator
+├── monitor_applications.py         # Server history + lifecycle reconciliation
+├── application_report.py           # Analytics and strategy report
+├── README.md
+├── requirements.txt
+├── .env.example
+│
+├── assets/
+│   └── logo2.svg
+│
+├── config/
+│   ├── candidate_profile.py        # Structured candidate profile
+│   └── candidate_evidence.py       # Grounded questionnaire evidence
+│
+├── src/
+│   ├── application/
+│   │   ├── adaptive_strategy.py
+│   │   ├── analytics.py
+│   │   ├── diversity.py
+│   │   ├── failure.py
+│   │   ├── ledger.py
+│   │   ├── lifecycle.py
+│   │   ├── outcome.py
+│   │   ├── policy.py
+│   │   ├── response_classifier.py
+│   │   ├── response_interpreter.py
+│   │   └── response_store.py
+│   │
+│   ├── client/
+│   │   ├── job_classifier.py
+│   │   ├── job_client.py
+│   │   ├── naukri_client.py
+│   │   └── session.py
+│   │
+│   ├── llm/
+│   │   ├── client.py
+│   │   ├── question_resolver.py
+│   │   └── schemas.py
+│   │
+│   ├── resolution/
+│   │   ├── answer_canonicalizer.py
+│   │   ├── answer_constraints.py
+│   │   ├── answer_shape_validator.py
+│   │   ├── evidence_retriever.py
+│   │   └── hybrid_resolver.py
+│   │
+│   ├── search/
+│   │   ├── challenge_cooldown.py
+│   │   ├── job_cache_codec.py
+│   │   └── job_search_cache.py
+│   │
+│   ├── config/
+│   ├── exceptions/
+│   ├── models/
+│   └── utils/
+│
+├── tools/
+│   ├── analyze_jobs.py
+│   ├── collect_jobs.py
+│   ├── inspect_questionnaire.py
+│   ├── inspect_scoring.py
+│   ├── inspect_unknown_responses.py
+│   ├── inspect_unknown_semantics.py
+│   └── score_jobs.py
+│
+├── tests/
+│   ├── application/
+│   ├── client/
+│   ├── llm/
+│   ├── resolution/
+│   └── search/
+│
+├── data/                            # Runtime state, caches, telemetry
+├── logs/                            # Runtime logs
+└── artifacts/                       # Generated reports and artifacts
+```
+
+---
+
+## Quick Start
+
+### 1. Clone and create an environment
+
+```bash
+git clone <your-repository-url>
+cd career-workflow
+
+python -m venv .venv
+source .venv/bin/activate
+
 pip install -r requirements.txt
 ```
 
-Create a `.env` file in the project root:
-
-```env
-USERNAME=your_naukri_email@example.com
-PASSWORD=your_naukri_password
-```
-
----
-## 🚀 Quick Start
-        you can simply run `main.py` also
-
-        ```python
-        from src.client.naukri_client import NaukriLoginClient
-        from src.client.job_client import NaukriJobClient
-        from dotenv import load_dotenv
-        import os
-        import time
-
-        load_dotenv()
-
-        # 1. Login
-        client = NaukriLoginClient(os.getenv("USERNAME"), os.getenv("PASSWORD"))
-        client.login()
-
-        # 2. Upload resume
-        client.update_resume("path/to/your_resume.pdf")
-
-        # 3. Update profile headline
-        client.update_profile(headline="Backend Engineer | Python · Node.js · AWS")
-
-        # 4. Update profile summary
-        client.update_profile(summary="Experienced engineer with 2+ years building scalable APIs.")
-
-        # 5. Job client
-        jc = NaukriJobClient(client)
-
-        # 6. Fetch recommended jobs
-        jobs = jc.get_recommended_jobs()
-        for job in jobs:
-            print(job.title, "—", job.company)
-
-        # 7. Search jobs
-        jobs = jc.search_jobs(keyword="Node.js developer", location="Hyderabad", experience=2)
-
-        # 8. Apply to jobs (easy apply)
-        for job in jobs:
-            mandatory = job.tags[:2] if job.tags else []
-            optional  = job.tags[2:] if len(job.tags) > 2 else []
-
-            try:
-                result = jc.apply_job(
-                    job,
-                    mandatory_skills=mandatory,
-                    optional_skills=optional,
-                    source="recommended"
-                )
-
-                job_result = (result.get("jobs") or [{}])[0]
-
-                # Skip jobs with questionnaire
-                if job_result.get("questionnaire"):
-                    print("Skipped (questionnaire required):", job.title)
-                    continue
-
-                print("Applied:", job.title)
-
-            except Exception as e:
-                print("Failed:", job.title, "|", e)
-
-            time.sleep(2)
-
-
-
-
----
-
-## 📖 API Reference
-
-### `NaukriLoginClient`
-
-| Method | Description |
-|---|---|
-| `login()` | Authenticates and stores the Bearer token + session cookies |
-| `update_resume(file)` | Uploads a PDF resume; accepts a file path (`str`) or a file-like object |
-| `update_profile(headline, name, summary)` | Updates one or more profile fields (all arguments are optional) |
-| `fetch_profile_id()` | Returns your Naukri profile ID (cached after first call) |
-| `get_form_key2()` | Extracts the internal `formKey` from Naukri's JS bundle (cached) |
-
-### `NaukriJobClient`
-
-| Method | Description |
-|---|---|
-| `get_recommended_jobs()` | Returns a list of `Job` objects personalised to your profile |
-| `search_jobs(keyword, location, page, experience, ...)` | Returns job results using the search endpoint |
-| `apply_job(job)` | Applies to a job programmatically |
-
-### `Job` model
-
-```python
-@dataclass
-class Job:
-    job_id:      str
-    title:       str
-    company:     str
-    location:    str
-    experience:  str
-    salary:      str
-    posted_date: str
-    apply_link:  str
-    description: str
-    tags:        list[str]
-```
-
----
-
-## 🔑 The `nkparam` Problem (and Current Solution)
-
-Naukri's job-search endpoint (`/jobapi/v3/search`) requires a request header called `nkparam`.
-This is not just a random token — it is essentially an **encrypted/signature key** generated using:
-- current timestamp (time-based salt)
-- session-related data
-- page/context-specific parameters
-
-The logic exists inside Naukri’s obfuscated JavaScript bundle, which makes it hard to reverse directly.
-
-If `nkparam` is missing or invalid, the API returns `403 Forbidden`.
-
----
-
-### ✅ Current Solution
-
-We now generate `nkparam` directly via API logic (no browser required).
-
-
----
-
-### 🧰 Fallback (Optional)
-
-A Selenium-based harvester is still available as a backup:
-
-**`nk_param_getter.py`**
-- Opens Chrome
-- Captures network requests
-- Extracts valid `nkparam`
-- Stores in `nkPool.txt`
-
-
-
-
----
-
-## 🤖 Automated Job Application Agent
-
-For a fully automated, AI-powered job application workflow, use:
+### 2. Configure environment variables
 
 ```bash
-python apply_agent.py
+cp .env.example .env
 ```
-
-The agent is built on top of `NaukriLoginClient` and `NaukriJobClient`, so all authentication, session management, cookies, and token handling are already taken care of automatically.
-
----
-
-### ✨ What the Agent Does
-
-The workflow runs end-to-end automatically:
-
-1. Logs into Naukri using your `.env` credentials
-2. Searches jobs using curated backend-focused keywords
-3. Scores each job using an AI model (`OpenAI`)
-4. Automatically applies to jobs that pass the score threshold
-5. Handles basic job questionnaires using predefined answers
-6. Skips external company-site applications
-7. Prevents duplicate applications using a local CSV log
-8. Displays a colored terminal dashboard with live progress
-
----
-
-### ⚙️ Prerequisites
-
-Add your OpenAI API key to the `.env` file:
-
-```env
-OPEN_API_KEY=your-openai-api-key
-```
-
-Your `.env` should now look like:
-
-```env
-USERNAME=your_naukri_email@example.com
-PASSWORD=your_naukri_password
-OPEN_API_KEY=your-openai-api-key
-```
-
----
-
-### 🧠 Default Search Strategy
-
-The agent fetches jobs using curated backend-development queries such as:
-
-- Node.js Developer
-- Python Backend Developer
-- Backend Engineer
-- API Developer
-- Full Stack Developer
-
-It also filters using:
-- Experience level
-- Job freshness
-- Multiple result pages
-
----
-
-### 🔧 Configuration
-
-You can customize the behaviour directly inside `apply_agent.py`:
-
-| Variable | Purpose |
-|---|---|
-| `BQUERIES` | List of job search keywords |
-| `EXPERIENCE_LEVELS` | Experience filters |
-| `PAGES` | Number of search-result pages |
-| `JOB_AGE` | Max age of jobs to consider |
-| `SCORE_THRESHOLD` | Minimum AI score required before applying |
-
----
-
-### 📂 Application Tracking
-
-The agent keeps track of already-applied jobs using:
-
-```bash
-applied_jobs.csv
-```
-
-This ensures:
-- No duplicate applications
-- Safe repeated runs
-- Persistent local history
-
----
-
-### 🖥️ Terminal Dashboard
-
-The agent displays a live terminal dashboard showing:
-
-- Login status
-- Jobs fetched
-- AI evaluation score
-- Apply success/failure
-- Questionnaire detection
-- Final application summary
 
 Example:
 
-```text
-[FETCH] Backend Engineer — Hyderabad
-[AI SCORE] 8.7/10
-[APPLY] Success
+```env
+NAUKRI_USERNAME=your_email@example.com
+NAUKRI_PASSWORD=your_password
+
+OMLX_BASE_URL=http://localhost:8000/v1
+OMLX_MODEL=your-model-name
+OMLX_API_KEY=
+
+MAX_APPLICATIONS_PER_COMPANY_PER_RUN=2
+MAX_ROLE_FAMILY_PER_COMPANY=1
 ```
 
----
-
- External company-site applications | ❌ Skipped intentionally |
+The LLM endpoint is used as a fallback for unresolved questionnaire cases. Core job acquisition, classification policy, tracking, and analytics remain deterministic modules.
 
 ---
 
-### 💡 Example Workflow
+## Running the Pipeline
+
+### Safe dry run
 
 ```bash
+APPLICATION_DRY_RUN=true \
+MAX_APPLICATIONS_PER_RUN=1 \
 python apply_agent.py
 ```
 
-Typical flow:
+This exercises acquisition, classification, scoring, ranking, policy, diversity, and selection without intentionally submitting live applications.
 
-```text
-Login Successful
-Fetching Jobs...
-Scoring with AI...
-Applying...
-Saved to applied_jobs.csv
-Run Complete
+### Controlled live run
+
+```bash
+APPLICATION_DRY_RUN=false \
+MAX_APPLICATIONS_PER_RUN=1 \
+python apply_agent.py
+```
+
+### Reconcile recruiting outcomes
+
+```bash
+python monitor_applications.py
+```
+
+### Generate analytics
+
+```bash
+python application_report.py
+```
+
+### Full validation
+
+```bash
+python -m pytest -q
+
+python -m compileall -q \
+  src \
+  config \
+  tools \
+  tests \
+  apply_agent.py \
+  monitor_applications.py \
+  application_report.py
+
+git diff --check
 ```
 
 ---
 
-## ⚠️ Disclaimer
+## Operational Data Model
 
-This project is intended for personal automation of your **own** Naukri account. Use responsibly and in accordance with [Naukri's Terms of Service](https://www.naukri.com/termsAndConditions). The authors are not affiliated with Naukri / InfoEdge India Ltd.
+```mermaid
+erDiagram
+    APPLICATIONS ||--o{ STATUS_EVENTS : produces
+    RUNS ||--o{ APPLICATIONS : processes
+
+    APPLICATIONS {
+        string job_id PK
+        string title
+        string company
+        string location
+        int score
+        string priority
+        string subtrack
+        string source
+        string status
+        datetime first_seen_at
+        datetime applied_at
+        string server_status
+        datetime server_status_at
+        string lifecycle_stage
+        datetime lifecycle_updated_at
+        datetime submitted_at
+        datetime viewed_at
+        datetime shortlisted_at
+        datetime interview_at
+        datetime rejected_at
+        datetime offer_at
+    }
+
+    STATUS_EVENTS {
+        int id PK
+        string job_id
+        string status
+        string detail
+        datetime created_at
+    }
+
+    RUNS {
+        int run_id PK
+        datetime started_at
+        datetime finished_at
+        boolean dry_run
+        int fetched
+        int qualified
+        int applied
+        int already_applied
+        int failed
+    }
+```
 
 ---
 
-## 🛣️ Roadmap
+## Runtime Artifacts
 
-- [x] Complete job-search endpoint integration
-- [x] Complete one-click job-apply flow
+Typical local runtime state:
 
-- [ ] Add async support (`httpx` / `aiohttp`)
-- [ ] CLI interface
+```text
+data/
+├── application_ledger.db
+├── applied_jobs.csv
+├── job_search_cache.json
+├── score_cache.json
+├── questionnaire_telemetry.csv
+├── raw_jobs.csv
+├── scored_jobs.csv
+└── responses/
+```
+
+| Artifact | Purpose |
+|---|---|
+| `application_ledger.db` | Authoritative application and lifecycle state |
+| `applied_jobs.csv` | Compatibility application log |
+| `job_search_cache.json` | Search resilience fallback |
+| `score_cache.json` | Reuse previous scoring results |
+| `questionnaire_telemetry.csv` | Resolution diagnostics |
+| `responses/` | Raw and unresolved API response captures |
+
+Runtime data can contain private application and candidate information and should not be committed to a public repository.
 
 ---
 
-## 🤝 Contributing
+## Test Coverage by Domain
 
-Pull requests are welcome!
-OTP/MFA login is now fully supported. The main area that could use help is **refactoring and cleanup** — improving code structure and formatting without breaking existing functionality.
+The repository contains a domain-organized test suite.
+
+```text
+tests/
+├── application/    policy, strategy, lifecycle, ledger, analytics, execution
+├── client/         login, session, history, direct application flows
+├── llm/            local client, schemas, LLM resolver
+├── resolution/     constraints, hybrid resolution, telemetry, serialization
+└── search/         acquisition, cache, challenge handling, cooldown
+```
+
+Major regression areas include:
+
+### Application decisioning
+
+- adaptive strategy activation;
+- insufficient-sample protection;
+- strategy tightening under weak response performance;
+- run-limit expansion under strong response evidence;
+- policy enforcement;
+- company diversity;
+- role-family diversity;
+- retry behavior;
+- metadata preservation.
+
+### Lifecycle intelligence
+
+- server-status normalization;
+- negative-state precedence;
+- monotonic lifecycle progression;
+- terminal outcomes;
+- timestamp preservation;
+- history reconciliation;
+- idempotent repeated monitoring.
+
+### Search resilience
+
+- successful live acquisition;
+- cached fallback;
+- challenge detection;
+- cooldown behavior;
+- orchestration across acquisition sources.
+
+### Questionnaire handling
+
+- deterministic resolution;
+- evidence retrieval;
+- answer constraints;
+- shape validation;
+- serialization;
+- local LLM fallback;
+- unknown-response capture.
 
 ---
+
+## Safety and Control Model
+
+Automation is constrained at multiple levels.
+
+```mermaid
+flowchart TD
+    A[Candidate Job] --> B[Fit Gate]
+    B --> C[Policy Gate]
+    C --> D[Diversity Gate]
+    D --> E[Adaptive Strategy Gate]
+    E --> F[Run Limit]
+    F --> G[Execution]
+    G --> H[Response Interpretation]
+    H --> I[Retry Budget]
+    I --> J[Persistent Ledger]
+```
+
+Current controls include:
+
+- dry-run mode;
+- explicit live mode;
+- per-run application limits;
+- per-company limits;
+- role-family limits;
+- duplicate detection;
+- ledger-based state checks;
+- server-history reconciliation;
+- search cooldown;
+- cache fallback;
+- retry limits;
+- terminal failure states;
+- unresolved-question review paths;
+- raw response capture;
+- evidence thresholds before strategy adaptation.
+
+---
+
+## Network and Session Considerations
+
+The underlying service may associate sessions and search behavior with network identity and anti-abuse signals.
+
+The system therefore assumes:
+
+- session validity can be affected by network changes;
+- datacenter-hosted runners can behave differently from residential networks;
+- search challenges should cause cooldown rather than rapid retries;
+- cached search results are preferable to aggressive retry storms;
+- unattended execution should use conservative schedules and application limits;
+- credentials, tokens, cookies, candidate evidence, and application history are private data.
+
+The resilience layer exists specifically to make the pipeline fail conservatively rather than repeatedly hammering a challenged endpoint.
+
+---
+
+## Design Principles
+
+### Candidate-grounded automation
+
+Application decisions and questionnaire answers should be based on explicit candidate profile and evidence data.
+
+### Controlled throughput
+
+More applications are not automatically better. Policy, diversity, and strategy layers control where application volume goes.
+
+### Conservative failure semantics
+
+Unknown responses are not assumed to be successes. They are classified, captured, retried only when appropriate, or sent to review.
+
+### Idempotent reconciliation
+
+Running the monitor repeatedly should not create false changes or duplicate lifecycle events.
+
+### Evidence before adaptation
+
+The strategy engine does not overreact to tiny samples.
+
+### Modular boundaries
+
+Acquisition, classification, policy, execution, resolution, tracking, lifecycle reconciliation, analytics, and adaptation remain independently testable.
+
+### Local-first intelligence
+
+Questionnaire LLM fallback can run against a local OpenAI-compatible endpoint.
+
+---
+
+## Evolution
+
+```mermaid
+timeline
+    title Evolution of Career Workflow
+    Original API Client : Authentication
+                        : Profile operations
+                        : Job search
+                        : One-click apply
+    Application Agent   : Multi-query acquisition
+                        : Job scoring
+                        : Automated apply flow
+    Resilient Pipeline  : Search cache
+                        : Challenge detection
+                        : Cooldown and fallback
+    Safe Execution      : Policy engine
+                        : Retry controls
+                        : Failure classification
+                        : Questionnaire intelligence
+    Lifecycle System    : SQLite ledger
+                        : Server history reconciliation
+                        : Recruiting lifecycle stages
+    Intelligence Layer  : Funnel analytics
+                        : Response metrics
+                        : Adaptive strategy
+                        : Outcome optimization
+    Next Phase          : Unified daily cycle
+                        : Scheduling
+                        : Run locking
+                        : Notifications
+                        : Operational health
+```
+
+---
+
+## Roadmap
+
+### Foundation
+
+- [x] API authentication and session management
+- [x] OTP/MFA support
+- [x] profile operations
+- [x] API job search
+- [x] recommended jobs
+- [x] one-click application
+
+### Intelligence
+
+- [x] candidate-aware job classification
+- [x] AI relevance gates
+- [x] fit scoring and ranking
+- [x] score caching
+- [x] application subtracks
+- [x] application priority tiers
+
+### Resilience
+
+- [x] search result cache
+- [x] challenge detection
+- [x] cooldown state
+- [x] cached fallback
+- [x] acquisition orchestration
+
+### Safe Application Execution
+
+- [x] dry-run mode
+- [x] run limits
+- [x] duplicate prevention
+- [x] company diversity
+- [x] role-family diversity
+- [x] failure classification
+- [x] retry policy
+- [x] semantic response interpretation
+
+### Questionnaire Intelligence
+
+- [x] candidate evidence model
+- [x] evidence retrieval
+- [x] deterministic resolver
+- [x] canonicalization
+- [x] answer constraints
+- [x] answer-shape validation
+- [x] local LLM fallback
+- [x] schema validation
+- [x] telemetry
+- [x] raw-response capture
+
+### Lifecycle and Analytics
+
+- [x] SQLite application ledger
+- [x] status event history
+- [x] server application-history reconciliation
+- [x] lifecycle normalization
+- [x] per-stage timestamps
+- [x] stale-application detection
+- [x] velocity analytics
+- [x] age distribution
+- [x] time-to-response measurement
+- [x] priority funnel
+- [x] subtrack funnel
+- [x] score-band performance
+- [x] adaptive strategy
+- [x] outcome-driven strategy optimization
+
+### Next Operational Phase
+
+- [ ] single-command daily cycle
+- [ ] run locking and overlap protection
+- [ ] structured runtime logging
+- [ ] unattended scheduling
+- [ ] failure notifications
+- [ ] daily operational summary
+- [ ] response-capture retention policy
+- [ ] sanitized regression fixtures
+- [ ] further decomposition of `apply_agent.py`
+- [ ] unified CLI
+
+---
+
+## Origin
+
+Career Workflow is built on top of the Noperi / NopeRi Naukri API client foundation.
+
+The original client provided the low-level capabilities that made this system possible:
+
+- authentication;
+- session handling;
+- profile operations;
+- resume operations;
+- search APIs;
+- job details;
+- application APIs;
+- OTP/MFA support.
+
+This fork extends that foundation into a full application intelligence system with resilient acquisition, candidate-aware decisioning, policy and diversity controls, adaptive strategy, questionnaire resolution, failure handling, lifecycle tracking, analytics, and outcome feedback.
+
+Repository history preserves the implementation evolution.
+
+---
+
+## Disclaimer
+
+This project is intended for personal automation of the repository owner's own job-search workflow.
+
+It is not affiliated with Naukri or Info Edge. Users are responsible for reviewing applicable service terms and operating automation conservatively.
+
+Never commit credentials, session tokens, cookies, candidate evidence, raw application responses, or private application history to public source control.
+
+---
+
+<p align="center">
+  <strong>Search intelligently. Apply selectively. Track everything. Adapt from evidence.</strong>
+</p>
