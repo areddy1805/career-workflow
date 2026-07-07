@@ -1,31 +1,50 @@
 # ==============================================================================
 # Environment and secrets
+# ==============================================================================
 
 .env
 .env.*
 !.env.example
+
 *.pem
 *.key
 *.crt
 *.p12
 *.pfx
+
 secrets/
 credentials/
+
+
+# ==============================================================================
 # Python cache and compiled files
+# ==============================================================================
+
 __pycache__/
 *.py[cod]
 *$py.class
+*.so
+
 .pytest_cache/
 .mypy_cache/
 .pyright/
 .ruff_cache/
-*.so
+
+
+# ==============================================================================
 # Virtual environments
+# ==============================================================================
+
 venv/
 .venv/
 env/
 ENV/
+
+
+# ==============================================================================
 # Python build and packaging
+# ==============================================================================
+
 build/
 dist/
 downloads/
@@ -38,72 +57,119 @@ sdist/
 var/
 wheels/
 share/python-wheels/
+
 *.egg
 *.egg-info/
 .installed.cfg
 MANIFEST
+
+
+# ==============================================================================
 # Test and coverage output
+# ==============================================================================
+
 .coverage
 .coverage.*
 htmlcov/
 coverage.xml
 coverage.json
+
 .tox/
 .nox/
+
 pytestdebug.log
+
+
+# ==============================================================================
 # Runtime logs
+# ==============================================================================
+
 *.log
 logs/
+
+
+# ==============================================================================
 # Generated application pipeline data
-data/raw_jobs.csv
-data/scored_jobs.csv
-data/application_log.csv
-data/application_log.backup.csv
-data/questionnaire_telemetry.csv
-data/analysis.txt
-data/scoring_inspection.txt
-# Captured platform/API responses
-data/
-# Application related Artifacts
+#
+# Runtime job data, application history, questionnaire telemetry,
+# platform responses, exports, and generated reports are private.
+# ==============================================================================
+
+data/*
+!data/.gitkeep
+
+
+# ==============================================================================
+# Application runtime state
+# ==============================================================================
+
 score_cache.json
 applied_jobs.csv
+nkPool.txt
+
+
+# ==============================================================================
 # Runtime orchestration artifacts
+# ==============================================================================
+
 artifacts/runs/*
 !artifacts/runs/.gitkeep
-# Temporary exports and generated reports
-data/exports/
-data/reports/
+
+
+# ==============================================================================
+# Temporary files
+# ==============================================================================
+
 *.tmp
 *.temp
 *.bak
+
+scratch/
+tmp/
+temp/
+
+
+# ==============================================================================
 # Local databases
+# ==============================================================================
+
 *.db
 *.sqlite
 *.sqlite3
+
+
+# ==============================================================================
 # Jupyter
+# ==============================================================================
+
 .ipynb_checkpoints/
+
+
+# ==============================================================================
 # IDE and editor files
+# ==============================================================================
+
 .vscode/
 .idea/
+
 *.swp
 *.swo
 *~
+
 .history/
+
+
+# ==============================================================================
 # OS-generated files
+# ==============================================================================
+
 .DS_Store
 .AppleDouble
 .LSOverride
 Thumbs.db
 Desktop.ini
-# macOS metadata
+
 ._*
 .Spotlight-V100
 .Trashes
 .fseventsd
-# Project-specific local scratch files
-scratch/
-tmp/
-temp/
-# Keep required directory structure
-!data/.gitkeep
-artifacts/runs/
