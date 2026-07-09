@@ -22,6 +22,8 @@
   <img alt="Tracking" src="https://img.shields.io/badge/tracking-SQLite-003B57?logo=sqlite&logoColor=white">
   <img alt="LLM" src="https://img.shields.io/badge/LLM-local--first-orange">
   <img alt="Status" src="https://img.shields.io/badge/status-active%20development-blue">
+  <img alt="Control Plane" src="https://img.shields.io/badge/control%20plane-NiceGUI-4FC3F7">
+  <img alt="UI" src="https://img.shields.io/badge/UI-operational%20dashboard-7C83FD">
 </p>
 
 <p align="center">
@@ -34,21 +36,22 @@
 
 Career Workflow is a closed-loop job application orchestration system that combines resilient job discovery, candidate-aware qualification, policy-controlled selection, application execution, questionnaire resolution, lifecycle tracking, funnel analytics, and evidence-gated strategy adaptation.
 
+A NiceGUI-based operations control plane sits above these systems, providing one interface for pipeline execution, application operations, run inspection, lifecycle analytics, and runtime diagnostics without replacing the underlying ledger, artifact, or policy layers.
+
 ### Current capabilities
 
-- resilient multi-query, multi-page job acquisition;
-- candidate-aware AI-role qualification and fit scoring;
-- configurable work-mode and location policy;
-- policy-controlled application selection;
-- company, role-family, and vacancy-level diversity controls;
-- direct and questionnaire-based application flows;
-- deterministic questionnaire resolution with local LLM fallback;
-- semantic response interpretation and bounded retry handling;
-- persistent SQLite application and lifecycle tracking;
-- server-side history reconciliation;
-- funnel, velocity, aging, and response-time analytics;
-- evidence-gated adaptive strategy;
-- staged orchestration with machine-readable run summaries.
+- resilient multi-query and multi-page job acquisition with caching and challenge handling;
+- candidate-aware AI-role classification, fit scoring, location policy and controlled selection;
+- company, role-family and vacancy-level diversity controls;
+- direct and questionnaire-based application execution with hybrid deterministic and local-LLM resolution;
+- semantic response interpretation, bounded retries and persistent failure handling;
+- SQLite-backed application tracking, recruiting lifecycle management and server-history reconciliation;
+- funnel analytics, response metrics and evidence-gated adaptive strategy;
+- staged pipeline orchestration with structured run artifacts and machine-readable summaries;
+- NiceGUI operations control plane for pipeline execution, runtime monitoring and workflow management;
+- application portfolio, manual-job queue and human-review operations;
+- lifecycle, priority, subtrack and execution analytics;
+- run inspection, preflight diagnostics, system-health visibility and operational configuration.
 
 It is a closed-loop application system:
 
@@ -103,7 +106,116 @@ The objective is a controlled system that sends better applications, avoids repe
 | Monitoring | Server application-history reconciliation | ✅ |
 | Lifecycle | Submitted → Viewed → Shortlisted → Interview → Outcome | ✅ |
 | Analytics | Velocity, age, response time, funnel and segment performance | ✅ |
+| Control plane | NiceGUI operations console for execution, inspection and workflow management | ✅ |
+| Pipeline operations | Dry-run/live launch controls, bounded execution and runtime inspection | ✅ |
+| Run inspection | Immutable artifact history, stage state and diagnostic evidence | ✅ |
+| System health | Runtime, storage, configuration and integration diagnostics | ✅ |
 | Automation | Unattended scheduled operation and notifications | 🚧 |
+
+---
+
+## Operations Control Plane
+
+Career Workflow includes a NiceGUI-based operations control plane for running and inspecting the application system without collapsing operational state into a collection of terminal commands.
+
+The interface is deliberately built as an operations console rather than a decorative analytics dashboard.
+
+```text
+COMMAND CENTER
+    │
+    ├── live process truth
+    ├── latest artifact state
+    ├── application portfolio
+    ├── execution map
+    ├── lifecycle funnel
+    └── recent run history
+
+PIPELINE CONTROL
+    │
+    ├── dry-run / live execution mode
+    ├── application safety ceiling
+    ├── process launch and termination
+    ├── runtime state
+    ├── stage progression
+    └── process output
+
+WORKSPACE
+    │
+    ├── jobs
+    ├── applications
+    ├── manual queue
+    └── review queue
+
+INSPECTION
+    │
+    ├── analytics
+    ├── run inspector
+    └── system health
+
+SYSTEM
+    │
+    └── settings
+```
+
+### Operational surfaces
+
+| Surface | Purpose |
+|---|---|
+| Command Center | Single-screen operational overview of process truth, artifact state, throughput, execution progression and recent runs |
+| Pipeline | Configure, launch and inspect dry-run or live pipeline executions |
+| Jobs | Inspect acquired and classified job inventory |
+| Applications | Browse application portfolio and lifecycle state |
+| Manual Queue | Manage manually sourced opportunities |
+| Review Queue | Inspect workflow cases requiring human attention |
+| Analytics | Inspect lifecycle conversion, response velocity, priority performance and subtrack performance |
+| Run Inspector | Examine immutable run artifacts and execution evidence |
+| System Health | Run preflight diagnostics across runtime, storage and integration dependencies |
+| Settings | Inspect operational configuration and runtime policy |
+
+### State semantics
+
+The control plane distinguishes three different kinds of truth:
+
+```text
+PROCESS STATE
+    what the launcher-owned process is doing now
+
+ARTIFACT STATE
+    what the latest immutable run artifact records
+
+PORTFOLIO STATE
+    what the persistent application ledger records over time
+```
+
+This separation prevents a terminated or abandoned historical artifact from being presented as a currently running pipeline.
+
+For example:
+
+```text
+Process:   IDLE
+Artifact:  ORPHANED
+Portfolio: 147 applications
+```
+
+is a valid state. It means no pipeline process is active, the latest run artifact was left without a terminal result, and the persistent portfolio remains intact.
+
+### UI architecture
+
+The UI is intentionally thin over the existing application and operational services:
+
+```text
+NiceGUI Pages
+      ↓
+UI Shell and Reusable Components
+      ↓
+Control-Center Service Adapter
+      ↓
+Existing Pipeline / Ledger / Analytics / Diagnostics
+      ↓
+SQLite + Run Artifacts + Runtime Process State
+```
+
+The UI does not maintain a second application truth model. Existing ledger, artifact, diagnostic, runner and workflow services remain authoritative.
 
 ---
 
@@ -666,82 +778,61 @@ flowchart LR
 
 ```text
 career-workflow/
-├── run_pipeline.py                 # Staged end-to-end orchestration entry point
-├── apply_agent.py                  # Acquisition and application-domain workflow
-├── monitor_applications.py         # Server history + lifecycle reconciliation
-├── application_report.py           # Analytics and strategy report
+├── run_pipeline.py
+├── run_nicegui.py                  # NiceGUI control-plane entry point
+├── apply_agent.py
+├── monitor_applications.py
+├── application_report.py
 ├── README.md
 ├── requirements.txt
 ├── .env.example
 │
-├── assets/
-│   └── logo2.svg
+├── career_ui/                      # NiceGUI operations control plane
+│   ├── app.py
+│   ├── shell.py                    # Application shell and navigation
+│   ├── components.py               # Shared operational UI primitives
+│   ├── theme.py                    # Design system and styling
+│   ├── pages/                      # Operational views
+│   └── services/
+│       └── control_center.py       # Operational service adapter
 │
+├── control_center/                 # Framework-independent operational services
+│   ├── data.py
+│   ├── runner.py
+│   ├── diagnostics.py
+│   ├── run_inspector.py
+│   ├── manual_jobs.py
+│   ├── analytics_helpers.py
+│   └── workflows.py
+│
+├── assets/
 ├── config/
-│   ├── candidate_profile.py        # Structured candidate profile
-│   └── candidate_evidence.py       # Grounded questionnaire evidence
+│   ├── candidate_profile.py
+│   └── candidate_evidence.py
 │
 ├── src/
 │   ├── application/
-│   │   ├── adaptive_strategy.py
-│   │   ├── analytics.py
-│   │   ├── diversity.py
-│   │   ├── failure.py
-│   │   ├── ledger.py
-│   │   ├── lifecycle.py
-│   │   ├── outcome.py
-│   │   ├── policy.py
-│   │   ├── response_classifier.py
-│   │   ├── response_interpreter.py
-│   │   └── response_store.py
-│   │
 │   ├── client/
-│   │   ├── job_classifier.py
-│   │   ├── job_client.py
-│   │   ├── naukri_client.py
-│   │   └── session.py
-│   │
 │   ├── llm/
-│   │   ├── client.py
-│   │   ├── question_resolver.py
-│   │   └── schemas.py
-│   │
 │   ├── resolution/
-│   │   ├── answer_canonicalizer.py
-│   │   ├── answer_constraints.py
-│   │   ├── answer_shape_validator.py
-│   │   ├── evidence_retriever.py
-│   │   └── hybrid_resolver.py
-│   │
 │   ├── search/
-│   │   ├── challenge_cooldown.py
-│   │   ├── job_cache_codec.py
-│   │   └── job_search_cache.py
-│   │
 │   ├── config/
 │   ├── exceptions/
 │   ├── models/
 │   └── utils/
 │
 ├── tools/
-│   ├── analyze_jobs.py
-│   ├── collect_jobs.py
-│   ├── inspect_questionnaire.py
-│   ├── inspect_scoring.py
-│   ├── inspect_unknown_responses.py
-│   ├── inspect_unknown_semantics.py
-│   └── score_jobs.py
-│
 ├── tests/
 │   ├── application/
 │   ├── client/
 │   ├── llm/
 │   ├── resolution/
-│   └── search/
+│   ├── search/
+│   └── nicegui_ui/
 │
-├── data/                            # Runtime state, caches, telemetry
-├── logs/                            # Runtime logs
-└── artifacts/                       # Generated reports and artifacts
+├── data/
+├── logs/
+└── artifacts/
 ```
 
 ---
@@ -781,6 +872,17 @@ MAX_ROLE_FAMILY_PER_COMPANY=1
 ```
 
 The LLM endpoint is used as a fallback for unresolved questionnaire cases. Core job acquisition, classification policy, tracking, and analytics remain deterministic modules.
+
+### 3. Launch the Operations Control Plane
+
+```bash
+python run_nicegui.py
+```
+
+The control plane provides the primary operational interface for pipeline execution, runtime inspection, application portfolio review, manual and review queues, lifecycle analytics, run artifact inspection, system diagnostics, and runtime configuration visibility.
+
+The CLI entry points remain available for automation, debugging and direct operational use.
+
 
 ---
 
@@ -862,16 +964,21 @@ python application_report.py
 ### Full validation
 
 ```bash
-python -m pytest -q
-
 python -m compileall -q \
   src \
   config \
   tools \
+  control_center \
+  career_ui \
   tests \
   apply_agent.py \
   monitor_applications.py \
-  application_report.py
+  application_report.py \
+  run_nicegui.py
+
+python -m pytest -q tests/nicegui_ui
+
+python -m pytest -q
 
 git diff --check
 ```
@@ -1191,6 +1298,38 @@ The resilience layer exists specifically to make the pipeline fail conservativel
 
 ---
 
+## Control Plane Design Principles
+
+### Operational truth before visual polish
+
+The interface distinguishes live process state from historical run artifacts. Historical `RUNNING` state is never sufficient evidence that a process is currently active.
+
+### Progressive disclosure
+
+The Command Center exposes operational health and bottlenecks first. Detailed logs, immutable artifacts and diagnostics remain available through dedicated inspection surfaces.
+
+### Safe execution boundaries
+
+Dry-run and live execution are visibly distinct. Application ceilings remain explicit. The UI delegates execution to the existing runner and policy layers rather than bypassing backend controls.
+
+### One source of truth
+
+The UI reads from existing ledger, artifact, runner and diagnostic services. It does not maintain an independent frontend state model for application lifecycle or pipeline truth.
+
+### Dense but scannable information
+
+High-frequency operational signals use compact status cards, execution maps and funnels. High-cardinality data remains in tables and dedicated inspection views.
+
+### Human attention as a first-class workflow
+
+Manual opportunities and unresolved review cases are represented as operational queues rather than hidden log conditions.
+
+### Desktop operations first
+
+The control plane is optimized for a persistent desktop operations workflow: navigation remains stable, primary state is visible without deep traversal, and execution and inspection surfaces remain deliberately separated.
+
+---
+
 ## Design Principles
 
 ### Candidate-grounded automation
@@ -1249,11 +1388,19 @@ timeline
                         : Response metrics
                         : Adaptive strategy
                         : Outcome optimization
+    Operations Layer    : NiceGUI control plane
+                        : Pipeline execution controls
+                        : Process and artifact state separation
+                        : Application portfolio
+                        : Operational queues
+                        : Run inspection
+                        : Analytics dashboards
+                        : System diagnostics
     Next Phase          : Unified daily cycle
                         : Scheduling
                         : Run locking
                         : Notifications
-                        : Operational health
+                        : Daily operational summaries
 ```
 
 ---
@@ -1265,12 +1412,12 @@ The current system is intentionally scoped around a single candidate workflow an
 Current boundaries include:
 
 - no hosted multi-user service;
-- no web dashboard;
+- local operations control plane rather than a hosted multi-tenant SaaS product;
 - no distributed worker architecture;
 - no autonomous credential management;
 - no guarantee of compatibility with future upstream API changes;
 - no claim that LLM-generated questionnaire answers are authoritative without candidate evidence;
-- no unattended scheduler or notification subsystem yet;
+- no production-grade unattended scheduler or notification subsystem yet;
 - no automatic strategy adaptation before minimum evidence thresholds are satisfied.
 
 The architecture separates platform access, decisioning, execution, tracking, and analytics so these boundaries can evolve independently.
@@ -1279,24 +1426,26 @@ The architecture separates platform access, decisioning, execution, tracking, an
 
 ### Completed
 
-- [x] API authentication, session management, search and application flows
-- [x] resilient multi-query acquisition with cache and challenge handling
-- [x] candidate-aware classification, scoring, policy and diversity controls
+- [x] API authentication, session management, job search and application execution
+- [x] resilient multi-query acquisition with caching, challenge detection and cooldown handling
+- [x] candidate-aware classification, scoring, location policy, selection and diversity controls
 - [x] hybrid deterministic and local-LLM questionnaire resolution
-- [x] persistent application ledger and lifecycle reconciliation
-- [x] analytics, adaptive strategy and staged pipeline orchestration
+- [x] persistent application ledger, lifecycle tracking and server-history reconciliation
+- [x] funnel analytics, response metrics and evidence-gated adaptive strategy
+- [x] staged pipeline orchestration with structured run artifacts and stage-level status
+- [x] NiceGUI operations control plane for pipeline execution, portfolio inspection and workflow operations
+- [x] process-aware and artifact-aware runtime state semantics
+- [x] manual-job and human-review operational queues
+- [x] lifecycle, priority, subtrack and execution analytics dashboards
+- [x] immutable run inspection, preflight diagnostics and system-health visibility
 
 ### Next Operational Phase
 
-- [ ] run locking and overlap protection
-- [ ] structured runtime logging
-- [ ] unattended scheduling
-- [ ] failure notifications
-- [ ] daily operational summaries
-- [ ] response-capture retention policy
-- [ ] sanitized regression fixtures
-- [ ] further decomposition of `apply_agent.py`
-- [ ] unified CLI
+- [ ] full unattended automation with scheduling, safe concurrency control, recovery and operational notifications;
+- [ ] multi-platform job-source and application adapters beyond Naukri;
+- [ ] stronger browser automation for application flows that cannot be completed through direct APIs;
+- [ ] production deployment and remote operations for continuously running the workflow;
+- [ ] outcome-driven strategy optimization using application, recruiter-response and interview-conversion data.
 
 ---
 
