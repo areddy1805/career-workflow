@@ -11,6 +11,7 @@ from control_center.data import (
     review_cases,
     run_history,
 )
+from control_center.diagnostics import collect_health_checks, required_health_ok
 from control_center.manual_jobs import read_manual_jobs
 from control_center.runner import refresh_process_state
 
@@ -22,12 +23,18 @@ def render() -> None:
     if st.button("Refresh Data", type="primary"):
         st.rerun()
 
+    checks = collect_health_checks()
     process = refresh_process_state()
     run = latest_run()
     summary = application_summary()
     review = review_cases()
     external = read_manual_action_queue()
     manual_jobs = read_manual_jobs()
+
+    if required_health_ok(checks):
+        st.success("System preflight: READY")
+    else:
+        st.error("System preflight: BLOCKED — inspect System Health")
 
     st.subheader("Pipeline Health")
     health = st.columns(4)
