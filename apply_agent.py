@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from dataclasses import dataclass, replace
 from datetime import datetime, UTC
 from typing import Any, Protocol
@@ -700,8 +702,12 @@ def fetch_all_jobs(
 
                     if jobs and page_signature == previous_page_signature:
                         print_fetch_progress(
-                            query["keyword"], query["location"], exp, page,
-                            fetched=len(jobs), new=0,
+                            query["keyword"],
+                            query["location"],
+                            exp,
+                            page,
+                            fetched=len(jobs),
+                            new=0,
                         )
                         break
 
