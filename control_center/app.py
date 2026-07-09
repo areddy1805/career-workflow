@@ -10,6 +10,7 @@ from control_center.pages.jobs import render as render_jobs
 from control_center.pages.manual_queue import render as render_manual_queue
 from control_center.pages.pipeline import render as render_pipeline
 from control_center.pages.review_queue import render as render_review_queue
+from control_center.pages.run_inspector import render as render_run_inspector
 from control_center.pages.settings import render as render_settings
 
 
@@ -23,6 +24,7 @@ st.set_page_config(
 PAGES = {
     "Dashboard": render_dashboard,
     "Pipeline": render_pipeline,
+    "Run Inspector": render_run_inspector,
     "Jobs": render_jobs,
     "Applications": render_applications,
     "Manual Queue": render_manual_queue,
