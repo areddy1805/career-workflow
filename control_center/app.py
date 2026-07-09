@@ -11,6 +11,7 @@ from control_center.pages.pipeline import render as render_pipeline
 from control_center.pages.review_queue import render as render_review_queue
 from control_center.pages.settings import render as render_settings
 
+
 st.set_page_config(
     page_title="Career Workflow",
     layout="wide",
@@ -32,18 +33,24 @@ PAGES = {
 
 def main() -> None:
     st.sidebar.title("Career Workflow")
+    st.sidebar.caption("Local Control Center")
 
     selected_page = st.sidebar.radio(
         "Navigation",
-        options=list(PAGES.keys()),
+        options=list(PAGES),
     )
+
+    st.sidebar.divider()
+    st.sidebar.caption("Thin UI over existing pipeline state and artifacts.")
 
     renderer = PAGES[selected_page]
 
     try:
         renderer()
     except Exception as error:
-        st.error(f"Page rendering failed: {type(error).__name__}: {error}")
+        st.error(
+            f"Page rendering failed: {type(error).__name__}: {error}"
+        )
         st.exception(error)
 
 
