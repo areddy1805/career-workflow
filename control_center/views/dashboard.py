@@ -16,16 +16,33 @@ from control_center.manual_jobs import read_manual_jobs
 from control_center.runner import refresh_process_state
 
 
+def _last_run_with_status(history, status: str) -> str:
+    if history.empty or "status" not in history.columns:
+        return "—"
+    matches = history.loc[
+        history["status"].fillna("").astype(str).str.upper().eq(status)
+    ]
+    if matches.empty:
+        return "—"
+    row = matches.iloc[0]
+    return str(row.get("completed_at") or row.get("run_id") or "—")
+
+
 def render() -> None:
     st.title("Dashboard")
     st.caption("Current pipeline, application, queue, and recruiting lifecycle state.")
 
-    if st.button("Refresh Data", type="primary"):
+    actions = st.columns([1, 1, 5])
+    if actions[0].button("Go to Pipeline", type="primary"):
+        st.session_state["navigation_target"] = "Pipeline"
+        st.rerun()
+    if actions[1].button("Refresh Data"):
         st.rerun()
 
     checks = collect_health_checks()
     process = refresh_process_state()
     run = latest_run()
+    history = run_history(limit=50)
     summary = application_summary()
     review = review_cases()
     external = read_manual_action_queue()
@@ -37,7 +54,7 @@ def render() -> None:
         st.error("System preflight: BLOCKED — inspect System Health")
 
     st.subheader("Pipeline Health")
-    health = st.columns(4)
+    health = st.columns(6)
     health[0].metric("Process State", process.get("status", "IDLE"))
     health[1].metric("Latest Run", run.get("status", "NO RUN"))
     health[2].metric(
@@ -50,16 +67,25 @@ def render() -> None:
         "Duration",
         calculate_duration(run.get("started_at"), run.get("completed_at")),
     )
+    health[4].metric("Last Success", _last_run_with_status(history, "SUCCESS"))
+    health[5].metric("Last Failure", _last_run_with_status(history, "FAILED"))
 
     st.subheader("Latest Run")
-    run_metrics = st.columns(6)
+    st.caption(
+        f"Run ID: {run.get('run_id', '—')} | "
+        f"Started: {run.get('started_at', '—')} | "
+        f"Completed: {run.get('completed_at', '—')}"
+    )
+    run_metrics = st.columns(8)
     values = (
         ("Acquired", run.get("acquired", 0)),
         ("Classified", run.get("classified", 0)),
         ("Selected", run.get("selected", 0)),
+        ("Attempted", run.get("attempted", 0)),
         ("Submitted", run.get("submitted", 0)),
         ("Already Applied", run.get("already_applied", 0)),
         ("Failed", run.get("failed", 0)),
+        ("Manual Review", run.get("manual_review", 0)),
     )
     for column, (label, value) in zip(run_metrics, values, strict=True):
         column.metric(label, value)
@@ -91,8 +117,7 @@ def render() -> None:
         st.bar_chart(distribution.set_index("lifecycle_stage"))
 
     st.subheader("Recent Runs")
-    history = run_history(limit=10)
     if history.empty:
         st.info("No pipeline run history found.")
     else:
-        st.dataframe(history, use_container_width=True, hide_index=True)
+        st.dataframe(history.head(10), use_container_width=True, hide_index=True)

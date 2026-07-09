@@ -134,27 +134,88 @@ def read_run_result(run_dir: Path) -> dict[str, Any]:
     return {}
 
 
+def _effective_run_status(
+    run_dir: Path,
+    state: dict[str, Any],
+    result: dict[str, Any],
+    *,
+    newest: bool,
+) -> str:
+    result_status = str(result.get("status") or "").upper()
+    if result_status:
+        return result_status
+
+    state_status = str(state.get("status") or "UNKNOWN").upper()
+    if state_status != "RUNNING":
+        return state_status
+
+    if newest:
+        try:
+            from control_center.runner import pipeline_is_running
+
+            if pipeline_is_running():
+                return "RUNNING"
+        except Exception:
+            pass
+
+    return "ORPHANED"
+
+
 def latest_run() -> dict[str, Any]:
     directories = list_run_directories()
-
     if not directories:
         return {}
 
     run_dir = directories[0]
-
     state = read_run_state(run_dir)
     result = read_run_result(run_dir)
 
     merged: dict[str, Any] = {}
-
     merged.update(state)
-
     if result:
         merged.update(result)
 
+    merged["status"] = _effective_run_status(run_dir, state, result, newest=True)
     merged["_run_dir"] = str(run_dir)
-
     return merged
+
+
+def latest_terminal_run() -> dict[str, Any]:
+    directories = list_run_directories()
+
+    terminal_statuses = {
+        "SUCCESS",
+        "FAILED",
+        "PARTIAL",
+        "CANCELLED",
+    }
+
+    for run_dir in directories:
+        state = read_run_state(run_dir)
+        result = read_run_result(run_dir)
+
+        status = _effective_run_status(
+            run_dir,
+            state,
+            result,
+            newest=(run_dir == directories[0]),
+        )
+
+        if status not in terminal_statuses:
+            continue
+
+        merged: dict[str, Any] = {}
+        merged.update(state)
+
+        if result:
+            merged.update(result)
+
+        merged["status"] = status
+        merged["_run_dir"] = str(run_dir)
+
+        return merged
+
+    return {}
 
 
 def run_history(limit: int = 50) -> pd.DataFrame:
@@ -166,7 +227,12 @@ def run_history(limit: int = 50) -> pd.DataFrame:
 
         row = {
             "run_id": (result.get("run_id") or state.get("run_id") or run_dir.name),
-            "status": (result.get("status") or state.get("status") or "UNKNOWN"),
+            "status": _effective_run_status(
+                run_dir,
+                state,
+                result,
+                newest=(run_dir == list_run_directories()[0]),
+            ),
             "dry_run": state.get("dry_run"),
             "max_applications": state.get("max_applications"),
             "started_at": (result.get("started_at") or state.get("started_at")),
