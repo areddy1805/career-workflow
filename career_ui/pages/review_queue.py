@@ -1,52 +1,48 @@
 from nicegui import ui
 
-from career_ui.components import (
-    dataframe_table,
-    empty_state,
-    metric_card,
-    page_header,
-    section,
-)
-from career_ui.services.control_center import read_manual_action_queue, review_cases
-from career_ui.shell import shell
+from career_ui.layouts.page import section_header, metrics_grid
+from career_ui.components.cards import metric_card, panel_p
+from career_ui.tables.data_table import DataTable
+from career_ui.widgets.work_queue import work_queue_layout
 
+from career_ui.services.control_center import read_manual_action_queue, review_cases
 
 @ui.page("/review-queue")
 def page():
-    shell("/review-queue")
-    with ui.column().classes("cw-content gap-5"):
-        page_header(
-            "WORK QUEUE",
-            "Review Queue",
-            "Failures, manual-review cases, and pending external actions.",
-        )
-        failures = review_cases()
-        external = read_manual_action_queue()
-        pending = len(external) if not external.empty else 0
-        if not external.empty and "status" in external:
-            pending = int(
-                external.status.fillna("").astype(str).str.upper().eq("PENDING").sum()
-            )
-        with ui.element("div").classes("cw-grid-4 w-full"):
-            metric_card("Review Cases", len(failures), "application failures")
-            metric_card("External Actions", pending, "pending")
-            metric_card("Total Exceptions", len(failures) + pending, "needs attention")
-            metric_card(
-                "Queue State",
-                "CLEAR" if len(failures) + pending == 0 else "ACTION",
-                "operational",
-            )
-        section("Application failures and manual review", "Investigate before retrying")
-        (
-            dataframe_table(failures, pagination=20)
-            if not failures.empty
-            else empty_state("No application review cases")
-        )
-        section(
-            "Pipeline external actions", "Applications requiring browser-side action"
-        )
-        (
-            dataframe_table(external, pagination=20)
-            if not external.empty
-            else empty_state("No external actions")
-        )
+    def builder():
+        with ui.column().classes("w-full h-full gap-4"):
+            failures = review_cases()
+            external = read_manual_action_queue()
+            
+            pending = len(external) if not external.empty else 0
+            if not external.empty and "status" in external:
+                pending = int(external.status.fillna("").astype(str).str.upper().eq("PENDING").sum())
+                
+            total = len(failures) + pending
+            state = "CLEAR" if total == 0 else "ACTION"
+            
+            with metrics_grid(cols=4):
+                metric_card("Review Cases", len(failures), "application failures")
+                metric_card("External Actions", pending, "pending manual steps")
+                metric_card("Total Exceptions", total, "needs attention")
+                metric_card("Queue State", state, "operational state")
+            
+            with ui.row().classes("w-full h-full gap-4 flex-nowrap items-stretch min-h-0"):
+                
+                with panel_p("w-1/2 flex-shrink-0 flex flex-col gap-2 min-h-0"):
+                    section_header("Application failures", "Investigate before retrying")
+                    if failures.empty:
+                        from career_ui.components.feedback import empty_state
+                        empty_state("No application review cases")
+                    else:
+                        DataTable(failures, classes="flex-grow h-full")
+                        
+                with panel_p("w-1/2 flex-shrink-0 flex flex-col gap-2 min-h-0"):
+                    section_header("Pipeline external actions", "Applications requiring browser-side action")
+                    if external.empty:
+                        from career_ui.components.feedback import empty_state
+                        empty_state("No external actions")
+                    else:
+                        DataTable(external, classes="flex-grow h-full")
+            
+    work_queue_layout("/review-queue", builder)
