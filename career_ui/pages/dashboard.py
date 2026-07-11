@@ -1,4 +1,5 @@
 from nicegui import ui
+from datetime import datetime, UTC
 
 from career_ui.shell import shell
 from career_ui.layouts.page import page_header, section_header, metrics_grid, split_pane
@@ -16,6 +17,11 @@ from career_ui.services.control_center import (
     refresh_process_state,
     run_count,
     run_history,
+    read_manual_action_queue,
+    read_manual_jobs,
+    get_workflow_queue,
+    read_applications,
+    review_cases,
 )
 
 def _run_projection(frame):
@@ -58,11 +64,34 @@ def page():
                 type="warning"
             )
             
+        # Compute actual Manual Queue count
+        try:
+            mq_frame = read_manual_action_queue()
+            mq_auto_pending = int((mq_frame.status == "PENDING").sum()) if not mq_frame.empty and "status" in mq_frame else 0
+        except Exception:
+            mq_auto_pending = 0
+            
+        try:
+            mj_frame = read_manual_jobs()
+            mj_pending = int((mj_frame.status.isin(["TO_APPLY", "SHORTLISTED"])).sum()) if not mj_frame.empty and "status" in mj_frame else 0
+        except Exception:
+            mj_pending = 0
+            
+        manual_queue_count = mq_auto_pending + mj_pending
+
+        # Compute actual Workflow Queue count
+        try:
+            wq = get_workflow_queue()
+            wq_items = wq.list()
+            workflow_queue_count = len(wq_items) if wq_items else 0
+        except Exception:
+            workflow_queue_count = 0
+
         # Row 2: Secondary Metrics
         with metrics_grid(cols=4):
             metric_card("Applications Today", f"{run_count(run,'submitted'):,}", "Latest run submissions")
-            metric_card("Manual Queue", f"{run_count(run,'acquired'):,}", "Items requiring review")
-            metric_card("Workflow Queue", f"{run_count(run,'selected'):,}", "Qualified opportunities")
+            metric_card("Manual Queue", f"{manual_queue_count:,}", "Items requiring review")
+            metric_card("Workflow Queue", f"{workflow_queue_count:,}", "Qualified opportunities")
             metric_card("Total Portfolio", f"{int(apps.get('total',0)):,}", "Lifetime tracked")
 
         # Row 3: Pipeline / Activity
@@ -98,6 +127,40 @@ def page():
                 
                 ui.html('<div class="mt-4"></div>')
                 section_header("Action Required", "Recommendations")
+                
+                # Compute actual review cases count
+                try:
+                    rc_frame = review_cases()
+                    review_count = len(rc_frame) if rc_frame is not None and not rc_frame.empty else 0
+                except Exception:
+                    review_count = 0
+                    
+                # Compute actual stale jobs count
+                try:
+                    apps_df = read_applications()
+                    if not apps_df.empty and "last_updated_at" in apps_df.columns:
+                        now = datetime.now(UTC)
+                        stale_count = 0
+                        for dt_str in apps_df["last_updated_at"].dropna():
+                            try:
+                                dt = datetime.fromisoformat(str(dt_str).replace("Z", "+00:00"))
+                                if (now - dt).days >= 7:
+                                    stale_count += 1
+                            except Exception:
+                                pass
+                    else:
+                        stale_count = 0
+                except Exception:
+                    stale_count = 0
+
                 with panel_p("flex flex-col gap-3 w-full"):
-                    callout("Review Queue", "You have 12 items pending manual review.", type="info", classes="border-l-[3px]")
-                    callout("Stale Jobs", "45 jobs have not been updated in 7 days.", type="warning", classes="border-l-[3px]")
+                    if review_count > 0:
+                        callout("Review Queue", f"You have {review_count} item{'s' if review_count != 1 else ''} pending manual review.", type="info", classes="border-l-[3px]")
+                    elif manual_queue_count > 0:
+                        callout("Manual Queue", f"You have {manual_queue_count} item{'s' if manual_queue_count != 1 else ''} pending in the manual queue.", type="info", classes="border-l-[3px]")
+                    else:
+                        callout("All Clear", "No items pending manual review.", type="positive", classes="border-l-[3px]")
+                        
+                    if stale_count > 0:
+                        callout("Stale Jobs", f"{stale_count} job{'s' if stale_count != 1 else ''} have not been updated in 7 days.", type="warning", classes="border-l-[3px]")
+
