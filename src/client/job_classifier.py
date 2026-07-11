@@ -359,8 +359,8 @@ class JobFilterPipeline2:
         jobs = self.hard_veto(jobs)
         print("AFTER HARD VETO:", len(jobs))
 
-        # Experience is ranking-only; never reject locally.
-        # jobs = self.experience_filter(jobs)
+        # Experience is a soft penalty, but still hard rejects impossible roles.
+        jobs = self.experience_filter(jobs)
         print("AFTER EXP FILTER:", len(jobs))
 
         jobs = self.desc_red_flag_check(jobs)
@@ -555,7 +555,7 @@ class JobFilterPipeline2:
                 or exp_max == 0
             )
 
-            too_senior = exp_min >= 10 or any(
+            too_senior = any(
                 token in title
                 for token in (
                     "vice president",
@@ -564,10 +564,17 @@ class JobFilterPipeline2:
                     "head of technology",
                     "chief technology officer",
                     "cto",
+                    "director",
+                    "principal",
+                    "head of ai",
+                    "distinguished engineer",
+                    "fellow",
                 )
             )
 
             if junior_only or too_senior:
+                if self.metrics:
+                    self.metrics.record_rejection("Hard Veto (Experience/Seniority)")
                 continue
 
             clean.append(job)
