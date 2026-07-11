@@ -54,7 +54,7 @@ def shell(active: str):
     
     # Expose the command palette globally
     cmd_pal = command_palette()
-    ui.keyboard(on_key=lambda e: cmd_pal.open() if e.action.keydown and (e.key.k and (e.modifiers.ctrl or e.modifiers.meta)) else None)
+    ui.keyboard(on_key=lambda e: cmd_pal.open() if e.action.keydown and (e.key.name == 'k' and (e.modifiers.ctrl or e.modifiers.meta)) else None)
 
     with ui.header().classes("cw-header items-center px-4 gap-4"):
         ui.button(icon="menu", on_click=lambda: drawer.toggle()).props(

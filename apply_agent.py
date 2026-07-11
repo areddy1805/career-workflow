@@ -42,6 +42,7 @@ from src.application.response_interpreter import (
     interpret_application_response,
 )
 from src.application.response_store import save_response
+from src.orchestration.metrics import PipelineRunMetrics
 from src.client.job_classifier import JobFilterPipeline2
 from src.client.job_client import NaukriJobClient
 from src.client.naukri_client import NaukriLoginClient
@@ -70,80 +71,7 @@ logger = logging.getLogger(__name__)
 # The file is appended to, never rewritten, so historical records are preserved.
 # ----------------------------------------------------------------------------------
 
-CSV_FILE = "data/applied_jobs.csv"
 
-
-def load_applied_jobs() -> set[str]:
-    """
-    Return all locally persisted applied job IDs.
-
-    Missing or empty persistence files are treated as an empty set.
-    """
-    if not os.path.exists(CSV_FILE):
-        return set()
-
-    with open(
-        CSV_FILE,
-        "r",
-        newline="",
-        encoding="utf-8",
-    ) as file:
-        reader = csv.DictReader(file)
-
-        return {
-            str(row.get("job_id") or "").strip()
-            for row in reader
-            if str(row.get("job_id") or "").strip()
-        }
-
-
-def save_applied_job(job) -> bool:
-    """
-    Persist a successfully applied job exactly once.
-
-    Returns:
-        True  -> a new CSV row was written
-        False -> the job already existed locally
-    """
-    applied_job_ids = load_applied_jobs()
-
-    if job.job_id in applied_job_ids:
-        return False
-
-    file_exists = os.path.exists(CSV_FILE)
-    file_has_content = file_exists and os.path.getsize(CSV_FILE) > 0
-
-    with open(
-        CSV_FILE,
-        "a",
-        newline="",
-        encoding="utf-8",
-    ) as file:
-        fieldnames = [
-            "job_id",
-            "title",
-            "company",
-            "applied_at",
-        ]
-
-        writer = csv.DictWriter(
-            file,
-            fieldnames=fieldnames,
-        )
-
-        if not file_has_content:
-            writer.writeheader()
-
-        writer.writerow(
-            {
-                "job_id": job.job_id,
-                "title": job.title,
-                "company": job.company,
-                "applied_at": datetime.now(UTC).isoformat(),
-            }
-        )
-
-    return True
 
 
 # ----------------------------------------------------------------------------------
@@ -1448,9 +1376,9 @@ def run_application_batch(
     policy: ApplicationPolicy | None = None,
     detail_cache: dict[str, dict] | None = None,
     sleep_fn=time.sleep,
-    save_fn=save_applied_job,
     ledger: ApplicationLedger | None = None,
     run_id: str = "",
+    metrics: PipelineRunMetrics | None = None,
 ) -> ApplicationRunSummary:
     """
     Execute the application workflow for a batch of filtered jobs.
@@ -1657,12 +1585,16 @@ def run_application_batch(
                     "Questionnaire resolver is required for live application execution"
                 )
 
+            start_time = time.perf_counter()
             outcome = process_job_application(
                 jc=jc,
                 job=job,
                 meta=meta,
                 questionnaire_resolver=questionnaire_resolver,
             )
+            duration = time.perf_counter() - start_time
+            if metrics:
+                metrics.add_application_time(duration)
 
             if outcome.status == ApplicationStatus.ALREADY_APPLIED:
                 logger.info(
@@ -1672,7 +1604,7 @@ def run_application_batch(
 
                 applied_jobs_set.add(job.job_id)
 
-                save_fn(job)
+
 
                 already_applied_count += 1
 
@@ -1692,7 +1624,7 @@ def run_application_batch(
 
             print_status_applied(applied_at)
 
-            save_fn(job)
+
 
             applied_jobs_set.add(job.job_id)
 
@@ -2195,7 +2127,7 @@ def run_application_cycle(
             subtrack=str(result.get("subtrack") or ""),
         )
 
-    applied_jobs_set = load_applied_jobs() | ledger.applied_job_ids()
+    applied_jobs_set = ledger.applied_job_ids()
 
     adaptive_strategy = build_adaptive_strategy(
         ledger.analytics_rows(),

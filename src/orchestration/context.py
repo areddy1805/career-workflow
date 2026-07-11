@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
+from src.orchestration.metrics import PipelineRunMetrics
 
 
 def utc_now() -> datetime:
@@ -16,6 +17,8 @@ class PipelineContext:
     max_applications: int | None
 
     started_at: datetime = field(default_factory=utc_now)
+
+    metrics: PipelineRunMetrics = field(default_factory=PipelineRunMetrics)
 
     # Runtime dependencies
     login_client: Any | None = None
