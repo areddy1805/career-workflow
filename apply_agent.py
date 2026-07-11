@@ -1453,6 +1453,7 @@ def run_application_batch(
     sleep_fn=time.sleep,
     save_fn=save_applied_job,
     ledger: ApplicationLedger | None = None,
+    run_id: str = "",
 ) -> ApplicationRunSummary:
     """
     Execute the application workflow for a batch of filtered jobs.
@@ -1634,6 +1635,7 @@ def run_application_batch(
                         )
                         or ""
                     ),
+                    run_id=run_id,
                 )
                 continue
 
@@ -1710,7 +1712,28 @@ def run_application_batch(
             breaker.success()
 
             if ledger is not None:
-                ledger.record(job, "manual_review", meta=meta, error=str(exc))
+                ledger.record(
+                    job,
+                    "manual_review",
+                    meta=meta,
+                    error=str(exc),
+                )
+
+            manual_action_queue.enqueue_manual_review(
+                job=job,
+                score=int(
+                    meta.get(
+                        "score",
+                        meta.get(
+                            "ai_score",
+                            0,
+                        ),
+                    )
+                    or 0
+                ),
+                reason=str(exc),
+                run_id=run_id,
+            )
 
         except Exception as exc:
             print_status_failed(exc)
@@ -2364,6 +2387,7 @@ def run_application_cycle(
         policy=application_policy,
         detail_cache=detail_cache,
         ledger=ledger,
+        run_id=run_id,
     )
 
     ledger.finish_run(
@@ -2413,7 +2437,7 @@ def run_application_cycle(
             "dry_run_skipped": run_summary.dry_run_skipped,
             "run_limit_reached": run_summary.run_limit_reached,
             "failed": run_summary.failed,
-            "manual_review": 0,
+            "manual_review": run_summary.manual_review,
         },
     }
 

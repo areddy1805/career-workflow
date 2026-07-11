@@ -95,3 +95,12 @@ def segment_funnel(applications: pd.DataFrame, column: str) -> pd.DataFrame:
         ["applications", column],
         ascending=[False, True],
     )
+
+def run_outcome_totals(frame: pd.DataFrame) -> dict[str, int]:
+    keys = ('attempted','submitted','already_applied','skipped_external','failed','manual_review','run_limit_reached')
+    if frame is None or frame.empty:
+        return {key: 0 for key in keys}
+    result = {}
+    for key in keys:
+        result[key] = int(pd.to_numeric(frame[key], errors='coerce').fillna(0).sum()) if key in frame.columns else 0
+    return result

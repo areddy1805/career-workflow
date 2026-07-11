@@ -785,6 +785,7 @@ class CareerWorkflowPipeline:
             policy=policy,
             detail_cache=(self.context.detail_cache),
             ledger=ledger,
+            run_id=self.context.run_id,
         )
 
         self.context.application_summary = summary

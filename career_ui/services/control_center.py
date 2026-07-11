@@ -17,3 +17,16 @@ def records(frame: pd.DataFrame, limit: int|None=None) -> list[dict[str,Any]]:
 def run_count(run: dict[str,Any], key: str) -> int:
     try: return int(run.get(key, (run.get('counts') or {}).get(key,0)) or 0)
     except (TypeError,ValueError): return 0
+
+from src.application.manual_action_queue import ManualActionQueue, QUEUE_STATUSES
+
+def update_external_action_status(job_id: str, status: str, note: str = "") -> bool:
+    return ManualActionQueue(manual_queue_path()).update_status(job_id, status, note=note)
+from src.orchestration.scheduler import SchedulerConfig, read_scheduler_state
+
+def scheduler_state() -> dict[str, Any]:
+    config = SchedulerConfig.from_env()
+    state = read_scheduler_state(config.state_path)
+    state['state_path'] = str(config.state_path)
+    return state
+from control_center.analytics_helpers import run_outcome_totals

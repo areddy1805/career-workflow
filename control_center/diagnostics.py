@@ -9,6 +9,7 @@ from typing import Any
 from control_center.data import ledger_path, manual_queue_path, runs_path
 from control_center.manual_jobs import MANUAL_JOBS_DB
 from control_center.runner import REPO_ROOT
+from src.orchestration.scheduler import SchedulerConfig, read_scheduler_state
 
 
 def _path_check(name: str, path: Path, *, required: bool) -> dict[str, Any]:
@@ -32,9 +33,9 @@ def collect_health_checks() -> list[dict[str, Any]]:
     })
 
     checks.append({
-        "check": "Streamlit package",
-        "status": "PASS" if importlib.util.find_spec("streamlit") else "FAIL",
-        "detail": "installed" if importlib.util.find_spec("streamlit") else "missing",
+        "check": "NiceGUI package",
+        "status": "PASS" if importlib.util.find_spec("nicegui") else "FAIL",
+        "detail": "installed" if importlib.util.find_spec("nicegui") else "missing",
         "required": True,
     })
 
@@ -68,6 +69,15 @@ def collect_health_checks() -> list[dict[str, Any]]:
         "check": "Working directory",
         "status": "PASS" if Path.cwd().resolve() == REPO_ROOT.resolve() else "WARN",
         "detail": str(Path.cwd().resolve()),
+        "required": False,
+    })
+
+    scheduler_config = SchedulerConfig.from_env()
+    scheduler_state = read_scheduler_state(scheduler_config.state_path)
+    checks.append({
+        "check": "Scheduler state",
+        "status": "PASS" if scheduler_state else "WARN",
+        "detail": str(scheduler_config.state_path),
         "required": False,
     })
 

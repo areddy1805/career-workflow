@@ -2,7 +2,7 @@ import pandas as pd
 from nicegui import ui
 from career_ui.shell import shell
 from career_ui.components import page_header,metric_card,section,dataframe_table,empty_state
-from career_ui.services.control_center import read_applications,application_summary,lifecycle_distribution,run_history,average_time_to_first_response_hours,segment_funnel
+from career_ui.services.control_center import read_applications,application_summary,lifecycle_distribution,run_history,average_time_to_first_response_hours,segment_funnel,run_outcome_totals
 
 def _compact_segment(frame):
     if frame is None or frame.empty:return frame
@@ -22,6 +22,10 @@ def page():
         apps=read_applications(); s=application_summary(); total=int(s.get('total',0)); responded=sum(int(s.get(k,0)) for k in ('viewed','shortlisted','interview','rejected','offer')); avg=average_time_to_first_response_hours(apps)
         with ui.element('div').classes('cw-grid-4 w-full'):
             metric_card('Applications',total,'ledger total'); metric_card('Response Rate',f'{responded/total*100:.1f}%' if total else '0.0%','any recruiter response'); metric_card('Interview Rate',f'{(int(s.get("interview",0))+int(s.get("offer",0)))/total*100:.1f}%' if total else '0.0%','interview or offer'); metric_card('Avg Response',f'{avg:.1f}h' if avg is not None else '—','time to first response')
+        runs=run_history(100); outcomes=run_outcome_totals(runs)
+        section('Automation outcomes','Aggregate execution outcomes from recent run artifacts')
+        with ui.element('div').classes('cw-grid-4 w-full'):
+            metric_card('Submitted',outcomes['submitted'],'successful submissions'); metric_card('Failed',outcomes['failed'],'application failures'); metric_card('External',outcomes['skipped_external'],'manual external apply'); metric_card('Manual Review',outcomes['manual_review'],'questionnaire backlog')
         lifecycle=lifecycle_distribution()
         with ui.element('div').classes('cw-grid-2 w-full'):
             with ui.column().classes('gap-3'):
