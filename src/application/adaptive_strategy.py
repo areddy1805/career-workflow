@@ -33,6 +33,8 @@ class AdaptiveStrategyConfig:
     base_max_applications_per_run: int | None = 5
     minimum_group_samples: int = 5
     exploration_fraction: float = 0.20
+    freshness_weight: float = 2.5
+    experience_penalty_weight: float = 5.0
 
     # Phase 2 optimization controls.
     prior_strength: float = 8.0
@@ -40,6 +42,8 @@ class AdaptiveStrategyConfig:
     response_weight: float = 1.0
     outcome_weight: float = 1.0
     preferred_group_limit: int = 3
+    freshness_weight: float = 2.5
+    experience_penalty_weight: float = 5.0
 
 
 @dataclass(frozen=True)
@@ -65,6 +69,8 @@ class AdaptiveStrategy:
     preferred_priorities: tuple[str, ...] = ()
     preferred_subtracks: tuple[str, ...] = ()
     exploration_fraction: float = 0.20
+    freshness_weight: float = 2.5
+    experience_penalty_weight: float = 5.0
     priority_performance: dict[str, GroupPerformance] = field(default_factory=dict)
     subtrack_performance: dict[str, GroupPerformance] = field(default_factory=dict)
 
@@ -243,6 +249,8 @@ def build_adaptive_strategy(
             minimum_score=config.base_minimum_score,
             max_applications_per_run=config.base_max_applications_per_run,
             exploration_fraction=config.exploration_fraction,
+            freshness_weight=config.freshness_weight,
+            experience_penalty_weight=config.experience_penalty_weight,
         )
 
     if total_applications < config.minimum_applications:
@@ -254,6 +262,8 @@ def build_adaptive_strategy(
             minimum_score=config.base_minimum_score,
             max_applications_per_run=config.base_max_applications_per_run,
             exploration_fraction=config.exploration_fraction,
+            freshness_weight=config.freshness_weight,
+            experience_penalty_weight=config.experience_penalty_weight,
         )
 
     if total_responses < config.minimum_responses:
@@ -265,6 +275,8 @@ def build_adaptive_strategy(
             minimum_score=config.base_minimum_score,
             max_applications_per_run=config.base_max_applications_per_run,
             exploration_fraction=config.exploration_fraction,
+            freshness_weight=config.freshness_weight,
+            experience_penalty_weight=config.experience_penalty_weight,
         )
 
     global_response_rate = (
@@ -348,6 +360,8 @@ def build_adaptive_strategy(
                 config.exploration_fraction,
             ),
         ),
+        freshness_weight=config.freshness_weight,
+        experience_penalty_weight=config.experience_penalty_weight,
         priority_performance=priority_performance,
         subtrack_performance=subtrack_performance,
     )
@@ -366,7 +380,17 @@ def _candidate_adaptive_score(
     priority = str(meta.get("priority") or "")
     subtrack = str(meta.get("subtrack") or "")
 
+    days_old = int(meta.get("days_old", 7))
+    exp_min = int(meta.get("experience_min", 0))
+
     bonus = 0.0
+
+    # Freshness boost: being applicant #40 is better than #900.
+    bonus += max(0, 7 - days_old) * strategy.freshness_weight
+    
+    # Experience penalty: softly penalize roles asking for more than 6 years.
+    if exp_min > 6:
+        bonus -= (exp_min - 6) * strategy.experience_penalty_weight
 
     priority_perf = strategy.priority_performance.get(priority)
     if priority_perf is not None:
