@@ -668,6 +668,9 @@ class CareerWorkflowPipeline:
 
         self.context.selected_jobs = selected_jobs
 
+        print(f"CANDIDATE SCAN BUDGET: {candidate_scan_budget}")
+        print(f"FINAL APPLICATION QUEUE: {len(selected_jobs)}")
+
         strategy_payload = strategy_audit_payload(strategy)
 
         self.context.stage_results["selection"] = {
@@ -798,7 +801,7 @@ class CareerWorkflowPipeline:
         attempted = (
             summary.applied
             + summary.already_applied
-            + summary.skipped_external
+            + summary.manual_review
             + summary.failed
         )
 
@@ -813,6 +816,7 @@ class CareerWorkflowPipeline:
             "dry_run_skipped": (summary.dry_run_skipped),
             "run_limit_reached": (summary.run_limit_reached),
             "failed": summary.failed,
+            "manual_review": summary.manual_review,
         }
 
         self._write_artifact(
@@ -1013,7 +1017,7 @@ class CareerWorkflowPipeline:
                     "attempted": (
                         summary.applied
                         + summary.already_applied
-                        + summary.skipped_external
+                        + summary.manual_review
                         + summary.failed
                     ),
                     "submitted": summary.applied,
@@ -1024,6 +1028,7 @@ class CareerWorkflowPipeline:
                     "dry_run_skipped": summary.dry_run_skipped,
                     "run_limit_reached": summary.run_limit_reached,
                     "failed": summary.failed,
+                    "manual_review": summary.manual_review,
                 }
             )
 

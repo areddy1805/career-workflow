@@ -726,14 +726,6 @@ class JobFilterPipeline2:
             for key in ("work_mode", "workMode")
         ).lower().strip()
 
-        if structured:
-            if re.search(r"\b(remote|wfh|work from home)\b", structured):
-                return "remote"
-            if re.search(r"\bhybrid\b", structured):
-                return "hybrid"
-            if re.search(r"\b(office|onsite|on-site|wfo)\b", structured):
-                return "office"
-
         location = str(job.get("location") or "").lower().strip()
         description = str(job.get("description") or "").lower()
         text = f"{location} {description}"
@@ -768,6 +760,7 @@ class JobFilterPipeline2:
             r"\bwork from anywhere\b",
         )
 
+        # Explicit negative language wins over every positive remote signal.
         if any(re.search(pattern, text) for pattern in negative_remote):
             if any(re.search(pattern, text) for pattern in hybrid_signals):
                 return "hybrid"
@@ -775,18 +768,24 @@ class JobFilterPipeline2:
                 return "office"
             return "office"
 
+        # Naukri can emit location="Remote" while work_mode="Hybrid". For the
+        # user's policy, explicit remote location metadata qualifies worldwide.
+        if re.search(r"\bremote\b", location):
+            return "remote"
+
+        if structured:
+            if re.search(r"\b(remote|wfh|work from home)\b", structured):
+                return "remote"
+            if re.search(r"\bhybrid\b", structured):
+                return "hybrid"
+            if re.search(r"\b(office|onsite|on-site|wfo)\b", structured):
+                return "office"
+
         if any(re.search(pattern, text) for pattern in hybrid_signals):
             return "hybrid"
 
         if any(re.search(pattern, text) for pattern in office_signals):
             return "office"
-
-        # Location metadata may legitimately be exactly "Remote",
-        # "Remote - India", or "India - Remote". Keep this inference
-        # isolated from description text so phrases such as
-        # "remote sensing" are not treated as work-mode evidence.
-        if re.search(r"\bremote\b", location):
-            return "remote"
 
         if any(re.search(pattern, text) for pattern in remote_signals):
             return "remote"

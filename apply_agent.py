@@ -384,6 +384,14 @@ def print_status_failed(
     print(f"  {Fore.RED}" f"Status  :  Failed — {error}" f"{Style.RESET_ALL}")
 
 
+def print_status_manual_review(error) -> None:
+    print(
+        f"  {Fore.YELLOW}"
+        f"Status  :  Manual review required — {error}"
+        f"{Style.RESET_ALL}"
+    )
+
+
 def print_questionnaire_notice() -> None:
     print(
         f"  {Fore.CYAN}"
@@ -777,7 +785,9 @@ def fetch_all_jobs(
                     )
 
                     if not jobs or len(jobs) < RESULTS_PER_PAGE:
-                        stop_reasons["short_page"] = stop_reasons.get("short_page", 0) + 1
+                        stop_reasons["short_page"] = (
+                            stop_reasons.get("short_page", 0) + 1
+                        )
                         break
 
                     if len(new_jobs) < min_new_yield:
@@ -1013,7 +1023,9 @@ def acquire_jobs(
 
         return jobs, fetch_result
 
-    fetch_result = fetch_all_jobs(jc) if mode == "full" else fetch_all_jobs(jc, mode=mode)
+    fetch_result = (
+        fetch_all_jobs(jc) if mode == "full" else fetch_all_jobs(jc, mode=mode)
+    )
 
     if fetch_result.challenge_encountered:
         cooldown.record_challenge()
@@ -1120,6 +1132,10 @@ class JobApplicationClient(Protocol):
     ) -> dict: ...
 
 
+class ManualReviewRequired(RuntimeError):
+    """Application paused because questionnaire answers require human review."""
+
+
 @dataclass(frozen=True)
 class ApplicationRunSummary:
     total_candidates: int
@@ -1131,6 +1147,7 @@ class ApplicationRunSummary:
     dry_run_skipped: int
     run_limit_reached: int
     failed: int
+    manual_review: int
 
 
 def execute_with_safe_retry(
@@ -1257,7 +1274,7 @@ def process_job_application(
             questions=unresolved,
         )
 
-        raise RuntimeError(
+        raise ManualReviewRequired(
             "Questionnaire requires manual review: "
             f"{len(unresolved)} unresolved question(s)"
         )
@@ -1465,10 +1482,15 @@ def run_application_batch(
     dry_run_skipped_count = 0
     run_limit_reached_count = 0
     failed_count = 0
+    manual_review_count = 0
     detail_cache = detail_cache or {}
 
-    application_attempts = 0
-    breaker = CircuitBreaker(max_consecutive_failures=int(os.getenv("APPLICATION_MAX_CONSECUTIVE_FAILURES", "5")))
+    successful_submissions = 0
+    breaker = CircuitBreaker(
+        max_consecutive_failures=int(
+            os.getenv("APPLICATION_MAX_CONSECUTIVE_FAILURES", "5")
+        )
+    )
 
     total_candidates = len(jobs)
 
@@ -1548,20 +1570,19 @@ def run_application_batch(
         # Per-run application limit (same candidate prefix in dry/live)
         # ----------------------------------------------------------
 
-        if (effective_policy.max_applications_per_run is not None and application_attempts >= effective_policy.max_applications_per_run):
+        if (
+            effective_policy.max_applications_per_run is not None
+            and successful_submissions >= effective_policy.max_applications_per_run
+        ):
+            run_limit_reached_count = total_candidates - index + 1
             logger.info(
-                "Per-run application limit reached. " "Skipping job_id=%s limit=%s",
-                job.job_id,
-                effective_policy.max_applications_per_run,
+                "Per-run successful submission limit reached. "
+                "Leaving %s queued candidate(s) for a later run.",
+                run_limit_reached_count,
             )
-
-            run_limit_reached_count += 1
-            if ledger is not None:
-                ledger.record(job, "run_limit_suppressed", meta=meta)
-            continue
+            break
 
         if effective_policy.dry_run:
-            application_attempts += 1
             logger.info("Dry-run: application suppressed for job_id=%s", job.job_id)
             dry_run_skipped_count += 1
             if ledger is not None:
@@ -1629,8 +1650,6 @@ def run_application_batch(
         # ----------------------------------------------------------
 
         try:
-            application_attempts += 1
-
             if ledger is not None:
                 ledger.record(job, "applying", meta=meta)
 
@@ -1679,10 +1698,19 @@ def run_application_batch(
             applied_jobs_set.add(job.job_id)
 
             applied_count += 1
+            successful_submissions += 1
             breaker.success()
 
             if ledger is not None:
                 ledger.record(job, "applied", meta=meta)
+
+        except ManualReviewRequired as exc:
+            print_status_manual_review(exc)
+            manual_review_count += 1
+            breaker.success()
+
+            if ledger is not None:
+                ledger.record(job, "manual_review", meta=meta, error=str(exc))
 
         except Exception as exc:
             print_status_failed(exc)
@@ -1716,6 +1744,7 @@ def run_application_batch(
         dry_run_skipped=dry_run_skipped_count,
         run_limit_reached=run_limit_reached_count,
         failed=failed_count,
+        manual_review=manual_review_count,
     )
 
 
@@ -1725,7 +1754,7 @@ def build_runtime_application_policy() -> ApplicationPolicy:
 
     Runtime defaults are intentionally safe:
         - dry run enabled
-        - maximum one application attempt per run
+        - maximum successful submissions per run
     """
 
     dry_run_value = (
@@ -1777,7 +1806,7 @@ def print_runtime_policy(
 
     print(
         f"  {Fore.WHITE}"
-        f"Max applications per run : "
+        f"Max successful submissions per run : "
         f"{Style.RESET_ALL}"
         f"{Fore.CYAN}"
         f"{policy.max_applications_per_run if policy.max_applications_per_run is not None else 'UNLIMITED'}"
@@ -2075,7 +2104,7 @@ def run_application_cycle(
                 "dry_run_skipped": 0,
                 "run_limit_reached": 0,
                 "failed": 0,
-                "manual_review": 0,
+                "manual_review": run_summary.manual_review,
             },
         }
 
@@ -2372,7 +2401,7 @@ def run_application_cycle(
             "attempted": (
                 run_summary.applied
                 + run_summary.already_applied
-                + run_summary.skipped_external
+                + run_summary.manual_review
                 + run_summary.failed
             ),
             "submitted": run_summary.applied,

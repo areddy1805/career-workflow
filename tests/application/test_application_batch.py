@@ -560,7 +560,7 @@ def test_per_run_limit_prevents_additional_application_attempts(
     assert summary.failed == 0
 
 
-def test_failed_application_attempt_consumes_run_quota(
+def test_failed_application_attempt_does_not_consume_submission_quota(
     monkeypatch,
 ) -> None:
     jobs = [
@@ -603,13 +603,16 @@ def test_failed_application_attempt_consumes_run_quota(
         save_fn=lambda item: None,
     )
 
-    assert process_calls == ["1"]
+    assert process_calls == ["1", "2"]
 
-    assert client.external_checks == ["1"]
+    assert client.external_checks == ["1", "2"]
 
+    assert summary.failed == 2
     assert summary.applied == 0
-    assert summary.failed == 1
-    assert summary.run_limit_reached == 1
+    assert summary.run_limit_reached == 0
+    assert summary.applied == 0
+    assert summary.failed == 2
+    assert summary.run_limit_reached == 0
 
 
 def test_external_job_does_not_consume_run_quota(

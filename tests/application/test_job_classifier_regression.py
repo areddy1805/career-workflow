@@ -232,3 +232,18 @@ def test_plain_india_without_remote_signal_remains_rejected(tmp_path):
 
     assert p._classify_work_mode(raw) == "unknown"
     assert p.location_work_mode_gate([raw]) == []
+
+
+def test_explicit_remote_location_overrides_conflicting_hybrid_metadata(tmp_path):
+    p = pipeline(tmp_path)
+    raw = norm(p, job(
+        "19",
+        "AI Engineer",
+        ["ai"],
+        "Build production AI systems.",
+        "Remote",
+        work_mode="Hybrid",
+    ))
+
+    assert p._classify_work_mode(raw) == "remote"
+    assert p.location_work_mode_gate([raw]) == [raw]
