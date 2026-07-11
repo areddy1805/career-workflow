@@ -181,6 +181,8 @@ class ApplicationLedger:
             "interview_at": "TEXT",
             "rejected_at": "TEXT",
             "offer_at": "TEXT",
+            # Phase 2: workflow engine status column
+            "workflow_status": "TEXT NOT NULL DEFAULT 'PENDING'",
         }
 
         for column, definition in migrations.items():

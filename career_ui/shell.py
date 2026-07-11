@@ -1,7 +1,7 @@
 from __future__ import annotations
 from nicegui import ui
 from career_ui.theme import apply_theme
-NAV=[('OPERATE',[('Command Center','/','space_dashboard'),('Pipeline','/pipeline','play_circle')]),('WORK',[('Jobs','/jobs','work'),('Applications','/applications','send'),('Manual Queue','/manual-queue','task_alt'),('Review Queue','/review-queue','rule')]),('INSPECT',[('Analytics','/analytics','analytics'),('Run Inspector','/runs','manage_search'),('System Health','/health','health_and_safety')]),('SYSTEM',[('Settings','/settings','settings')])]
+NAV=[("OPERATE",[("Command Center","/","space_dashboard"),("Pipeline","/pipeline","play_circle")]),("WORK",[("Jobs","/jobs","work"),("Applications","/applications","send"),("Workflow Queue","/workflow-queue","account_tree"),("Manual Queue","/manual-queue","task_alt"),("Review Queue","/review-queue","rule")]),("INSPECT",[("Analytics","/analytics","analytics"),("Run Inspector","/runs","manage_search"),("System Health","/health","health_and_safety")]),("SYSTEM",[("Settings","/settings","settings")])]
 def shell(active:str):
     apply_theme()
     with ui.header().classes('cw-header items-center px-5 gap-3'):
