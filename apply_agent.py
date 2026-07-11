@@ -1,45 +1,19 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
-from datetime import datetime, UTC
-from typing import Any, Protocol
 import csv
+import html
 import logging
 import os
+import re
 import time
+from dataclasses import dataclass, field, replace
+from datetime import UTC, datetime
+from typing import Any, Protocol
 
-from colorama import Fore, Back, Style, init
+from colorama import Fore, Style, init
 from dotenv import load_dotenv
 
 from config.candidate_profile import CANDIDATE_PROFILE
-from src.client.job_client import NaukriJobClient
-from src.client.job_classifier import JobFilterPipeline2
-from src.client.naukri_client import NaukriLoginClient
-from src.exceptions.exceptions import (
-    NaukriAuthError,
-    NaukriParseError,
-    NaukriSearchChallengeError,
-)
-from src.llm.client import OMLXClient
-from src.llm.question_resolver import LLMQuestionResolver
-from src.application.outcome import (
-    ApplicationOutcome,
-    ApplicationStatus,
-)
-from src.application.response_interpreter import (
-    interpret_application_response,
-)
-from src.application.policy import (
-    ApplicationPolicy,
-    evaluate_application_policy,
-)
-from src.application.failure import (
-    FailureKind,
-    classify_application_exception,
-)
-from src.application.response_store import save_response
-from src.application.ledger import ApplicationLedger
-from src.application.diversity import DiversityPolicy, diversify_jobs
 from src.application.adaptive_strategy import (
     AdaptiveStrategyConfig,
     build_adaptive_strategy,
@@ -47,16 +21,40 @@ from src.application.adaptive_strategy import (
     select_candidates_with_exploration,
     strategy_audit_payload,
 )
+from src.application.diversity import DiversityPolicy, diversify_jobs
+from src.application.failure import (
+    FailureKind,
+    classify_application_exception,
+)
+from src.application.ledger import ApplicationLedger
 from src.application.manual_action_queue import (
     ManualActionQueue,
 )
+from src.application.outcome import (
+    ApplicationOutcome,
+    ApplicationStatus,
+)
+from src.application.policy import (
+    ApplicationPolicy,
+    evaluate_application_policy,
+)
+from src.application.response_interpreter import (
+    interpret_application_response,
+)
+from src.application.response_store import save_response
+from src.client.job_classifier import JobFilterPipeline2
+from src.client.job_client import NaukriJobClient
+from src.client.naukri_client import NaukriLoginClient
+from src.exceptions.exceptions import (
+    NaukriSearchChallengeError,
+)
+from src.llm.client import OMLXClient
+from src.llm.question_resolver import LLMQuestionResolver
+from src.orchestration.runtime import CircuitBreaker
 from src.resolution.hybrid_resolver import HybridQuestionResolver
-from src.search.job_search_cache import JobSearchCache
 from src.search.challenge_cooldown import SearchChallengeCooldown
-
+from src.search.job_search_cache import JobSearchCache
 from src.utils.questionnaire_telemetry import log_unresolved_questions
-import html
-import re
 
 load_dotenv()
 init(autoreset=True)
@@ -383,6 +381,14 @@ def print_status_failed(
     print(f"  {Fore.RED}" f"Status  :  Failed — {error}" f"{Style.RESET_ALL}")
 
 
+def print_status_manual_review(error) -> None:
+    print(
+        f"  {Fore.YELLOW}"
+        f"Status  :  Manual review required — {error}"
+        f"{Style.RESET_ALL}"
+    )
+
+
 def print_questionnaire_notice() -> None:
     print(
         f"  {Fore.CYAN}"
@@ -597,10 +603,14 @@ class JobFetchResult:
     completed_normally: bool = True
     search_skipped_due_to_cooldown: bool = False
     search_requests_attempted: int = 0
+    pages_stopped_low_yield: int = 0
+    stop_reasons: dict[str, int] = field(default_factory=dict)
 
 
 def fetch_all_jobs(
     jc: NaukriJobClient,
+    *,
+    mode: str = "full",
 ) -> JobFetchResult:
 
     SEARCH_TRACKS = [
@@ -643,8 +653,12 @@ def fetch_all_jobs(
             raise ValueError(f"{name} must contain at least one integer")
         return values
 
-    EXPERIENCE_LEVELS = _env_int_list("SEARCH_EXPERIENCE_LEVELS", "2,4,6,8")
-    PAGES = int(os.getenv("SEARCH_MAX_PAGES", "3"))
+    if mode not in {"full", "incremental"}:
+        raise ValueError("mode must be 'full' or 'incremental'")
+    default_exp = "2,4,6,8" if mode == "full" else "4,6"
+    EXPERIENCE_LEVELS = _env_int_list("SEARCH_EXPERIENCE_LEVELS", default_exp)
+    default_pages = "3" if mode == "full" else "1"
+    PAGES = int(os.getenv("SEARCH_MAX_PAGES", default_pages))
     JOB_AGE = int(os.getenv("SEARCH_JOB_AGE_DAYS", "3"))
     RESULTS_PER_PAGE = int(os.getenv("SEARCH_RESULTS_PER_PAGE", "20"))
 
@@ -660,6 +674,10 @@ def fetch_all_jobs(
 
     challenge_encountered = False
     search_requests_attempted = 0
+    pages_stopped_low_yield = 0
+    stop_reasons: dict[str, int] = {}
+    min_new_yield = int(os.getenv("SEARCH_MIN_NEW_JOBS_PER_PAGE", "2"))
+    low_yield_patience = int(os.getenv("SEARCH_LOW_YIELD_PATIENCE", "1"))
 
     print_section_title(
         f"fetching jobs  "
@@ -677,6 +695,7 @@ def fetch_all_jobs(
                 break
 
             previous_page_signature: tuple[str, ...] | None = None
+            consecutive_low_yield = 0
 
             for page in range(1, PAGES + 1):
                 try:
@@ -763,9 +782,21 @@ def fetch_all_jobs(
                     )
 
                     if not jobs or len(jobs) < RESULTS_PER_PAGE:
+                        stop_reasons["short_page"] = (
+                            stop_reasons.get("short_page", 0) + 1
+                        )
                         break
 
-                    time.sleep(1.2)
+                    if len(new_jobs) < min_new_yield:
+                        consecutive_low_yield += 1
+                    else:
+                        consecutive_low_yield = 0
+                    if page < PAGES and consecutive_low_yield >= low_yield_patience:
+                        pages_stopped_low_yield += 1
+                        stop_reasons["low_yield"] = stop_reasons.get("low_yield", 0) + 1
+                        break
+
+                    time.sleep(float(os.getenv("SEARCH_REQUEST_DELAY_SECONDS", "1.2")))
 
                 except NaukriSearchChallengeError as exc:
                     challenge_encountered = True
@@ -806,6 +837,8 @@ def fetch_all_jobs(
         challenge_encountered=challenge_encountered,
         completed_normally=not challenge_encountered,
         search_requests_attempted=search_requests_attempted,
+        pages_stopped_low_yield=pages_stopped_low_yield,
+        stop_reasons=stop_reasons,
     )
 
 
@@ -962,6 +995,7 @@ def acquire_jobs(
     jc: NaukriJobClient,
     cache: JobSearchCache,
     cooldown: SearchChallengeCooldown,
+    mode: str = "full",
 ) -> tuple[list, JobFetchResult]:
     """
     Execute cooldown-aware job acquisition.
@@ -986,7 +1020,9 @@ def acquire_jobs(
 
         return jobs, fetch_result
 
-    fetch_result = fetch_all_jobs(jc)
+    fetch_result = (
+        fetch_all_jobs(jc) if mode == "full" else fetch_all_jobs(jc, mode=mode)
+    )
 
     if fetch_result.challenge_encountered:
         cooldown.record_challenge()
@@ -1093,6 +1129,10 @@ class JobApplicationClient(Protocol):
     ) -> dict: ...
 
 
+class ManualReviewRequired(RuntimeError):
+    """Application paused because questionnaire answers require human review."""
+
+
 @dataclass(frozen=True)
 class ApplicationRunSummary:
     total_candidates: int
@@ -1104,6 +1144,7 @@ class ApplicationRunSummary:
     dry_run_skipped: int
     run_limit_reached: int
     failed: int
+    manual_review: int
 
 
 def execute_with_safe_retry(
@@ -1230,7 +1271,7 @@ def process_job_application(
             questions=unresolved,
         )
 
-        raise RuntimeError(
+        raise ManualReviewRequired(
             "Questionnaire requires manual review: "
             f"{len(unresolved)} unresolved question(s)"
         )
@@ -1409,6 +1450,7 @@ def run_application_batch(
     sleep_fn=time.sleep,
     save_fn=save_applied_job,
     ledger: ApplicationLedger | None = None,
+    run_id: str = "",
 ) -> ApplicationRunSummary:
     """
     Execute the application workflow for a batch of filtered jobs.
@@ -1438,9 +1480,15 @@ def run_application_batch(
     dry_run_skipped_count = 0
     run_limit_reached_count = 0
     failed_count = 0
+    manual_review_count = 0
     detail_cache = detail_cache or {}
 
-    application_attempts = 0
+    successful_submissions = 0
+    breaker = CircuitBreaker(
+        max_consecutive_failures=int(
+            os.getenv("APPLICATION_MAX_CONSECUTIVE_FAILURES", "5")
+        )
+    )
 
     total_candidates = len(jobs)
 
@@ -1516,31 +1564,27 @@ def run_application_batch(
                 )
             continue
 
-        if effective_policy.dry_run:
-            logger.info(
-                "Dry-run: application suppressed for job_id=%s",
-                job.job_id,
-            )
+        # ----------------------------------------------------------
+        # Per-run application limit (same candidate prefix in dry/live)
+        # ----------------------------------------------------------
 
+        if (
+            effective_policy.max_applications_per_run is not None
+            and successful_submissions >= effective_policy.max_applications_per_run
+        ):
+            run_limit_reached_count = total_candidates - index + 1
+            logger.info(
+                "Per-run successful submission limit reached. "
+                "Leaving %s queued candidate(s) for a later run.",
+                run_limit_reached_count,
+            )
+            break
+
+        if effective_policy.dry_run:
+            logger.info("Dry-run: application suppressed for job_id=%s", job.job_id)
             dry_run_skipped_count += 1
             if ledger is not None:
                 ledger.record(job, "dry_run_suppressed", meta=meta)
-            continue
-
-        # ----------------------------------------------------------
-        # Per-run application limit
-        # ----------------------------------------------------------
-
-        if application_attempts >= effective_policy.max_applications_per_run:
-            logger.info(
-                "Per-run application limit reached. " "Skipping job_id=%s limit=%s",
-                job.job_id,
-                effective_policy.max_applications_per_run,
-            )
-
-            run_limit_reached_count += 1
-            if ledger is not None:
-                ledger.record(job, "run_limit_suppressed", meta=meta)
             continue
 
         # ----------------------------------------------------------
@@ -1588,6 +1632,7 @@ def run_application_batch(
                         )
                         or ""
                     ),
+                    run_id=run_id,
                 )
                 continue
 
@@ -1604,8 +1649,6 @@ def run_application_batch(
         # ----------------------------------------------------------
 
         try:
-            application_attempts += 1
-
             if ledger is not None:
                 ledger.record(job, "applying", meta=meta)
 
@@ -1654,9 +1697,40 @@ def run_application_batch(
             applied_jobs_set.add(job.job_id)
 
             applied_count += 1
+            successful_submissions += 1
+            breaker.success()
 
             if ledger is not None:
                 ledger.record(job, "applied", meta=meta)
+
+        except ManualReviewRequired as exc:
+            print_status_manual_review(exc)
+            manual_review_count += 1
+            breaker.success()
+
+            if ledger is not None:
+                ledger.record(
+                    job,
+                    "manual_review",
+                    meta=meta,
+                    error=str(exc),
+                )
+
+            manual_action_queue.enqueue_manual_review(
+                job=job,
+                score=int(
+                    meta.get(
+                        "score",
+                        meta.get(
+                            "ai_score",
+                            0,
+                        ),
+                    )
+                    or 0
+                ),
+                reason=str(exc),
+                run_id=run_id,
+            )
 
         except Exception as exc:
             print_status_failed(exc)
@@ -1672,6 +1746,11 @@ def run_application_batch(
                 )
                 ledger.record(job, status, meta=meta, error=str(exc))
 
+            if breaker.failure(f"{type(exc).__name__}: {exc}"):
+                raise RuntimeError(
+                    f"Application circuit breaker tripped after {breaker.consecutive_failures} consecutive failures: {breaker.reason}"
+                ) from exc
+
         finally:
             sleep_fn(3)
 
@@ -1685,6 +1764,7 @@ def run_application_batch(
         dry_run_skipped=dry_run_skipped_count,
         run_limit_reached=run_limit_reached_count,
         failed=failed_count,
+        manual_review=manual_review_count,
     )
 
 
@@ -1694,7 +1774,7 @@ def build_runtime_application_policy() -> ApplicationPolicy:
 
     Runtime defaults are intentionally safe:
         - dry run enabled
-        - maximum one application attempt per run
+        - maximum successful submissions per run
     """
 
     dry_run_value = (
@@ -1746,10 +1826,10 @@ def print_runtime_policy(
 
     print(
         f"  {Fore.WHITE}"
-        f"Max applications per run : "
+        f"Max successful submissions per run : "
         f"{Style.RESET_ALL}"
         f"{Fore.CYAN}"
-        f"{policy.max_applications_per_run}"
+        f"{policy.max_applications_per_run if policy.max_applications_per_run is not None else 'UNLIMITED'}"
         f"{Style.RESET_ALL}"
     )
 
@@ -2044,7 +2124,7 @@ def run_application_cycle(
                 "dry_run_skipped": 0,
                 "run_limit_reached": 0,
                 "failed": 0,
-                "manual_review": 0,
+                "manual_review": run_summary.manual_review,
             },
         }
 
@@ -2304,6 +2384,7 @@ def run_application_cycle(
         policy=application_policy,
         detail_cache=detail_cache,
         ledger=ledger,
+        run_id=run_id,
     )
 
     ledger.finish_run(
@@ -2341,7 +2422,7 @@ def run_application_cycle(
             "attempted": (
                 run_summary.applied
                 + run_summary.already_applied
-                + run_summary.skipped_external
+                + run_summary.manual_review
                 + run_summary.failed
             ),
             "submitted": run_summary.applied,
@@ -2353,7 +2434,7 @@ def run_application_cycle(
             "dry_run_skipped": run_summary.dry_run_skipped,
             "run_limit_reached": run_summary.run_limit_reached,
             "failed": run_summary.failed,
-            "manual_review": 0,
+            "manual_review": run_summary.manual_review,
         },
     }
 

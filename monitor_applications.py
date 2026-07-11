@@ -8,7 +8,6 @@ from dotenv import load_dotenv
 from src.application.ledger import ApplicationLedger
 from src.client.naukri_client import NaukriLoginClient
 
-
 load_dotenv()
 
 
@@ -30,14 +29,10 @@ def build_client() -> NaukriLoginClient:
     password = os.getenv("NAUKRI_PASSWORD")
 
     if not username:
-        raise RuntimeError(
-            "NAUKRI_USERNAME environment variable is not set"
-        )
+        raise RuntimeError("NAUKRI_USERNAME environment variable is not set")
 
     if not password:
-        raise RuntimeError(
-            "NAUKRI_PASSWORD environment variable is not set"
-        )
+        raise RuntimeError("NAUKRI_PASSWORD environment variable is not set")
 
     client = NaukriLoginClient(
         username,
@@ -103,9 +98,7 @@ def print_local_summary(
     for status, count in sorted(
         summary.items(),
     ):
-        print(
-            f"  {status:<28} {count:>6}"
-        )
+        print(f"  {status:<28} {count:>6}")
 
 
 def print_lifecycle_summary(
@@ -122,18 +115,13 @@ def print_lifecycle_summary(
     for stage, count in sorted(
         summary.items(),
     ):
-        print(
-            f"  {stage:<28} {count:>6}"
-        )
+        print(f"  {stage:<28} {count:>6}")
 
 
 def print_stale_applications(
     ledger: ApplicationLedger,
 ) -> None:
-    print(
-        f"\nSTALE APPLICATIONS "
-        f"(>{STALE_APPLICATION_DAYS} days)"
-    )
+    print(f"\nSTALE APPLICATIONS " f"(>{STALE_APPLICATION_DAYS} days)")
 
     applications = ledger.stale_applications(
         older_than_days=STALE_APPLICATION_DAYS,
@@ -160,9 +148,7 @@ def print_funnel_breakdown(
 ) -> None:
     from src.application.analytics import breakdown
 
-    print(
-        f"\nFUNNEL BREAKDOWN BY {dimension.upper()}"
-    )
+    print(f"\nFUNNEL BREAKDOWN BY {dimension.upper()}")
 
     rows = breakdown(
         ledger.analytics_rows(),
@@ -195,15 +181,9 @@ def main() -> None:
         ledger=ledger,
     )
 
-    print(
-        f"Server applications fetched : "
-        f"{result['fetched']}"
-    )
+    print(f"Server applications fetched : " f"{result['fetched']}")
 
-    print(
-        f"New/changed records         : "
-        f"{result['changed']}"
-    )
+    print(f"New/changed records         : " f"{result['changed']}")
 
     print_local_summary(
         ledger,

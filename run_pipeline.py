@@ -18,7 +18,15 @@ def parse_args():
         action="store_true",
         help="Enable live application submission. Default is dry-run.",
     )
-    parser.add_argument("--max-applications", type=int, default=3)
+    parser.add_argument(
+        "--max-applications",
+        type=int,
+        default=None,
+        help="Optional attempt cap. Omit for uncapped execution.",
+    )
+    parser.add_argument(
+        "--acquisition-mode", choices=("full", "incremental"), default="full"
+    )
     parser.add_argument(
         "--confirm-live",
         default="",
@@ -46,11 +54,12 @@ def main() -> None:
 
     max_applications = args.max_applications
     if args.live and args.canary:
-        max_applications = min(max_applications, 1)
+        max_applications = 1
 
     pipeline = CareerWorkflowPipeline(
         dry_run=not args.live,
         max_applications=max_applications,
+        acquisition_mode=args.acquisition_mode,
     )
     result = pipeline.run()
     print()

@@ -1,21 +1,20 @@
 import logging
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 
-from src.models.models import Job
 from src.client.naukri_client import NaukriLoginClient
+from src.config.constants import (
+    APPLY_JOB_URL,
+    CHATBOT_RESPOND_URL,
+    JOB_SEARCH_URL,
+    RECOMMENDED_JOBS_URL,
+)
 from src.exceptions.exceptions import (
     NaukriAuthError,
     NaukriParseError,
     NaukriSearchChallengeError,
 )
+from src.models.models import Job
 from src.utils.nkparam_generator import generate_nkparam
-from src.config.constants import (
-    RECOMMENDED_JOBS_URL,
-    JOB_SEARCH_URL,
-    APPLY_JOB_URL,
-    CHATBOT_RESPOND_URL,
-)
-import json
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)

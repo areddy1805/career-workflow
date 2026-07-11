@@ -1,14 +1,14 @@
 import logging
 import random
-import time
-import functools
 from io import BytesIO
+
+import requests
+
 from src.client.session import build_session
 from src.config.constants import *
 from src.exceptions.exceptions import *
 from src.models.models import *
-from src.utils.extractors import extract_form_key2, extract_all_js_urls
-import requests
+from src.utils.extractors import extract_all_js_urls, extract_form_key2
 from src.utils.request_helper import with_exponential_retry
 
 logger = logging.getLogger(__name__)

@@ -2,22 +2,18 @@ from dataclasses import dataclass
 from typing import Any
 
 from src.llm.question_resolver import LLMQuestionResolver
-
+from src.resolution.answer_canonicalizer import (
+    canonicalize_llm_answer,
+)
 from src.resolution.answer_constraints import (
     apply_answer_constraints,
 )
-
-from src.utils.questionnaire_resolver import (
-    resolve_answer,
-    serialize_answer,
-)
-
 from src.resolution.answer_shape_validator import (
     validate_answer_shape,
 )
-
-from src.resolution.answer_canonicalizer import (
-    canonicalize_llm_answer,
+from src.utils.questionnaire_resolver import (
+    resolve_answer,
+    serialize_answer,
 )
 
 

@@ -30,10 +30,10 @@ def _set_single_search_matrix(monkeypatch):
 def test_pagination_stops_on_partial_page(monkeypatch):
     _set_single_search_matrix(monkeypatch)
     client = Mock()
-    client.search_jobs.side_effect = (
-        [[make_job("1"), make_job("2")], [make_job("3")]]
-        + [[]] * 100
-    )
+    client.search_jobs.side_effect = [
+        [make_job("1"), make_job("2")],
+        [make_job("3")],
+    ] + [[]] * 100
 
     result = apply_agent.fetch_all_jobs(client)
 
@@ -67,7 +67,14 @@ def test_search_configuration_is_forwarded(monkeypatch):
     apply_agent.fetch_all_jobs(client)
 
     assert client.search_jobs.call_count == 42
-    experiences = {call.kwargs["experience"] for call in client.search_jobs.call_args_list}
+    experiences = {
+        call.kwargs["experience"] for call in client.search_jobs.call_args_list
+    }
     assert experiences == {2, 4}
-    assert all(call.kwargs["results_per_page"] == 37 for call in client.search_jobs.call_args_list)
-    assert all(call.kwargs["job_age"] == 5 for call in client.search_jobs.call_args_list)
+    assert all(
+        call.kwargs["results_per_page"] == 37
+        for call in client.search_jobs.call_args_list
+    )
+    assert all(
+        call.kwargs["job_age"] == 5 for call in client.search_jobs.call_args_list
+    )

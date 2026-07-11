@@ -35,6 +35,10 @@ from src.application.diversity import (
     diversify_jobs,
     exclude_job_ids,
 )
+from src.application.eligibility import (
+    annotate_auto_apply_eligibility,
+    eligibility_rejection_summary,
+)
 from src.application.ledger import ApplicationLedger
 from src.application.policy import ApplicationPolicy
 from src.client.job_classifier import JobFilterPipeline2
@@ -44,14 +48,11 @@ from src.llm.client import OMLXClient
 from src.llm.question_resolver import LLMQuestionResolver
 from src.orchestration.context import PipelineContext
 from src.orchestration.result import PipelineResult
+from src.orchestration.runtime import PipelineLock, effective_limit
 from src.orchestration.stages import (
     PIPELINE_STAGES,
     PipelineStatus,
     StageStatus,
-)
-from src.application.eligibility import (
-    annotate_auto_apply_eligibility,
-    eligibility_rejection_summary,
 )
 from src.resolution.hybrid_resolver import HybridQuestionResolver
 from src.search.challenge_cooldown import SearchChallengeCooldown
@@ -65,16 +66,18 @@ class CareerWorkflowPipeline:
         self,
         *,
         dry_run: bool,
-        max_applications: int,
+        max_applications: int | None,
+        acquisition_mode: str = "full",
         artifacts_root: str | Path = "artifacts/runs",
     ) -> None:
-        if max_applications < 0:
+        if max_applications is not None and max_applications < 0:
             raise ValueError("max_applications must be greater than or equal to zero")
 
         self.context = PipelineContext(
             run_id=self._generate_run_id(),
             dry_run=dry_run,
             max_applications=max_applications,
+            acquisition_mode=acquisition_mode,
         )
 
         self.artifacts_root = Path(
@@ -308,6 +311,7 @@ class CareerWorkflowPipeline:
             jc=job_client,
             cache=job_cache,
             cooldown=search_cooldown,
+            mode=self.context.acquisition_mode,
         )
 
         self.context.login_client = login_client
@@ -327,7 +331,10 @@ class CareerWorkflowPipeline:
             "jobs": len(jobs),
             "challenge_encountered": (fetch_result.challenge_encountered),
             "cooldown_suppressed": (fetch_result.search_skipped_due_to_cooldown),
-            "search_requests_attempted": (fetch_result.search_requests_attempted),
+            "mode": self.context.acquisition_mode,
+            "search_requests_attempted": fetch_result.search_requests_attempted,
+            "pages_stopped_low_yield": fetch_result.pages_stopped_low_yield,
+            "stop_reasons": fetch_result.stop_reasons,
         }
 
         self._write_artifact(
@@ -631,7 +638,7 @@ class CareerWorkflowPipeline:
             ),
         )
 
-        attempt_budget = min(
+        attempt_budget = effective_limit(
             strategy.max_applications_per_run,
             self.context.max_applications,
         )
@@ -646,9 +653,10 @@ class CareerWorkflowPipeline:
             ),
         )
 
-        candidate_scan_budget = min(
-            len(diversified_jobs),
-            attempt_budget * scan_multiplier,
+        candidate_scan_budget = (
+            len(diversified_jobs)
+            if attempt_budget is None
+            else min(len(diversified_jobs), attempt_budget * scan_multiplier)
         )
 
         selected_jobs = select_candidates_with_exploration(
@@ -659,6 +667,9 @@ class CareerWorkflowPipeline:
         )
 
         self.context.selected_jobs = selected_jobs
+
+        print(f"CANDIDATE SCAN BUDGET: {candidate_scan_budget}")
+        print(f"FINAL APPLICATION QUEUE: {len(selected_jobs)}")
 
         strategy_payload = strategy_audit_payload(strategy)
 
@@ -671,6 +682,11 @@ class CareerWorkflowPipeline:
             "rejection_summary": (rejection_summary),
             "eligibility_decisions": (eligibility_decisions),
             "diversified": len(diversified_jobs),
+            "diversity_rejected": len(eligible_jobs) - len(diversified_jobs),
+            "selection_not_scanned": len(diversified_jobs) - len(selected_jobs),
+            "accounted_classified": len(rejected_decisions)
+            + len(diversified_jobs)
+            + (len(eligible_jobs) - len(diversified_jobs)),
             "selected": len(selected_jobs),
             "attempt_budget": (attempt_budget),
             "candidate_scan_budget": (candidate_scan_budget),
@@ -739,7 +755,7 @@ class CareerWorkflowPipeline:
 
         self.context.questionnaire_resolver = questionnaire_resolver
 
-        effective_run_limit = min(
+        effective_run_limit = effective_limit(
             self.context.adaptive_strategy.max_applications_per_run,
             self.context.max_applications,
         )
@@ -771,6 +787,7 @@ class CareerWorkflowPipeline:
             policy=policy,
             detail_cache=(self.context.detail_cache),
             ledger=ledger,
+            run_id=self.context.run_id,
         )
 
         self.context.application_summary = summary
@@ -787,7 +804,7 @@ class CareerWorkflowPipeline:
         attempted = (
             summary.applied
             + summary.already_applied
-            + summary.skipped_external
+            + summary.manual_review
             + summary.failed
         )
 
@@ -802,6 +819,7 @@ class CareerWorkflowPipeline:
             "dry_run_skipped": (summary.dry_run_skipped),
             "run_limit_reached": (summary.run_limit_reached),
             "failed": summary.failed,
+            "manual_review": summary.manual_review,
         }
 
         self._write_artifact(
@@ -880,7 +898,7 @@ class CareerWorkflowPipeline:
     # Pipeline
     # ------------------------------------------------------------------
 
-    def run(self) -> PipelineResult:
+    def _run_unlocked(self) -> PipelineResult:
         self.initialize_run()
 
         execution_plan = (
@@ -955,6 +973,12 @@ class CareerWorkflowPipeline:
 
         return result
 
+    def run(self) -> PipelineResult:
+        lock_path = os.getenv("PIPELINE_LOCK_PATH", "data/ui_runtime/pipeline.lock")
+        stale_minutes = int(os.getenv("PIPELINE_LOCK_STALE_MINUTES", "720"))
+        with PipelineLock(lock_path, stale_after_minutes=stale_minutes):
+            return self._run_unlocked()
+
     def _skip_remaining_pending_stages(
         self,
     ) -> None:
@@ -995,7 +1019,7 @@ class CareerWorkflowPipeline:
                     "attempted": (
                         summary.applied
                         + summary.already_applied
-                        + summary.skipped_external
+                        + summary.manual_review
                         + summary.failed
                     ),
                     "submitted": summary.applied,
@@ -1006,6 +1030,7 @@ class CareerWorkflowPipeline:
                     "dry_run_skipped": summary.dry_run_skipped,
                     "run_limit_reached": summary.run_limit_reached,
                     "failed": summary.failed,
+                    "manual_review": summary.manual_review,
                 }
             )
 

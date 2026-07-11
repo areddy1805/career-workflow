@@ -11,8 +11,15 @@ def pipeline(tmp_path, min_apply_score=50):
     )
 
 
-def job(job_id, title, tags=None, description="", location="Pune",
-        experience="4-8 Yrs", work_mode=None):
+def job(
+    job_id,
+    title,
+    tags=None,
+    description="",
+    location="Pune",
+    experience="4-8 Yrs",
+    work_mode=None,
+):
     data = {
         "job_id": job_id,
         "title": title,
@@ -74,19 +81,26 @@ def test_generic_backend_without_ai_fails_relevance(tmp_path):
 
 def test_remote_anywhere_passes_location_gate(tmp_path):
     p = pipeline(tmp_path)
-    raw = norm(p, job("4", "AI Engineer", ["ai"], "Remote role", "Bengaluru", work_mode="Remote"))
+    raw = norm(
+        p,
+        job("4", "AI Engineer", ["ai"], "Remote role", "Bengaluru", work_mode="Remote"),
+    )
     assert p.location_work_mode_gate([raw]) == [raw]
 
 
 def test_pune_hybrid_passes_location_gate(tmp_path):
     p = pipeline(tmp_path)
-    raw = norm(p, job("5", "AI Engineer", ["ai"], "Hybrid role", "Pune", work_mode="Hybrid"))
+    raw = norm(
+        p, job("5", "AI Engineer", ["ai"], "Hybrid role", "Pune", work_mode="Hybrid")
+    )
     assert p.location_work_mode_gate([raw]) == [raw]
 
 
 def test_non_pune_hybrid_rejected(tmp_path):
     p = pipeline(tmp_path)
-    raw = norm(p, job("6", "AI Engineer", ["ai"], "Hybrid role", "Chennai", work_mode="Hybrid"))
+    raw = norm(
+        p, job("6", "AI Engineer", ["ai"], "Hybrid role", "Chennai", work_mode="Hybrid")
+    )
     assert p.location_work_mode_gate([raw]) == []
 
 
@@ -121,44 +135,167 @@ def test_rank_prefers_fit_score(tmp_path):
 
 def test_remote_sensing_does_not_count_as_remote_work(tmp_path):
     p = pipeline(tmp_path)
-    raw = norm(p, job(
-        "10", "AI Engineer", ["ai"],
-        "Build remote sensing models for satellite imagery.",
-        "Bengaluru",
-    ))
+    raw = norm(
+        p,
+        job(
+            "10",
+            "AI Engineer",
+            ["ai"],
+            "Build remote sensing models for satellite imagery.",
+            "Bengaluru",
+        ),
+    )
     assert p._classify_work_mode(raw) == "unknown"
     assert p.location_work_mode_gate([raw]) == []
 
 
 def test_negative_remote_language_does_not_pass_worldwide_gate(tmp_path):
     p = pipeline(tmp_path)
-    raw = norm(p, job(
-        "11", "AI Engineer", ["ai"],
-        "This role is not remote. Work from office in Bengaluru.",
-        "Bengaluru",
-    ))
+    raw = norm(
+        p,
+        job(
+            "11",
+            "AI Engineer",
+            ["ai"],
+            "This role is not remote. Work from office in Bengaluru.",
+            "Bengaluru",
+        ),
+    )
     assert p._classify_work_mode(raw) == "office"
     assert p.location_work_mode_gate([raw]) == []
 
 
 def test_incidental_pune_office_mention_does_not_make_bengaluru_job_pune(tmp_path):
     p = pipeline(tmp_path)
-    raw = norm(p, job(
-        "12", "AI Engineer", ["ai"],
-        "This position is based in Bengaluru. Our offices are in Pune and Hyderabad.",
-        "Bengaluru",
-        work_mode="Hybrid",
-    ))
+    raw = norm(
+        p,
+        job(
+            "12",
+            "AI Engineer",
+            ["ai"],
+            "This position is based in Bengaluru. Our offices are in Pune and Hyderabad.",
+            "Bengaluru",
+            work_mode="Hybrid",
+        ),
+    )
     assert p._is_pune_location(raw) is False
     assert p.location_work_mode_gate([raw]) == []
 
 
 def test_explicit_description_work_location_pune_is_accepted(tmp_path):
     p = pipeline(tmp_path)
-    raw = norm(p, job(
-        "13", "AI Engineer", ["ai"],
-        "Work location: Pune. Hybrid working model.",
-        "",
-    ))
+    raw = norm(
+        p,
+        job(
+            "13",
+            "AI Engineer",
+            ["ai"],
+            "Work location: Pune. Hybrid working model.",
+            "",
+        ),
+    )
     assert p._is_pune_location(raw) is True
+    assert p.location_work_mode_gate([raw]) == [raw]
+
+
+def test_standalone_remote_location_passes_worldwide_gate(tmp_path):
+    p = pipeline(tmp_path)
+    raw = norm(
+        p,
+        job(
+            "14",
+            "AI Engineer",
+            ["ai"],
+            "Build production AI systems.",
+            "Remote",
+        ),
+    )
+
+    assert p._classify_work_mode(raw) == "remote"
+    assert p.location_work_mode_gate([raw]) == [raw]
+
+
+def test_remote_india_location_passes_worldwide_gate(tmp_path):
+    p = pipeline(tmp_path)
+    raw = norm(
+        p,
+        job(
+            "15",
+            "AI Engineer",
+            ["ai"],
+            "Build production AI systems.",
+            "Remote - India",
+        ),
+    )
+
+    assert p._classify_work_mode(raw) == "remote"
+    assert p.location_work_mode_gate([raw]) == [raw]
+
+
+def test_india_remote_location_passes_worldwide_gate(tmp_path):
+    p = pipeline(tmp_path)
+    raw = norm(
+        p,
+        job(
+            "16",
+            "AI Engineer",
+            ["ai"],
+            "Build production AI systems.",
+            "India - Remote",
+        ),
+    )
+
+    assert p._classify_work_mode(raw) == "remote"
+    assert p.location_work_mode_gate([raw]) == [raw]
+
+
+def test_hybrid_signal_wins_over_remote_signal(tmp_path):
+    p = pipeline(tmp_path)
+    raw = norm(
+        p,
+        job(
+            "17",
+            "AI Engineer",
+            ["ai"],
+            "Hybrid role with remote flexibility.",
+            "Bengaluru",
+        ),
+    )
+
+    assert p._classify_work_mode(raw) == "hybrid"
+    assert p.location_work_mode_gate([raw]) == []
+
+
+def test_plain_india_without_remote_signal_remains_rejected(tmp_path):
+    p = pipeline(tmp_path)
+    raw = norm(
+        p,
+        job(
+            "18",
+            "AI Native Engineer",
+            ["ai"],
+            "Build agentic AI systems.",
+            "India",
+        ),
+    )
+
+    assert p._classify_work_mode(raw) == "unknown"
+    assert p.location_work_mode_gate([raw]) == []
+
+
+def test_explicit_remote_location_overrides_conflicting_hybrid_metadata(tmp_path):
+    p = pipeline(tmp_path)
+    raw = norm(
+        p,
+        job(
+            "19",
+            "AI Engineer",
+            ["ai"],
+            "Build production AI systems.",
+            "Remote",
+            work_mode="Hybrid",
+        ),
+    )
+
+    assert p._classify_work_mode(raw) == "remote"
     assert p.location_work_mode_gate([raw]) == [raw]

@@ -252,6 +252,8 @@ def run_history(limit: int = 50) -> pd.DataFrame:
             "attempted": result.get("attempted", 0),
             "submitted": result.get("submitted", 0),
             "already_applied": result.get("already_applied", 0),
+            "skipped_external": result.get("skipped_external", 0),
+            "run_limit_reached": result.get("run_limit_reached", 0),
             "failed": result.get("failed", 0),
             "manual_review": result.get("manual_review", 0),
         }

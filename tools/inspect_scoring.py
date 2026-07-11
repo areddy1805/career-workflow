@@ -2,7 +2,6 @@ import csv
 import random
 from collections import defaultdict
 
-
 INPUT_FILE = "data/scored_jobs.csv"
 
 random.seed(42)
@@ -28,13 +27,9 @@ def print_job(row):
     if row["reason"]:
         print(f'REASON:   {row["reason"]}')
 
-    description = (
-        row["description"]
-        .replace("\n", " ")
-        .strip()
-    )
+    description = row["description"].replace("\n", " ").strip()
 
-    print(f'DESC:     {description[:700]}')
+    print(f"DESC:     {description[:700]}")
 
 
 def section(title, rows):
@@ -68,9 +63,7 @@ def main():
 
     # Highest-scoring AI jobs
     ai_shortlist = [
-        j for j in jobs
-        if j["decision"] == "SHORTLIST"
-        and j["track"] == "AI"
+        j for j in jobs if j["decision"] == "SHORTLIST" and j["track"] == "AI"
     ]
 
     ai_shortlist.sort(
@@ -84,10 +77,7 @@ def main():
     )
 
     # Lowest-scoring jobs that barely entered shortlist
-    shortlist_boundary = [
-        j for j in jobs
-        if j["decision"] == "SHORTLIST"
-    ]
+    shortlist_boundary = [j for j in jobs if j["decision"] == "SHORTLIST"]
 
     shortlist_boundary.sort(
         key=lambda x: int(x["score"]),
@@ -99,10 +89,7 @@ def main():
     )
 
     # Random borderline jobs
-    borderline = [
-        j for j in jobs
-        if j["decision"] == "BORDERLINE"
-    ]
+    borderline = [j for j in jobs if j["decision"] == "BORDERLINE"]
 
     section(
         "30 RANDOM BORDERLINE JOBS",
@@ -113,10 +100,7 @@ def main():
     )
 
     # Highest rejected jobs
-    rejected = [
-        j for j in jobs
-        if j["decision"] == "REJECT"
-    ]
+    rejected = [j for j in jobs if j["decision"] == "REJECT"]
 
     rejected.sort(
         key=lambda x: int(x["score"]),
@@ -130,9 +114,9 @@ def main():
 
     # Pune/Remote rejected jobs
     rejected_local = [
-        j for j in jobs
-        if j["decision"] == "REJECT"
-        and j["location_status"] == "ACCEPT"
+        j
+        for j in jobs
+        if j["decision"] == "REJECT" and j["location_status"] == "ACCEPT"
     ]
 
     rejected_local.sort(
@@ -147,9 +131,9 @@ def main():
 
     # Non-local highly scored jobs
     nonlocal_high = [
-        j for j in jobs
-        if j["decision"] == "SHORTLIST"
-        and j["location_status"] == "REVIEW"
+        j
+        for j in jobs
+        if j["decision"] == "SHORTLIST" and j["location_status"] == "REVIEW"
     ]
 
     nonlocal_high.sort(

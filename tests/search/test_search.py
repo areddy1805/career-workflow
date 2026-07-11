@@ -1,8 +1,9 @@
 import os
+
 from dotenv import load_dotenv
 
-from src.client.naukri_client import NaukriLoginClient
 from src.client.job_client import NaukriJobClient
+from src.client.naukri_client import NaukriLoginClient
 
 load_dotenv(".env")
 
