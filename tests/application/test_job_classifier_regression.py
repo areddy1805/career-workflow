@@ -162,3 +162,73 @@ def test_explicit_description_work_location_pune_is_accepted(tmp_path):
     ))
     assert p._is_pune_location(raw) is True
     assert p.location_work_mode_gate([raw]) == [raw]
+
+
+def test_standalone_remote_location_passes_worldwide_gate(tmp_path):
+    p = pipeline(tmp_path)
+    raw = norm(p, job(
+        "14",
+        "AI Engineer",
+        ["ai"],
+        "Build production AI systems.",
+        "Remote",
+    ))
+
+    assert p._classify_work_mode(raw) == "remote"
+    assert p.location_work_mode_gate([raw]) == [raw]
+
+
+def test_remote_india_location_passes_worldwide_gate(tmp_path):
+    p = pipeline(tmp_path)
+    raw = norm(p, job(
+        "15",
+        "AI Engineer",
+        ["ai"],
+        "Build production AI systems.",
+        "Remote - India",
+    ))
+
+    assert p._classify_work_mode(raw) == "remote"
+    assert p.location_work_mode_gate([raw]) == [raw]
+
+
+def test_india_remote_location_passes_worldwide_gate(tmp_path):
+    p = pipeline(tmp_path)
+    raw = norm(p, job(
+        "16",
+        "AI Engineer",
+        ["ai"],
+        "Build production AI systems.",
+        "India - Remote",
+    ))
+
+    assert p._classify_work_mode(raw) == "remote"
+    assert p.location_work_mode_gate([raw]) == [raw]
+
+
+def test_hybrid_signal_wins_over_remote_signal(tmp_path):
+    p = pipeline(tmp_path)
+    raw = norm(p, job(
+        "17",
+        "AI Engineer",
+        ["ai"],
+        "Hybrid role with remote flexibility.",
+        "Bengaluru",
+    ))
+
+    assert p._classify_work_mode(raw) == "hybrid"
+    assert p.location_work_mode_gate([raw]) == []
+
+
+def test_plain_india_without_remote_signal_remains_rejected(tmp_path):
+    p = pipeline(tmp_path)
+    raw = norm(p, job(
+        "18",
+        "AI Native Engineer",
+        ["ai"],
+        "Build agentic AI systems.",
+        "India",
+    ))
+
+    assert p._classify_work_mode(raw) == "unknown"
+    assert p.location_work_mode_gate([raw]) == []

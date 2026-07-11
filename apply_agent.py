@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import datetime, UTC
 from typing import Any, Protocol
 import csv
@@ -52,6 +52,7 @@ from src.application.manual_action_queue import (
 )
 from src.resolution.hybrid_resolver import HybridQuestionResolver
 from src.search.job_search_cache import JobSearchCache
+from src.orchestration.runtime import CircuitBreaker
 from src.search.challenge_cooldown import SearchChallengeCooldown
 
 from src.utils.questionnaire_telemetry import log_unresolved_questions
@@ -597,10 +598,14 @@ class JobFetchResult:
     completed_normally: bool = True
     search_skipped_due_to_cooldown: bool = False
     search_requests_attempted: int = 0
+    pages_stopped_low_yield: int = 0
+    stop_reasons: dict[str, int] = field(default_factory=dict)
 
 
 def fetch_all_jobs(
     jc: NaukriJobClient,
+    *,
+    mode: str = "full",
 ) -> JobFetchResult:
 
     SEARCH_TRACKS = [
@@ -643,8 +648,12 @@ def fetch_all_jobs(
             raise ValueError(f"{name} must contain at least one integer")
         return values
 
-    EXPERIENCE_LEVELS = _env_int_list("SEARCH_EXPERIENCE_LEVELS", "2,4,6,8")
-    PAGES = int(os.getenv("SEARCH_MAX_PAGES", "3"))
+    if mode not in {"full", "incremental"}:
+        raise ValueError("mode must be 'full' or 'incremental'")
+    default_exp = "2,4,6,8" if mode == "full" else "4,6"
+    EXPERIENCE_LEVELS = _env_int_list("SEARCH_EXPERIENCE_LEVELS", default_exp)
+    default_pages = "3" if mode == "full" else "1"
+    PAGES = int(os.getenv("SEARCH_MAX_PAGES", default_pages))
     JOB_AGE = int(os.getenv("SEARCH_JOB_AGE_DAYS", "3"))
     RESULTS_PER_PAGE = int(os.getenv("SEARCH_RESULTS_PER_PAGE", "20"))
 
@@ -660,6 +669,10 @@ def fetch_all_jobs(
 
     challenge_encountered = False
     search_requests_attempted = 0
+    pages_stopped_low_yield = 0
+    stop_reasons: dict[str, int] = {}
+    min_new_yield = int(os.getenv("SEARCH_MIN_NEW_JOBS_PER_PAGE", "2"))
+    low_yield_patience = int(os.getenv("SEARCH_LOW_YIELD_PATIENCE", "1"))
 
     print_section_title(
         f"fetching jobs  "
@@ -677,6 +690,7 @@ def fetch_all_jobs(
                 break
 
             previous_page_signature: tuple[str, ...] | None = None
+            consecutive_low_yield = 0
 
             for page in range(1, PAGES + 1):
                 try:
@@ -763,9 +777,19 @@ def fetch_all_jobs(
                     )
 
                     if not jobs or len(jobs) < RESULTS_PER_PAGE:
+                        stop_reasons["short_page"] = stop_reasons.get("short_page", 0) + 1
                         break
 
-                    time.sleep(1.2)
+                    if len(new_jobs) < min_new_yield:
+                        consecutive_low_yield += 1
+                    else:
+                        consecutive_low_yield = 0
+                    if page < PAGES and consecutive_low_yield >= low_yield_patience:
+                        pages_stopped_low_yield += 1
+                        stop_reasons["low_yield"] = stop_reasons.get("low_yield", 0) + 1
+                        break
+
+                    time.sleep(float(os.getenv("SEARCH_REQUEST_DELAY_SECONDS", "1.2")))
 
                 except NaukriSearchChallengeError as exc:
                     challenge_encountered = True
@@ -806,6 +830,8 @@ def fetch_all_jobs(
         challenge_encountered=challenge_encountered,
         completed_normally=not challenge_encountered,
         search_requests_attempted=search_requests_attempted,
+        pages_stopped_low_yield=pages_stopped_low_yield,
+        stop_reasons=stop_reasons,
     )
 
 
@@ -962,6 +988,7 @@ def acquire_jobs(
     jc: NaukriJobClient,
     cache: JobSearchCache,
     cooldown: SearchChallengeCooldown,
+    mode: str = "full",
 ) -> tuple[list, JobFetchResult]:
     """
     Execute cooldown-aware job acquisition.
@@ -986,7 +1013,7 @@ def acquire_jobs(
 
         return jobs, fetch_result
 
-    fetch_result = fetch_all_jobs(jc)
+    fetch_result = fetch_all_jobs(jc) if mode == "full" else fetch_all_jobs(jc, mode=mode)
 
     if fetch_result.challenge_encountered:
         cooldown.record_challenge()
@@ -1441,6 +1468,7 @@ def run_application_batch(
     detail_cache = detail_cache or {}
 
     application_attempts = 0
+    breaker = CircuitBreaker(max_consecutive_failures=int(os.getenv("APPLICATION_MAX_CONSECUTIVE_FAILURES", "5")))
 
     total_candidates = len(jobs)
 
@@ -1516,22 +1544,11 @@ def run_application_batch(
                 )
             continue
 
-        if effective_policy.dry_run:
-            logger.info(
-                "Dry-run: application suppressed for job_id=%s",
-                job.job_id,
-            )
-
-            dry_run_skipped_count += 1
-            if ledger is not None:
-                ledger.record(job, "dry_run_suppressed", meta=meta)
-            continue
-
         # ----------------------------------------------------------
-        # Per-run application limit
+        # Per-run application limit (same candidate prefix in dry/live)
         # ----------------------------------------------------------
 
-        if application_attempts >= effective_policy.max_applications_per_run:
+        if (effective_policy.max_applications_per_run is not None and application_attempts >= effective_policy.max_applications_per_run):
             logger.info(
                 "Per-run application limit reached. " "Skipping job_id=%s limit=%s",
                 job.job_id,
@@ -1541,6 +1558,14 @@ def run_application_batch(
             run_limit_reached_count += 1
             if ledger is not None:
                 ledger.record(job, "run_limit_suppressed", meta=meta)
+            continue
+
+        if effective_policy.dry_run:
+            application_attempts += 1
+            logger.info("Dry-run: application suppressed for job_id=%s", job.job_id)
+            dry_run_skipped_count += 1
+            if ledger is not None:
+                ledger.record(job, "dry_run_suppressed", meta=meta)
             continue
 
         # ----------------------------------------------------------
@@ -1654,6 +1679,7 @@ def run_application_batch(
             applied_jobs_set.add(job.job_id)
 
             applied_count += 1
+            breaker.success()
 
             if ledger is not None:
                 ledger.record(job, "applied", meta=meta)
@@ -1671,6 +1697,11 @@ def run_application_batch(
                     else "permanent_failure"
                 )
                 ledger.record(job, status, meta=meta, error=str(exc))
+
+            if breaker.failure(f"{type(exc).__name__}: {exc}"):
+                raise RuntimeError(
+                    f"Application circuit breaker tripped after {breaker.consecutive_failures} consecutive failures: {breaker.reason}"
+                ) from exc
 
         finally:
             sleep_fn(3)
@@ -1749,7 +1780,7 @@ def print_runtime_policy(
         f"Max applications per run : "
         f"{Style.RESET_ALL}"
         f"{Fore.CYAN}"
-        f"{policy.max_applications_per_run}"
+        f"{policy.max_applications_per_run if policy.max_applications_per_run is not None else 'UNLIMITED'}"
         f"{Style.RESET_ALL}"
     )
 

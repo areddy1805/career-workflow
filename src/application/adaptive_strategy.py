@@ -30,7 +30,7 @@ class AdaptiveStrategyConfig:
     minimum_applications: int = 30
     minimum_responses: int = 5
     base_minimum_score: int = 68
-    base_max_applications_per_run: int = 5
+    base_max_applications_per_run: int | None = 5
     minimum_group_samples: int = 5
     exploration_fraction: float = 0.20
 
@@ -61,7 +61,7 @@ class AdaptiveStrategy:
     total_applications: int
     total_responses: int
     minimum_score: int
-    max_applications_per_run: int
+    max_applications_per_run: int | None
     preferred_priorities: tuple[str, ...] = ()
     preferred_subtracks: tuple[str, ...] = ()
     exploration_fraction: float = 0.20
@@ -292,12 +292,13 @@ def build_adaptive_strategy(
             75,
         )
 
-        max_applications_per_run = max(
-            1,
-            config.base_max_applications_per_run - 1,
-        )
+        if config.base_max_applications_per_run is not None:
+            max_applications_per_run = max(
+                1,
+                config.base_max_applications_per_run - 1,
+            )
 
-    elif global_response_rate >= 0.20:
+    elif global_response_rate >= 0.20 and config.base_max_applications_per_run is not None:
         max_applications_per_run = config.base_max_applications_per_run + 1
 
     priority_performance = _group_performance(

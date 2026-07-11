@@ -540,10 +540,13 @@ class JobFilterPipeline2:
             exp_min = int(job.get("experience_min", 0) or 0)
             exp_max = int(job.get("experience_max", 10) or 10)
 
-            junior_only = any(
-                token in title
-                for token in ("intern", "internship", "graduate trainee", "fresher")
-            ) or exp_max == 0
+            junior_only = (
+                any(
+                    token in title
+                    for token in ("intern", "internship", "graduate trainee", "fresher")
+                )
+                or exp_max == 0
+            )
 
             too_senior = exp_min >= 10 or any(
                 token in title
@@ -624,23 +627,16 @@ class JobFilterPipeline2:
         for job in jobs:
             title = (job.get("title") or "").lower()
 
-            explicit_ai_title = any(
-                signal in title for signal in self.AI_TITLE_SIGNALS
-            )
+            explicit_ai_title = any(signal in title for signal in self.AI_TITLE_SIGNALS)
 
-            if (
-                not explicit_ai_title
-                and not any(keyword in title for keyword in self.SOFTWARE_KEYWORDS)
+            if not explicit_ai_title and not any(
+                keyword in title for keyword in self.SOFTWARE_KEYWORDS
             ):
                 print(f"  [TITLE FILTER - not software/AI] {job.get('title')}")
                 continue
 
-            if (
-                not explicit_ai_title
-                and any(
-                    keyword in title
-                    for keyword in self.WRONG_TRACK_TITLE_KEYWORDS
-                )
+            if not explicit_ai_title and any(
+                keyword in title for keyword in self.WRONG_TRACK_TITLE_KEYWORDS
             ):
                 print(f"  [TITLE FILTER - wrong track] {job.get('title')}")
                 continue
@@ -679,12 +675,10 @@ class JobFilterPipeline2:
                 signal for signal in self.AI_TITLE_SIGNALS if signal in title
             )
             strong_hits = sorted(
-                signal for signal in self.STRONG_AI_SIGNALS
-                if signal in searchable_text
+                signal for signal in self.STRONG_AI_SIGNALS if signal in searchable_text
             )
             medium_hits = sorted(
-                signal for signal in self.MEDIUM_AI_SIGNALS
-                if signal in searchable_text
+                signal for signal in self.MEDIUM_AI_SIGNALS if signal in searchable_text
             )
 
             explicit_ai_title = bool(title_hits)
@@ -696,9 +690,7 @@ class JobFilterPipeline2:
             elif concrete_ai_work:
                 relevance_reason = f"Strong AI signal: {strong_hits[0]}"
             elif broad_ai_evidence:
-                relevance_reason = "Multiple AI signals: " + ", ".join(
-                    medium_hits[:3]
-                )
+                relevance_reason = "Multiple AI signals: " + ", ".join(medium_hits[:3])
             else:
                 print(
                     f"  [AI RELEVANCE REJECT] "
@@ -742,10 +734,9 @@ class JobFilterPipeline2:
             if re.search(r"\b(office|onsite|on-site|wfo)\b", structured):
                 return "office"
 
-        text = " ".join(
-            str(job.get(key) or "")
-            for key in ("location", "description")
-        ).lower()
+        location = str(job.get("location") or "").lower().strip()
+        description = str(job.get("description") or "").lower()
+        text = f"{location} {description}"
 
         negative_remote = (
             r"\bnot remote\b",
@@ -783,12 +774,23 @@ class JobFilterPipeline2:
             if any(re.search(pattern, text) for pattern in office_signals):
                 return "office"
             return "office"
+
         if any(re.search(pattern, text) for pattern in hybrid_signals):
             return "hybrid"
+
         if any(re.search(pattern, text) for pattern in office_signals):
             return "office"
+
+        # Location metadata may legitimately be exactly "Remote",
+        # "Remote - India", or "India - Remote". Keep this inference
+        # isolated from description text so phrases such as
+        # "remote sensing" are not treated as work-mode evidence.
+        if re.search(r"\bremote\b", location):
+            return "remote"
+
         if any(re.search(pattern, text) for pattern in remote_signals):
             return "remote"
+
         return "unknown"
 
     @staticmethod
@@ -805,7 +807,9 @@ class JobFilterPipeline2:
             rf"\bbased in\s+(?:{pune_pattern})",
             rf"\bposition is based in\s+(?:{pune_pattern})",
         )
-        return any(re.search(pattern, description) for pattern in explicit_location_patterns)
+        return any(
+            re.search(pattern, description) for pattern in explicit_location_patterns
+        )
 
     def location_work_mode_gate(self, jobs):
         """
@@ -880,31 +884,73 @@ class JobFilterPipeline2:
         title = (job.get("title") or "").lower()
 
         applied_ai_terms = (
-            "generative ai", "genai", "large language model", "llm",
-            "rag", "retrieval augmented generation", "langchain", "langgraph",
-            "llamaindex", "semantic kernel", "azure openai", "openai api",
-            "vector database", "vector db", "vector search", "embedding",
-            "agentic ai", "ai agent", "tool calling", "function calling",
-            "prompt engineering", "llm evaluation",
+            "generative ai",
+            "genai",
+            "large language model",
+            "llm",
+            "rag",
+            "retrieval augmented generation",
+            "langchain",
+            "langgraph",
+            "llamaindex",
+            "semantic kernel",
+            "azure openai",
+            "openai api",
+            "vector database",
+            "vector db",
+            "vector search",
+            "embedding",
+            "agentic ai",
+            "ai agent",
+            "tool calling",
+            "function calling",
+            "prompt engineering",
+            "llm evaluation",
         )
         backend_terms = (
-            "python", "fastapi", "flask", "node.js", "nodejs", "express",
-            "rest api", "microservices", "mongodb", "postgresql", "docker",
-            "azure", "aws",
+            "python",
+            "fastapi",
+            "flask",
+            "node.js",
+            "nodejs",
+            "express",
+            "rest api",
+            "microservices",
+            "mongodb",
+            "postgresql",
+            "docker",
+            "azure",
+            "aws",
         )
         frontend_terms = (
-            "angular", "typescript", "rxjs", "frontend", "front-end",
-            "full stack", "fullstack",
+            "angular",
+            "typescript",
+            "rxjs",
+            "frontend",
+            "front-end",
+            "full stack",
+            "fullstack",
         )
         research_terms = (
-            "research scientist", "applied research", "publish papers",
-            "publication record", "phd required", "train foundation models",
-            "train deep learning models", "training neural networks",
-            "novel architectures", "computer vision research",
+            "research scientist",
+            "applied research",
+            "publish papers",
+            "publication record",
+            "phd required",
+            "train foundation models",
+            "train deep learning models",
+            "training neural networks",
+            "novel architectures",
+            "computer vision research",
         )
         ml_core_terms = (
-            "tensorflow", "pytorch", "scikit-learn", "feature engineering",
-            "model training", "hyperparameter tuning", "deep learning",
+            "tensorflow",
+            "pytorch",
+            "scikit-learn",
+            "feature engineering",
+            "model training",
+            "hyperparameter tuning",
+            "deep learning",
             "computer vision",
         )
 
@@ -943,9 +989,7 @@ class JobFilterPipeline2:
         if f["ai_hits"] >= 2 and f["backend_hits"] >= 2:
             return max(score, 72)
 
-        if f["ai_hits"] >= 2 and (
-            f["backend_hits"] >= 1 or f["frontend_hits"] >= 1
-        ):
+        if f["ai_hits"] >= 2 and (f["backend_hits"] >= 1 or f["frontend_hits"] >= 1):
             return max(score, 65)
 
         if f["ai_hits"] == 1 and not f["ai_title"]:
@@ -1281,15 +1325,22 @@ Jobs:
             vba_automation_hits = sum(
                 term in text
                 for term in (
-                    "vba", "excel macros", "advanced excel",
-                    "power query", "macro automation",
+                    "vba",
+                    "excel macros",
+                    "advanced excel",
+                    "power query",
+                    "macro automation",
                 )
             )
             content_role_hits = sum(
                 term in text
                 for term in (
-                    "copywriter", "copywriting", "brand copy",
-                    "marketing copy", "content writer", "social media content",
+                    "copywriter",
+                    "copywriting",
+                    "brand copy",
+                    "marketing copy",
+                    "content writer",
+                    "social media content",
                 )
             )
             engineering_hits = features["backend_hits"] + features["ai_hits"]
@@ -1322,8 +1373,7 @@ Jobs:
             elif features["ai_hits"] >= 2 and features["backend_hits"] >= 2:
                 score = max(score, 72)
             elif features["ai_hits"] >= 2 and (
-                features["backend_hits"] >= 1
-                or features["frontend_hits"] >= 1
+                features["backend_hits"] >= 1 or features["frontend_hits"] >= 1
             ):
                 score = max(score, 65)
 

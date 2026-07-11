@@ -39,7 +39,7 @@ class ApplicationPolicy:
 
     dry_run: bool = True
 
-    max_applications_per_run: int = 10
+    max_applications_per_run: int | None = 10
 
     max_applications_per_day: int = 30
 
@@ -47,7 +47,7 @@ class ApplicationPolicy:
         if not 0 <= self.minimum_score <= 100:
             raise ValueError("minimum_score must be between 0 and 100")
 
-        if self.max_applications_per_run < 0:
+        if self.max_applications_per_run is not None and self.max_applications_per_run < 0:
             raise ValueError("max_applications_per_run cannot be negative")
 
         if self.max_applications_per_day < 0:

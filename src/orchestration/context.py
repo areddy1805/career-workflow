@@ -13,7 +13,7 @@ def utc_now() -> datetime:
 class PipelineContext:
     run_id: str
     dry_run: bool
-    max_applications: int
+    max_applications: int | None
 
     started_at: datetime = field(default_factory=utc_now)
 
@@ -22,6 +22,8 @@ class PipelineContext:
     job_client: Any | None = None
     questionnaire_resolver: Any | None = None
     ledger: Any | None = None
+
+    acquisition_mode: str = "full"
 
     # Acquisition
     acquired_jobs: list[Any] = field(default_factory=list)
