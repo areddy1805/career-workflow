@@ -1,7 +1,10 @@
 import pandas as pd
 from nicegui import ui
 
-from career_ui.components import dataframe_table, page_header, section
+from career_ui.shell import shell
+from career_ui.layouts.page import page_header, section_header
+from career_ui.components.cards import panel_p
+from career_ui.tables.data_table import DataTable
 from career_ui.services.control_center import (
     MANUAL_JOBS_DB,
     ledger_path,
@@ -9,40 +12,26 @@ from career_ui.services.control_center import (
     runs_path,
     safe_settings,
 )
-from career_ui.shell import shell
-
 
 @ui.page("/settings")
 def page():
     shell("/settings")
-    with ui.column().classes("cw-content gap-5"):
-        page_header(
-            "SYSTEM",
-            "Settings",
-            "Read-only operational configuration and resolved storage paths.",
-            "READ ONLY",
-        )
-        section("Operational configuration", "Safe non-secret environment values")
-        dataframe_table(
-            pd.DataFrame(
-                [
-                    {"Setting": k, "Value": v or "DEFAULT / NOT SET"}
-                    for k, v in safe_settings().items()
+    with ui.column().classes("w-full max-w-[1600px] mx-auto p-4 gap-6 pb-20"):
+        page_header("Settings", "Read-only operational configuration and resolved storage paths.", kicker="System", status="READ ONLY")
+        
+        with ui.row().classes("w-full gap-6 flex-nowrap items-stretch"):
+            with panel_p("w-1/2 flex flex-col gap-2"):
+                section_header("Operational Configuration", "Safe non-secret environment values")
+                DataTable(pd.DataFrame([{"Setting": k, "Value": v or "DEFAULT / NOT SET"} for k, v in safe_settings().items()]), classes="flex-grow min-h-[300px]")
+                
+            with panel_p("w-1/2 flex flex-col gap-2"):
+                section_header("Storage", "Resolved local persistence paths")
+                paths = [
+                    ("Application Ledger", ledger_path()),
+                    ("Run Artifacts", runs_path()),
+                    ("Pipeline External Queue", manual_queue_path()),
+                    ("Manual External Jobs", MANUAL_JOBS_DB),
                 ]
-            )
-        )
-        section("Storage", "Resolved local persistence paths")
-        paths = [
-            ("Application Ledger", ledger_path()),
-            ("Run Artifacts", runs_path()),
-            ("Pipeline External Queue", manual_queue_path()),
-            ("Manual External Jobs", MANUAL_JOBS_DB),
-        ]
-        dataframe_table(
-            pd.DataFrame(
-                [{"Store": n, "Path": str(p), "Exists": p.exists()} for n, p in paths]
-            )
-        )
-        ui.label(
-            "Secret configuration is intentionally excluded from this interface."
-        ).classes("text-xs text-slate-500")
+                DataTable(pd.DataFrame([{"Store": n, "Path": str(p), "Exists": "YES" if p.exists() else "NO"} for n, p in paths]), classes="flex-grow min-h-[300px]")
+            
+        ui.html('<div class="text-[11px] text-[var(--muted)] opacity-70 w-full text-center mt-4 uppercase tracking-wider font-bold">Secret configuration is intentionally excluded from this interface.</div>')
