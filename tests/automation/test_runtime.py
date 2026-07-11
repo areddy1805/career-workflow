@@ -24,10 +24,16 @@ def test_pipeline_lock_is_singleton(tmp_path):
 def test_scheduler_prefers_daily_full_run():
     now = datetime(2026, 7, 11, 8, 0)
     config = SchedulerConfig(full_hour=7, incremental_interval_minutes=180)
-    assert next_mode(now, datetime(2026, 7, 10, 7), now - timedelta(hours=4), config) == "full"
+    assert (
+        next_mode(now, datetime(2026, 7, 10, 7), now - timedelta(hours=4), config)
+        == "full"
+    )
 
 
 def test_scheduler_uses_incremental_between_full_runs():
     now = datetime(2026, 7, 11, 12, 0)
     config = SchedulerConfig(full_hour=7, incremental_interval_minutes=180)
-    assert next_mode(now, datetime(2026, 7, 11, 7), now - timedelta(hours=4), config) == "incremental"
+    assert (
+        next_mode(now, datetime(2026, 7, 11, 7), now - timedelta(hours=4), config)
+        == "incremental"
+    )

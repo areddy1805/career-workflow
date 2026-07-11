@@ -1,17 +1,22 @@
-from html import escape
+import pandas as pd
 from nicegui import ui
-from career_ui.shell import shell
-from career_ui.components import page_header, metric_card, section, status_badge, empty_state, dataframe_table
+
+from career_ui.components import (
+    dataframe_table,
+    empty_state,
+    metric_card,
+    page_header,
+    section,
+)
 from career_ui.services.control_center import (
-    get_workflow_queue,
+    WORKFLOW_STATUSES,
     get_queue_analytics,
-    workflow_queue_transition,
+    get_workflow_queue,
     workflow_queue_add_note,
     workflow_queue_retry,
-    WORKFLOW_STATUSES,
+    workflow_queue_transition,
 )
-
-import pandas as pd
+from career_ui.shell import shell
 
 
 @ui.page("/workflow-queue")
@@ -62,28 +67,37 @@ def page() -> None:
                     return
 
                 display_cols = [
-                    "job_id", "title", "company", "workflow_status",
-                    "priority", "retry_count", "updated_at",
+                    "job_id",
+                    "title",
+                    "company",
+                    "workflow_status",
+                    "priority",
+                    "retry_count",
+                    "updated_at",
                 ]
-                rows = [
-                    {k: row.get(k, "") for k in display_cols}
-                    for row in items
-                ]
+                rows = [{k: row.get(k, "") for k in display_cols} for row in items]
                 frame = pd.DataFrame(rows)
                 dataframe_table(frame, pagination=25)
 
         # ── Controls ──────────────────────────────────────────────────
         with ui.row().classes("items-end gap-3 flex-wrap w-full"):
-            status_filter = ui.select(
-                ["ALL"] + WORKFLOW_STATUSES,
-                label="Filter by status",
-                value="ALL",
-            ).props("outlined dense").classes("w-48")
-            search_box = ui.input(placeholder="Search title / company…").props(
-                "outlined dense"
-            ).classes("w-64")
+            status_filter = (
+                ui.select(
+                    ["ALL"] + WORKFLOW_STATUSES,
+                    label="Filter by status",
+                    value="ALL",
+                )
+                .props("outlined dense")
+                .classes("w-48")
+            )
+            search_box = (
+                ui.input(placeholder="Search title / company…")
+                .props("outlined dense")
+                .classes("w-64")
+            )
             ui.button(
-                "Apply", icon="filter_list",
+                "Apply",
+                icon="filter_list",
                 on_click=lambda: refresh(
                     None if status_filter.value == "ALL" else status_filter.value,
                     search_box.value,
@@ -99,9 +113,9 @@ def page() -> None:
         ):
             with ui.grid(columns=2).classes("w-full gap-3 p-3"):
                 t_job_id = ui.input("Job ID").props("outlined dense")
-                t_status = ui.select(
-                    WORKFLOW_STATUSES, label="New status"
-                ).props("outlined dense")
+                t_status = ui.select(WORKFLOW_STATUSES, label="New status").props(
+                    "outlined dense"
+                )
                 t_actor = ui.input("Actor", value="user").props("outlined dense")
                 t_note = ui.input("Note").props("outlined dense")
 
@@ -111,6 +125,7 @@ def page() -> None:
                     return
                 try:
                     from src.application.workflow import WorkflowStatus
+
                     ok = workflow_queue_transition(
                         str(t_job_id.value),
                         WorkflowStatus(t_status.value),
@@ -134,8 +149,8 @@ def page() -> None:
             with ui.grid(columns=2).classes("w-full gap-3 p-3"):
                 n_job_id = ui.input("Job ID").props("outlined dense")
                 n_author = ui.input("Author", value="user").props("outlined dense")
-                n_text = ui.textarea("Note text").classes("col-span-2").props(
-                    "outlined"
+                n_text = (
+                    ui.textarea("Note text").classes("col-span-2").props("outlined")
                 )
 
             def do_note() -> None:
@@ -176,6 +191,6 @@ def page() -> None:
                         type="warning",
                     )
 
-            ui.button("Retry", on_click=do_retry).props("color=secondary unelevated").classes(
-                "m-3"
-            )
+            ui.button("Retry", on_click=do_retry).props(
+                "color=secondary unelevated"
+            ).classes("m-3")

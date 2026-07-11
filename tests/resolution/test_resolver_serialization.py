@@ -4,7 +4,6 @@ from src.utils.questionnaire_resolver import (
     serialize_answer,
 )
 
-
 TEST_QUESTIONS = [
     {
         "questionId": "1",
@@ -55,9 +54,7 @@ TEST_QUESTIONS = [
     },
     {
         "questionId": "5",
-        "questionName": (
-            "Are you available for virtual interview on 1st July 2026"
-        ),
+        "questionName": ("Are you available for virtual interview on 1st July 2026"),
         "questionType": "Radio Button",
         "answerOption": {
             "1": "Yes",

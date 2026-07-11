@@ -253,18 +253,13 @@ def test_missing_url_gets_naukri_fallback(
 
     rows = queue.list()
 
-    assert (
-        rows[0]["url"]
-        == "https://www.naukri.com/job-listings-123"
-    )
+    assert rows[0]["url"] == "https://www.naukri.com/job-listings-123"
 
 
 def test_queue_status_validation(
     tmp_path,
 ):
-    queue = ManualActionQueue(
-        tmp_path / "queue.json"
-    )
+    queue = ManualActionQueue(tmp_path / "queue.json")
 
     with pytest.raises(ValueError):
         queue.update_status(

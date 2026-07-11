@@ -10,20 +10,15 @@ Tests for scheduler managers:
 from __future__ import annotations
 
 import os
-import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
-import pytest
-
-from src.orchestration.heartbeat import Heartbeat, HeartbeatManager
+from src.orchestration.heartbeat import HeartbeatManager
 from src.orchestration.run_manager import PipelineRun, RunManager
-from src.orchestration.runtime import PipelineLock, RuntimeState, RuntimeStateManager
+from src.orchestration.runtime import PipelineLock
 from src.orchestration.scheduler import SchedulerConfig, next_mode
 from src.orchestration.startup_validator import StartupValidator
 from src.orchestration.watchdog import Watchdog
-
 
 # ---------------------------------------------------------------------------
 # HeartbeatManager
@@ -128,6 +123,7 @@ class TestRunManager:
 
     def test_load_active_run_returns_none_for_dead_pid(self, tmp_path: Path) -> None:
         import json
+
         run_path = tmp_path / "current_run.json"
         data = {
             "id": "run001",
@@ -140,7 +136,9 @@ class TestRunManager:
         mgr = RunManager(run_path)
         assert mgr.load_active_run() is None
 
-    def test_load_active_run_returns_none_for_finished_run(self, tmp_path: Path) -> None:
+    def test_load_active_run_returns_none_for_finished_run(
+        self, tmp_path: Path
+    ) -> None:
         run_path = tmp_path / "current_run.json"
         mgr = RunManager(run_path)
         run = mgr.create_run("full")
@@ -188,17 +186,23 @@ class TestWatchdog:
 
     def test_recover_removes_stale_lock(self, tmp_path: Path) -> None:
         import json
-        from datetime import UTC, datetime, timedelta
+        from datetime import UTC, datetime
+
         lock_path = tmp_path / "pipeline.lock"
         lock_path.parent.mkdir(parents=True, exist_ok=True)
-        lock_path.write_text(json.dumps({
-            "pid": 999999999,
-            "hostname": "test",
-            "created_at": (datetime.now(UTC) - timedelta(hours=1)).isoformat(),
-        }))
+        lock_path.write_text(
+            json.dumps(
+                {
+                    "pid": 999999999,
+                    "hostname": "test",
+                    "created_at": (datetime.now(UTC) - timedelta(hours=1)).isoformat(),
+                }
+            )
+        )
         lock = PipelineLock(lock_path)
         wd = Watchdog(enabled=True)
         import logging
+
         logger = logging.getLogger("test")
         removed = wd.recover(lock, logger)
         assert removed is True
@@ -206,17 +210,23 @@ class TestWatchdog:
 
     def test_disabled_watchdog_does_nothing(self, tmp_path: Path) -> None:
         import json
-        from datetime import UTC, datetime, timedelta
+        from datetime import UTC, datetime
+
         lock_path = tmp_path / "pipeline.lock"
         lock_path.parent.mkdir(parents=True, exist_ok=True)
-        lock_path.write_text(json.dumps({
-            "pid": 999999999,
-            "hostname": "test",
-            "created_at": (datetime.now(UTC) - timedelta(hours=1)).isoformat(),
-        }))
+        lock_path.write_text(
+            json.dumps(
+                {
+                    "pid": 999999999,
+                    "hostname": "test",
+                    "created_at": (datetime.now(UTC) - timedelta(hours=1)).isoformat(),
+                }
+            )
+        )
         lock = PipelineLock(lock_path)
         wd = Watchdog(enabled=False)
         import logging
+
         removed = wd.recover(lock, logging.getLogger("test"))
         assert removed is False
         assert lock_path.exists()
@@ -228,7 +238,9 @@ class TestWatchdog:
 
 
 class TestNextMode:
-    def _config(self, full_hour: int = 7, incremental_minutes: int = 180) -> SchedulerConfig:
+    def _config(
+        self, full_hour: int = 7, incremental_minutes: int = 180
+    ) -> SchedulerConfig:
         return SchedulerConfig(
             full_hour=full_hour,
             incremental_interval_minutes=incremental_minutes,

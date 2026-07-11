@@ -46,12 +46,14 @@ def artifact_files(run_dir: Path) -> list[dict[str, Any]]:
     for path in sorted(run_dir.rglob("*")):
         if not path.is_file():
             continue
-        rows.append({
-            "name": path.name,
-            "relative_path": str(path.relative_to(run_dir)),
-            "size_bytes": path.stat().st_size,
-            "suffix": path.suffix.lower(),
-        })
+        rows.append(
+            {
+                "name": path.name,
+                "relative_path": str(path.relative_to(run_dir)),
+                "size_bytes": path.stat().st_size,
+                "suffix": path.suffix.lower(),
+            }
+        )
     return rows
 
 

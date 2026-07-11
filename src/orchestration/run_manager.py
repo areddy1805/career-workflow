@@ -64,9 +64,16 @@ class PipelineRun:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "PipelineRun":
         known = {
-            "id", "mode", "started_at", "pid", "status",
-            "current_stage", "ended_at", "failure_reason",
-            "attempt", "returncode",
+            "id",
+            "mode",
+            "started_at",
+            "pid",
+            "status",
+            "current_stage",
+            "ended_at",
+            "failure_reason",
+            "attempt",
+            "returncode",
         }
         extra = {k: v for k, v in data.items() if k not in known}
         return cls(
@@ -166,9 +173,7 @@ class RunManager:
             return None
         return run
 
-    def last_successful_run(
-        self, scheduler_state: dict[str, Any]
-    ) -> str | None:
+    def last_successful_run(self, scheduler_state: dict[str, Any]) -> str | None:
         """
         Extract the timestamp of the last successful run from scheduler state.
 

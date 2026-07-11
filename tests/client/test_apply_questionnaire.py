@@ -1,7 +1,7 @@
 import csv
 import json
 import os
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 
 from dotenv import load_dotenv
 

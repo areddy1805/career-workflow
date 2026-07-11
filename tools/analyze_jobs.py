@@ -1,7 +1,6 @@
 import csv
 from collections import Counter
 
-
 INPUT_FILE = "data/raw_jobs.csv"
 
 
@@ -28,9 +27,7 @@ def main():
     # --------------------------------------------------
 
     companies = Counter(
-        row["company"].strip()
-        for row in jobs
-        if row["company"].strip()
+        row["company"].strip() for row in jobs if row["company"].strip()
     )
 
     print("\nTOP 20 COMPANIES")
@@ -43,11 +40,7 @@ def main():
     # Titles
     # --------------------------------------------------
 
-    titles = Counter(
-        row["title"].strip()
-        for row in jobs
-        if row["title"].strip()
-    )
+    titles = Counter(row["title"].strip() for row in jobs if row["title"].strip())
 
     print("\nTOP 30 EXACT TITLES")
     print("-" * 80)
@@ -60,9 +53,7 @@ def main():
     # --------------------------------------------------
 
     locations = Counter(
-        row["location"].strip()
-        for row in jobs
-        if row["location"].strip()
+        row["location"].strip() for row in jobs if row["location"].strip()
     )
 
     print("\nTOP 30 LOCATIONS")
@@ -76,9 +67,7 @@ def main():
     # --------------------------------------------------
 
     experiences = Counter(
-        row["experience"].strip()
-        for row in jobs
-        if row["experience"].strip()
+        row["experience"].strip() for row in jobs if row["experience"].strip()
     )
 
     print("\nEXPERIENCE VALUES")
@@ -124,25 +113,21 @@ def main():
             "agentic",
             "applied ai",
         ],
-
         "Full Stack": [
             "full stack",
             "fullstack",
         ],
-
         "Angular": [
             "angular",
             "frontend",
             "front end",
         ],
-
         "Backend": [
             "backend",
             "back end",
             "node.js",
             "nodejs",
         ],
-
         "ML / Data Science": [
             "machine learning",
             "ml engineer",

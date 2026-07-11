@@ -662,9 +662,7 @@ class ApplicationLedger:
                     server_status,
                 )
 
-                job_id = str(
-                    item.job_id
-                )
+                job_id = str(item.job_id)
 
                 row = conn.execute(
                     """
@@ -677,45 +675,30 @@ class ApplicationLedger:
                     FROM applications
                     WHERE job_id = ?
                     """,
-                    (
-                        job_id,
-                    ),
+                    (job_id,),
                 ).fetchone()
 
                 now = _now()
 
-                submitted_at = lifecycle_timestamps.get(
-                    LifecycleStage.SUBMITTED.value
-                )
+                submitted_at = lifecycle_timestamps.get(LifecycleStage.SUBMITTED.value)
 
-                historical_applied_at = (
-                    submitted_at
-                    or server_status_at
-                    or now
-                )
+                historical_applied_at = submitted_at or server_status_at or now
 
                 transition_at = (
-                    lifecycle_timestamps.get(
-                        incoming_stage.value
-                    )
+                    lifecycle_timestamps.get(incoming_stage.value)
                     or server_status_at
                     or now
                 )
 
                 lifecycle_updated_at = (
-                    transition_at
-                    if incoming_stage
-                    != LifecycleStage.UNKNOWN
-                    else None
+                    transition_at if incoming_stage != LifecycleStage.UNKNOWN else None
                 )
 
                 stage_timestamps = {
                     "submitted_at": lifecycle_timestamps.get(
                         LifecycleStage.SUBMITTED.value
                     ),
-                    "viewed_at": lifecycle_timestamps.get(
-                        LifecycleStage.VIEWED.value
-                    ),
+                    "viewed_at": lifecycle_timestamps.get(LifecycleStage.VIEWED.value),
                     "shortlisted_at": lifecycle_timestamps.get(
                         LifecycleStage.SHORTLISTED.value
                     ),
@@ -725,9 +708,7 @@ class ApplicationLedger:
                     "rejected_at": lifecycle_timestamps.get(
                         LifecycleStage.REJECTED.value
                     ),
-                    "offer_at": lifecycle_timestamps.get(
-                        LifecycleStage.OFFER.value
-                    ),
+                    "offer_at": lifecycle_timestamps.get(LifecycleStage.OFFER.value),
                 }
 
                 if row is None:
@@ -789,24 +770,12 @@ class ApplicationLedger:
                             server_status_at,
                             incoming_stage.value,
                             lifecycle_updated_at,
-                            stage_timestamps[
-                                "submitted_at"
-                            ],
-                            stage_timestamps[
-                                "viewed_at"
-                            ],
-                            stage_timestamps[
-                                "shortlisted_at"
-                            ],
-                            stage_timestamps[
-                                "interview_at"
-                            ],
-                            stage_timestamps[
-                                "rejected_at"
-                            ],
-                            stage_timestamps[
-                                "offer_at"
-                            ],
+                            stage_timestamps["submitted_at"],
+                            stage_timestamps["viewed_at"],
+                            stage_timestamps["shortlisted_at"],
+                            stage_timestamps["interview_at"],
+                            stage_timestamps["rejected_at"],
+                            stage_timestamps["offer_at"],
                         ),
                     )
 
@@ -814,10 +783,8 @@ class ApplicationLedger:
                     continue
 
                 raw_changed = (
-                    row["server_status"]
-                    != server_status
-                    or row["server_status_at"]
-                    != server_status_at
+                    row["server_status"] != server_status
+                    or row["server_status_at"] != server_status_at
                 )
 
                 lifecycle_changed = should_advance_lifecycle(
@@ -873,15 +840,10 @@ class ApplicationLedger:
                         FROM applications
                         WHERE job_id = ?
                         """,
-                        (
-                            job_id,
-                        ),
+                        (job_id,),
                     ).fetchone()
 
-                    if (
-                        current is not None
-                        and not current[column]
-                    ):
+                    if current is not None and not current[column]:
                         conn.execute(
                             f"""
                             UPDATE applications
@@ -917,18 +879,12 @@ class ApplicationLedger:
                     self._apply_lifecycle_transition(
                         conn,
                         job_id=job_id,
-                        current_stage=row[
-                            "lifecycle_stage"
-                        ],
+                        current_stage=row["lifecycle_stage"],
                         incoming_stage=incoming_stage,
                         transition_at=transition_at,
                     )
 
-                if (
-                    raw_changed
-                    or lifecycle_changed
-                    or timestamp_backfilled
-                ):
+                if raw_changed or lifecycle_changed or timestamp_backfilled:
                     changed += 1
 
         return changed
@@ -1068,7 +1024,6 @@ class ApplicationLedger:
             """).fetchall()
 
             return [dict(row) for row in rows]
-
 
     def metadata_completeness(self) -> dict[str, int | float]:
         """Measure classification metadata coverage for funnel applications."""

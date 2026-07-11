@@ -7,23 +7,19 @@ Tests for:
 
 from __future__ import annotations
 
-import json
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, patch
 
 import pytest
 
+from src.application.queue_analytics import QueueAnalyticsService
 from src.application.workflow import (
     InvalidWorkflowTransition,
     WorkflowStateMachine,
     WorkflowStatus,
-    WorkflowTransition,
 )
 from src.application.workflow_queue import WorkflowQueue
-from src.application.queue_analytics import QueueAnalyticsService
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -36,24 +32,43 @@ class _FakeMAQ:
     def __init__(self) -> None:
         self._items: list[dict[str, Any]] = []
 
-    def _enqueue(self, *, job: Any, score: int = 0, reason: str = "",
-                 source: str = "", run_id: str = "") -> None:
+    def _enqueue(
+        self,
+        *,
+        job: Any,
+        score: int = 0,
+        reason: str = "",
+        source: str = "",
+        run_id: str = "",
+    ) -> None:
         job_id = str(
             (job.get("job_id") if isinstance(job, dict) else getattr(job, "job_id", ""))
             or ""
         )
         if not any(str(i.get("job_id")) == job_id for i in self._items):
-            self._items.append({
-                "job_id": job_id,
-                "title": (job.get("title") if isinstance(job, dict) else getattr(job, "title", "")) or "",
-                "company": (job.get("company") if isinstance(job, dict) else getattr(job, "company", "")) or "",
-                "status": "PENDING",
-                "score": score,
-                "created_at": datetime.now(UTC).isoformat(),
-                "updated_at": datetime.now(UTC).isoformat(),
-                "source": source,
-                "run_id": run_id,
-            })
+            self._items.append(
+                {
+                    "job_id": job_id,
+                    "title": (
+                        job.get("title")
+                        if isinstance(job, dict)
+                        else getattr(job, "title", "")
+                    )
+                    or "",
+                    "company": (
+                        job.get("company")
+                        if isinstance(job, dict)
+                        else getattr(job, "company", "")
+                    )
+                    or "",
+                    "status": "PENDING",
+                    "score": score,
+                    "created_at": datetime.now(UTC).isoformat(),
+                    "updated_at": datetime.now(UTC).isoformat(),
+                    "source": source,
+                    "run_id": run_id,
+                }
+            )
 
     def update_status(self, job_id: str, status: str, note: str = "") -> bool:
         for item in self._items:
@@ -264,9 +279,7 @@ class TestWorkflowQueue:
         assert item is not None
         assert item["retry_count"] == 1
 
-    def test_retry_exceeds_max_returns_false(
-        self, wq: WorkflowQueue
-    ) -> None:
+    def test_retry_exceeds_max_returns_false(self, wq: WorkflowQueue) -> None:
         wq.enqueue(_job("j9"))
         wq.transition("j9", WorkflowStatus.IN_PROGRESS)
         wq.transition("j9", WorkflowStatus.REJECTED)
@@ -288,9 +301,7 @@ class TestWorkflowQueue:
         items = wq.list()
         assert len(items) == 2
 
-    def test_list_search_filters(
-        self, wq: WorkflowQueue
-    ) -> None:
+    def test_list_search_filters(self, wq: WorkflowQueue) -> None:
         wq.enqueue(_job("js1", company="Google"))
         wq.enqueue(_job("js2", company="Amazon"))
         results = wq.list(search="google")
@@ -315,9 +326,7 @@ class TestWorkflowQueue:
 
 
 class TestQueueAnalyticsService:
-    def test_status_distribution_counts(
-        self, wq: WorkflowQueue
-    ) -> None:
+    def test_status_distribution_counts(self, wq: WorkflowQueue) -> None:
         wq.enqueue(_job("a1"))
         wq.enqueue(_job("a2"))
         analytics = QueueAnalyticsService(wq)

@@ -83,24 +83,39 @@ def segment_funnel(applications: pd.DataFrame, column: str) -> pd.DataFrame:
         ).sum()
         interviews = group_lifecycle.isin(["INTERVIEW", "OFFER"]).sum()
         offers = group_lifecycle.eq("OFFER").sum()
-        rows.append({
-            column: segment,
-            "applications": total,
-            "response_rate": round(responded / total * 100, 1) if total else 0.0,
-            "interview_rate": round(interviews / total * 100, 1) if total else 0.0,
-            "offer_rate": round(offers / total * 100, 1) if total else 0.0,
-        })
+        rows.append(
+            {
+                column: segment,
+                "applications": total,
+                "response_rate": round(responded / total * 100, 1) if total else 0.0,
+                "interview_rate": round(interviews / total * 100, 1) if total else 0.0,
+                "offer_rate": round(offers / total * 100, 1) if total else 0.0,
+            }
+        )
 
     return pd.DataFrame(rows).sort_values(
         ["applications", column],
         ascending=[False, True],
     )
 
+
 def run_outcome_totals(frame: pd.DataFrame) -> dict[str, int]:
-    keys = ('attempted','submitted','already_applied','skipped_external','failed','manual_review','run_limit_reached')
+    keys = (
+        "attempted",
+        "submitted",
+        "already_applied",
+        "skipped_external",
+        "failed",
+        "manual_review",
+        "run_limit_reached",
+    )
     if frame is None or frame.empty:
         return {key: 0 for key in keys}
     result = {}
     for key in keys:
-        result[key] = int(pd.to_numeric(frame[key], errors='coerce').fillna(0).sum()) if key in frame.columns else 0
+        result[key] = (
+            int(pd.to_numeric(frame[key], errors="coerce").fillna(0).sum())
+            if key in frame.columns
+            else 0
+        )
     return result

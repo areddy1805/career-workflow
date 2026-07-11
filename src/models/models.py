@@ -1,6 +1,5 @@
-
-from dataclasses import dataclass, field
 import time
+from dataclasses import dataclass, field
 from typing import Any, Dict
 
 
@@ -10,11 +9,13 @@ class NaukriSession:
     cookies: dict
     login_time: float = field(default_factory=time.time)
 
+
 @dataclass
 class FileValidationResult:
     file_key: str
     raw_response: dict
     was_key_remapped: bool
+
 
 @dataclass
 class ResumeUpdateResult:
@@ -36,6 +37,7 @@ class Job:
     description: str = ""
     tags: list = field(default_factory=list)
 
+
 @dataclass
 class ProfileUpdateResult:
     profile_id: str
@@ -48,6 +50,7 @@ class ApplicationStatus:
     status_id: int
     status_value: str
     date_time: str
+
 
 @dataclass
 class ApplicationHistory:

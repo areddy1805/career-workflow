@@ -13,8 +13,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from src.orchestration.runtime import _atomic_write_json, _read_json_safe
 from src.orchestration.run_manager import PipelineRun
+from src.orchestration.runtime import _atomic_write_json, _read_json_safe
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_HEARTBEAT_PATH = REPO_ROOT / "data" / "ui_runtime" / "heartbeat.json"
@@ -50,8 +50,12 @@ class Heartbeat:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "Heartbeat":
         known = {
-            "pid", "timestamp", "runtime_state", "current_stage",
-            "current_run", "previous_successful_run",
+            "pid",
+            "timestamp",
+            "runtime_state",
+            "current_stage",
+            "current_run",
+            "previous_successful_run",
             "scheduler_consecutive_failures",
         }
         return cls(

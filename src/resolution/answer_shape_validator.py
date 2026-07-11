@@ -35,9 +35,7 @@ def validate_answer_shape(
     """
 
     question_text = (
-        question.get("questionName")
-        or question.get("question")
-        or ""
+        question.get("questionName") or question.get("question") or ""
     ).strip()
 
     q = _normalize(question_text)
@@ -184,10 +182,7 @@ def _is_duration_question(q: str) -> bool:
 
 
 def _is_experience_year_question(q: str) -> bool:
-    has_experience = (
-        "experience" in q
-        or "experienced" in q
-    )
+    has_experience = "experience" in q or "experienced" in q
 
     has_year_language = any(
         phrase in q
@@ -256,10 +251,7 @@ def _is_descriptive_question(q: str) -> bool:
         "how have you used",
     )
 
-    return any(
-        phrase in q
-        for phrase in descriptive_phrases
-    )
+    return any(phrase in q for phrase in descriptive_phrases)
 
 
 def _is_binary_question(q: str) -> bool:
@@ -310,10 +302,7 @@ def _looks_like_duration(answer: str) -> bool:
         r"\b\d+(?:\.\d+)?\s*(?:year|years)\b",
     )
 
-    return any(
-        re.search(pattern, value)
-        for pattern in duration_patterns
-    )
+    return any(re.search(pattern, value) for pattern in duration_patterns)
 
 
 def _valid(

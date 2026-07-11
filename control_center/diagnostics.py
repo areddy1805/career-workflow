@@ -17,7 +17,6 @@ from control_center.data import ledger_path, manual_queue_path, runs_path
 from control_center.manual_jobs import MANUAL_JOBS_DB
 from control_center.runner import REPO_ROOT
 from src.orchestration.heartbeat import HeartbeatManager
-from src.orchestration.recovery import RecoveryManager
 from src.orchestration.runtime import PipelineLock, RuntimeState, RuntimeStateManager
 from src.orchestration.runtime_logger import read_recent_runtime_log
 from src.orchestration.scheduler import SchedulerConfig, read_scheduler_state
@@ -61,10 +60,7 @@ def _check_runtime_state() -> dict[str, Any]:
         state = RuntimeStateManager(_STATE_PATH)
         s = state.state.value
         data = state.read()
-        detail = (
-            f"state={s} "
-            f"updated={data.get('updated_at', 'unknown')}"
-        )
+        detail = f"state={s} " f"updated={data.get('updated_at', 'unknown')}"
         if s in {RuntimeState.FAILED.value, RuntimeState.RECOVERING.value}:
             return _warn("Runtime state", detail)
         return _pass("Runtime state", detail)
@@ -77,7 +73,9 @@ def _check_heartbeat() -> dict[str, Any]:
         mgr = HeartbeatManager(_HEARTBEAT_PATH)
         hb = mgr.read()
         if hb is None:
-            return _warn("Heartbeat", "no heartbeat file — scheduler may not be running")
+            return _warn(
+                "Heartbeat", "no heartbeat file — scheduler may not be running"
+            )
         age = mgr.age_seconds()
         detail = (
             f"pid={hb.pid} state={hb.runtime_state} "
@@ -86,7 +84,10 @@ def _check_heartbeat() -> dict[str, Any]:
         if age is None:
             return _warn("Heartbeat", "cannot determine age")
         if age > _HEARTBEAT_MAX_AGE:
-            return _warn("Heartbeat", f"stale — {int(age)}s old (threshold {_HEARTBEAT_MAX_AGE}s)")
+            return _warn(
+                "Heartbeat",
+                f"stale — {int(age)}s old (threshold {_HEARTBEAT_MAX_AGE}s)",
+            )
         return _pass("Heartbeat", detail)
     except Exception as exc:
         return _warn("Heartbeat", f"unreadable: {exc}")
@@ -135,7 +136,10 @@ def _check_scheduler() -> dict[str, Any]:
 
 def _check_watchdog() -> dict[str, Any]:
     enabled = os.getenv("AUTOMATION_WATCHDOG_ENABLED", "true").strip().lower() in {
-        "1", "true", "yes", "on"
+        "1",
+        "true",
+        "yes",
+        "on",
     }
     return _pass("Watchdog", "enabled" if enabled else "disabled")
 
@@ -146,6 +150,7 @@ def _check_current_run() -> dict[str, Any]:
         return _pass("Current run", "no run in progress")
     try:
         import json
+
         data = json.loads(current_run_path.read_text(encoding="utf-8"))
         run_id = data.get("id", "unknown")
         status = data.get("status", "unknown")
@@ -189,6 +194,7 @@ def _check_queue_health() -> dict[str, Any]:
         return _pass("Workflow queue", "no queue file yet")
     try:
         import json
+
         items = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(items, list):
             return _fail("Workflow queue", "queue file is corrupt")
@@ -208,24 +214,34 @@ def collect_health_checks() -> list[dict[str, Any]]:
     checks: list[dict[str, Any]] = []
 
     # ── Environment ──────────────────────────────────────────────────
-    checks.append({
-        "check": "Python",
-        "status": "PASS",
-        "detail": sys.version.split()[0],
-        "required": True,
-    })
-    checks.append({
-        "check": "NiceGUI package",
-        "status": "PASS" if importlib.util.find_spec("nicegui") else "FAIL",
-        "detail": "installed" if importlib.util.find_spec("nicegui") else "missing",
-        "required": True,
-    })
-    checks.append(_path_check("Pipeline entry point", REPO_ROOT / "run_pipeline.py", required=True))
+    checks.append(
+        {
+            "check": "Python",
+            "status": "PASS",
+            "detail": sys.version.split()[0],
+            "required": True,
+        }
+    )
+    checks.append(
+        {
+            "check": "NiceGUI package",
+            "status": "PASS" if importlib.util.find_spec("nicegui") else "FAIL",
+            "detail": "installed" if importlib.util.find_spec("nicegui") else "missing",
+            "required": True,
+        }
+    )
+    checks.append(
+        _path_check(
+            "Pipeline entry point", REPO_ROOT / "run_pipeline.py", required=True
+        )
+    )
 
     # ── Storage ───────────────────────────────────────────────────────
     checks.append(_path_check("Application ledger", ledger_path(), required=False))
     checks.append(_path_check("Run artifacts", runs_path(), required=False))
-    checks.append(_path_check("External action queue", manual_queue_path(), required=False))
+    checks.append(
+        _path_check("External action queue", manual_queue_path(), required=False)
+    )
     checks.append(_path_check("Manual jobs database", MANUAL_JOBS_DB, required=False))
 
     # ── Runtime ───────────────────────────────────────────────────────
@@ -242,18 +258,22 @@ def collect_health_checks() -> list[dict[str, Any]]:
     checks.append(_check_queue_health())
 
     # ── Misc ──────────────────────────────────────────────────────────
-    checks.append({
-        "check": "Working directory",
-        "status": "PASS" if Path.cwd().resolve() == REPO_ROOT.resolve() else "WARN",
-        "detail": str(Path.cwd().resolve()),
-        "required": False,
-    })
-    checks.append({
-        "check": "Dry-run environment",
-        "status": "PASS",
-        "detail": os.getenv("APPLICATION_DRY_RUN", "default"),
-        "required": False,
-    })
+    checks.append(
+        {
+            "check": "Working directory",
+            "status": "PASS" if Path.cwd().resolve() == REPO_ROOT.resolve() else "WARN",
+            "detail": str(Path.cwd().resolve()),
+            "required": False,
+        }
+    )
+    checks.append(
+        {
+            "check": "Dry-run environment",
+            "status": "PASS",
+            "detail": os.getenv("APPLICATION_DRY_RUN", "default"),
+            "required": False,
+        }
+    )
 
     return checks
 

@@ -1,5 +1,5 @@
-from datetime import UTC, datetime, timedelta
 import json
+from datetime import UTC, datetime, timedelta
 
 from src.models.models import Job
 from src.search.job_cache_codec import JobCacheCodec

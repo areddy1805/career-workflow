@@ -9,9 +9,7 @@ from src.orchestration.stages import (
 )
 
 
-class RecordingPipeline(
-    CareerWorkflowPipeline
-):
+class RecordingPipeline(CareerWorkflowPipeline):
     def __init__(
         self,
         *,
@@ -35,13 +33,8 @@ class RecordingPipeline(
     ) -> None:
         self.calls.append(name)
 
-        if (
-            name == self.fail_stage
-            or name == self.nonfatal_stage
-        ):
-            raise RuntimeError(
-                f"{name} failure"
-            )
+        if name == self.fail_stage or name == self.nonfatal_stage:
+            raise RuntimeError(f"{name} failure")
 
     def preflight(self):
         self._record("preflight")
@@ -88,16 +81,10 @@ def test_pipeline_executes_all_stages_in_order(
         "report",
     ]
 
-    assert (
-        result.status
-        == PipelineStatus.SUCCESS.value
-    )
+    assert result.status == PipelineStatus.SUCCESS.value
 
     assert all(
-        status
-        == StageStatus.SUCCESS.value
-        for status
-        in result.stage_results.values()
+        status == StageStatus.SUCCESS.value for status in result.stage_results.values()
     )
 
 
@@ -117,24 +104,11 @@ def test_fatal_stage_stops_pipeline(
         "classification",
     ]
 
-    assert (
-        result.status
-        == PipelineStatus.FAILED.value
-    )
+    assert result.status == PipelineStatus.FAILED.value
 
-    assert (
-        result.stage_results[
-            "classification"
-        ]
-        == StageStatus.FAILED.value
-    )
+    assert result.stage_results["classification"] == StageStatus.FAILED.value
 
-    assert (
-        result.stage_results[
-            "selection"
-        ]
-        == StageStatus.SKIPPED.value
-    )
+    assert result.stage_results["selection"] == StageStatus.SKIPPED.value
 
 
 def test_nonfatal_failure_continues_pipeline(
@@ -158,24 +132,11 @@ def test_nonfatal_failure_continues_pipeline(
         "report",
     ]
 
-    assert (
-        result.status
-        == PipelineStatus.PARTIAL.value
-    )
+    assert result.status == PipelineStatus.PARTIAL.value
 
-    assert (
-        result.stage_results[
-            "application"
-        ]
-        == StageStatus.FAILED.value
-    )
+    assert result.stage_results["application"] == StageStatus.FAILED.value
 
-    assert (
-        result.stage_results[
-            "report"
-        ]
-        == StageStatus.SUCCESS.value
-    )
+    assert result.stage_results["report"] == StageStatus.SUCCESS.value
 
 
 def test_run_artifacts_are_persisted(
@@ -187,20 +148,11 @@ def test_run_artifacts_are_persisted(
 
     result = pipeline.run()
 
-    run_dir = (
-        tmp_path
-        / result.run_id
-    )
+    run_dir = tmp_path / result.run_id
 
-    assert (
-        run_dir
-        / "run.json"
-    ).exists()
+    assert (run_dir / "run.json").exists()
 
-    assert (
-        run_dir
-        / "result.json"
-    ).exists()
+    assert (run_dir / "result.json").exists()
 
 
 def test_negative_application_limit_rejected(
@@ -216,9 +168,7 @@ def test_negative_application_limit_rejected(
     except ValueError:
         return
 
-    raise AssertionError(
-        "Expected ValueError"
-    )
+    raise AssertionError("Expected ValueError")
 
 
 def test_preflight_artifact_is_part_of_complete_stage_artifacts(tmp_path, monkeypatch):
@@ -234,8 +184,15 @@ def test_pipeline_result_exposes_complete_application_accounting(tmp_path):
     pipeline = RecordingPipeline(artifacts_root=tmp_path)
     result = pipeline.run().to_dict()
     for key in (
-        "attempted", "submitted", "already_applied", "skipped_local",
-        "skipped_external", "policy_rejected", "dry_run_skipped",
-        "run_limit_reached", "failed", "manual_review",
+        "attempted",
+        "submitted",
+        "already_applied",
+        "skipped_local",
+        "skipped_external",
+        "policy_rejected",
+        "dry_run_skipped",
+        "run_limit_reached",
+        "failed",
+        "manual_review",
     ):
         assert key in result

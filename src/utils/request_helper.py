@@ -1,18 +1,17 @@
-
 import functools
-import requests
-import time 
-import random 
 import logging
+import random
+import time
+
 logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Retry configuration
 # ---------------------------------------------------------------------------
-RETRY_MAX_ATTEMPTS = 5       # total attempts (1 original + 4 retries)
-RETRY_BASE_DELAY   = 1.0     # seconds — delay before the 1st retry
-RETRY_MAX_DELAY    = 60.0    # seconds — cap on any single sleep
-RETRY_MULTIPLIER   = 2.0     # exponential growth factor
-RETRY_JITTER       = 0.3     # fraction of delay added as random jitter
+RETRY_MAX_ATTEMPTS = 5  # total attempts (1 original + 4 retries)
+RETRY_BASE_DELAY = 1.0  # seconds — delay before the 1st retry
+RETRY_MAX_DELAY = 60.0  # seconds — cap on any single sleep
+RETRY_MULTIPLIER = 2.0  # exponential growth factor
+RETRY_JITTER = 0.3  # fraction of delay added as random jitter
 
 
 def _should_retry(exc_or_response) -> bool:
@@ -41,8 +40,9 @@ def with_exponential_retry(
       • raises a requests.exceptions.RequestException (or any Exception), OR
       • returns a response object with a transient HTTP status (429 / 5xx).
 
-    
+
     """
+
     def decorator(func):
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
@@ -57,7 +57,11 @@ def with_exponential_retry(
                     if hasattr(result, "status_code") and _should_retry(result):
                         logger.warning(
                             "[%s] attempt %d/%d — HTTP %d, retrying in %.1fs …",
-                            label, attempt, max_attempts, result.status_code, delay,
+                            label,
+                            attempt,
+                            max_attempts,
+                            result.status_code,
+                            delay,
                         )
                         # On last attempt just return the bad response so the
                         # caller can inspect it (same behaviour as before).
@@ -71,7 +75,9 @@ def with_exponential_retry(
                     if attempt == max_attempts:
                         logger.error(
                             "[%s] all %d attempts failed. Last error: %s",
-                            label, max_attempts, exc,
+                            label,
+                            max_attempts,
+                            exc,
                         )
                         if reraise_as:
                             raise reraise_as(str(exc)) from exc
@@ -79,7 +85,12 @@ def with_exponential_retry(
 
                     logger.warning(
                         "[%s] attempt %d/%d failed (%s: %s), retrying in %.1fs …",
-                        label, attempt, max_attempts, type(exc).__name__, exc, delay,
+                        label,
+                        attempt,
+                        max_attempts,
+                        type(exc).__name__,
+                        exc,
+                        delay,
                     )
 
                 # Exponential back-off with jitter
@@ -92,5 +103,5 @@ def with_exponential_retry(
                 raise last_exc
 
         return wrapper
-    return decorator
 
+    return decorator

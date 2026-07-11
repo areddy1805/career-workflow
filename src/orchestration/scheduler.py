@@ -100,9 +100,10 @@ class SchedulerConfig:
             max_consecutive_failures=int(
                 os.getenv("AUTOMATION_MAX_CONSECUTIVE_FAILURES", "5")
             ),
-            watchdog_enabled=os.getenv(
-                "AUTOMATION_WATCHDOG_ENABLED", "true"
-            ).strip().lower() in {"1", "true", "yes", "on"},
+            watchdog_enabled=os.getenv("AUTOMATION_WATCHDOG_ENABLED", "true")
+            .strip()
+            .lower()
+            in {"1", "true", "yes", "on"},
             state_path=_p("AUTOMATION_SCHEDULER_STATE_PATH", _DEFAULT_STATE_PATH),
             heartbeat_path=_p("AUTOMATION_HEARTBEAT_PATH", _DEFAULT_HEARTBEAT_PATH),
             lock_path=_p("PIPELINE_LOCK_PATH", _DEFAULT_LOCK_PATH),
@@ -210,7 +211,8 @@ def run_scheduler(
     originals = _install_sigterm(_request_shutdown)
 
     log_startup(
-        logger, pid=pid,
+        logger,
+        pid=pid,
         full_hour=config.full_hour,
         incremental_interval_minutes=config.incremental_interval_minutes,
     )
@@ -230,7 +232,8 @@ def run_scheduler(
     interrupted = recovery.detect_interrupted_run()
     if interrupted:
         log_recovery(
-            logger, reason="interrupted_run_detected",
+            logger,
+            reason="interrupted_run_detected",
             action="recovery_completed_on_startup",
         )
         try:
@@ -243,7 +246,9 @@ def run_scheduler(
         state.transition(RuntimeState.IDLE, note="ready")
     except InvalidTransitionError:
         state.force(RuntimeState.IDLE, note="ready_force")
-    log_state_transition(logger, from_state="RECOVERING" if interrupted else "STARTING", to_state="IDLE")
+    log_state_transition(
+        logger, from_state="RECOVERING" if interrupted else "STARTING", to_state="IDLE"
+    )
 
     state.update(
         last_full=last_full.isoformat() if last_full else None,
@@ -273,19 +278,27 @@ def run_scheduler(
                     consecutive_failures=circuit.consecutive_failures,
                 )
                 from src.orchestration.runtime_logger import log_heartbeat
-                log_heartbeat(logger, pid=pid, state=state.state.value,
-                              consecutive_failures=circuit.consecutive_failures)
+
+                log_heartbeat(
+                    logger,
+                    pid=pid,
+                    state=state.state.value,
+                    consecutive_failures=circuit.consecutive_failures,
+                )
                 last_heartbeat_at = mono
 
             # ── Circuit breaker ───────────────────────────────────────
             if circuit.tripped:
                 log_warning(
-                    logger, "circuit_breaker_tripped",
+                    logger,
+                    "circuit_breaker_tripped",
                     reason=circuit.reason,
                     consecutive_failures=circuit.consecutive_failures,
                 )
                 try:
-                    state.transition(RuntimeState.FAILED, note="circuit_breaker_tripped")
+                    state.transition(
+                        RuntimeState.FAILED, note="circuit_breaker_tripped"
+                    )
                 except InvalidTransitionError:
                     state.force(RuntimeState.FAILED, note="circuit_breaker_tripped")
                 break
@@ -302,8 +315,13 @@ def run_scheduler(
                 state.transition(RuntimeState.RUNNING, note=f"mode={mode}")
             except InvalidTransitionError:
                 state.force(RuntimeState.RUNNING, note=f"mode={mode}_force")
-            log_state_transition(logger, from_state="IDLE", to_state="RUNNING",
-                                 run_id=current_run.id, mode=mode)
+            log_state_transition(
+                logger,
+                from_state="IDLE",
+                to_state="RUNNING",
+                run_id=current_run.id,
+                mode=mode,
+            )
             log_pipeline_event(logger, event="start", run_id=current_run.id, mode=mode)
             state.update(
                 last_mode=mode,
@@ -324,8 +342,9 @@ def run_scheduler(
             try:
                 completed = subprocess.run(command, cwd=str(REPO_ROOT), check=False)
                 rc = completed.returncode
-                log_pipeline_event(logger, event="end", run_id=current_run.id,
-                                   mode=mode, returncode=rc)
+                log_pipeline_event(
+                    logger, event="end", run_id=current_run.id, mode=mode, returncode=rc
+                )
 
                 if rc == 0:
                     if mode == "full":
@@ -337,16 +356,23 @@ def run_scheduler(
                 else:
                     circuit.failure(f"pipeline exit code {rc}")
                     run_mgr.finish_run(
-                        current_run, status="FAILED", returncode=rc,
+                        current_run,
+                        status="FAILED",
+                        returncode=rc,
                         failure_reason=f"exit_code={rc}",
                     )
 
             except Exception as exc:
-                log_crash(logger, exc=exc, context="pipeline_subprocess",
-                          run_id=current_run.id)
+                log_crash(
+                    logger,
+                    exc=exc,
+                    context="pipeline_subprocess",
+                    run_id=current_run.id,
+                )
                 circuit.failure(f"{type(exc).__name__}: {exc}")
                 run_mgr.finish_run(
-                    current_run, status="FAILED",
+                    current_run,
+                    status="FAILED",
                     failure_reason=f"{type(exc).__name__}: {exc}",
                 )
 
@@ -358,7 +384,9 @@ def run_scheduler(
             log_state_transition(logger, from_state="RUNNING", to_state="IDLE")
             state.update(
                 last_full=last_full.isoformat() if last_full else None,
-                last_incremental=last_incremental.isoformat() if last_incremental else None,
+                last_incremental=(
+                    last_incremental.isoformat() if last_incremental else None
+                ),
                 consecutive_failures=circuit.consecutive_failures,
                 last_successful_run=last_successful_run,
                 current_run=None,
@@ -372,7 +400,8 @@ def run_scheduler(
     finally:
         _restore_signals(originals)
         log_shutdown(
-            logger, pid=pid,
+            logger,
+            pid=pid,
             reason="shutdown_requested" if shutdown_requested else "keyboard_interrupt",
         )
         try:

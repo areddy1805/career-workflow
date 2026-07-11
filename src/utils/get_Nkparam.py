@@ -1,8 +1,8 @@
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
 import json
 import time
 
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
 
 # Target URL
 url = "https://www.naukri.com/node-dot-js-jobs-in-pune?k=node.js&l=pune&experience=3"

@@ -23,8 +23,7 @@ def row(
     days_old=0,
 ):
     timestamp = (
-        datetime(2026, 7, 7, tzinfo=UTC)
-        - timedelta(days=days_old)
+        datetime(2026, 7, 7, tzinfo=UTC) - timedelta(days=days_old)
     ).isoformat()
 
     return {
@@ -61,11 +60,7 @@ def test_bayesian_smoothing_prevents_tiny_cohort_overreaction():
         row(
             priority="TIER_B",
             subtrack="FULLSTACK_AI",
-            stage=(
-                "VIEWED"
-                if index < 4
-                else "SUBMITTED"
-            ),
+            stage=("VIEWED" if index < 4 else "SUBMITTED"),
         )
         for index in range(20)
     )

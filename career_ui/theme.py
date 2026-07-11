@@ -1,6 +1,6 @@
 from nicegui import ui
 
-CSS = r'''
+CSS = r"""
 @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap');
 :root{--bg:#06080d;--panel:#0d121b;--panel2:#111824;--panel3:#151e2c;--line:#1d2939;--line2:#2b3b50;--text:#f7f9fc;--muted:#8a98ab;--dim:#58677b;--violet:#8b7cff;--cyan:#46d8ff;--green:#45e5a6;--amber:#ffc96b;--red:#ff718b;--shadow:0 24px 70px rgba(0,0,0,.28)}
 *{box-sizing:border-box}html,body{background:var(--bg)!important;color:var(--text);font-family:Manrope,Inter,system-ui,sans-serif}.q-layout{background:radial-gradient(1000px 520px at 72% -12%,rgba(91,83,220,.15),transparent 58%),radial-gradient(700px 500px at 16% 108%,rgba(33,181,215,.08),transparent 60%),#06080d}.q-page-container{min-height:100vh}
@@ -20,8 +20,16 @@ CSS = r'''
 .q-btn{border-radius:10px;font-weight:700;letter-spacing:0;text-transform:none;min-height:40px}.q-btn.bg-primary{background:linear-gradient(135deg,#7168ef,#657ef6)!important;box-shadow:0 10px 28px rgba(105,101,240,.2)}.q-field--outlined .q-field__control:before{border-color:#263548}.q-field__control{background:#0c121a;border-radius:10px!important}.q-menu{background:#111722;color:#e7edf6;border:1px solid #273446}.q-tab{color:#74849a}.q-tab--active{color:#fff}.q-tab__indicator{background:linear-gradient(90deg,var(--violet),var(--cyan))!important}.cw-empty{padding:54px;text-align:center;color:#718096;border:1px dashed #29374a;border-radius:16px;background:rgba(255,255,255,.012)}
 .cw-grid-5{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:14px}.cw-grid-4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.cw-grid-3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.cw-grid-2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.cw-split{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(320px,.65fr);gap:18px}.cw-command{font-size:9px;color:#66758a;border:1px solid #263548;background:#0c121a;padding:4px 7px;border-radius:6px;font-family:'DM Mono',monospace}
 @media(max-width:1200px){.cw-grid-5{grid-template-columns:repeat(3,1fr)}.cw-grid-4{grid-template-columns:repeat(2,1fr)}.cw-grid-2,.cw-split,.cw-health-grid{grid-template-columns:1fr}.cw-content{padding:28px 24px 72px}}@media(max-width:680px){.cw-grid-5,.cw-grid-4,.cw-grid-3{grid-template-columns:1fr}.cw-title{font-size:34px}.cw-content{padding:22px 14px 60px}.cw-funnel-row{grid-template-columns:90px 1fr 44px}}
-'''
+"""
+
 
 def apply_theme() -> None:
-    ui.colors(primary='#7b72f2', secondary='#4ad8ff', positive='#42e6a4', negative='#ff718b', warning='#ffc56b', dark='#06080d')
+    ui.colors(
+        primary="#7b72f2",
+        secondary="#4ad8ff",
+        positive="#42e6a4",
+        negative="#ff718b",
+        warning="#ffc56b",
+        dark="#06080d",
+    )
     ui.add_css(CSS)

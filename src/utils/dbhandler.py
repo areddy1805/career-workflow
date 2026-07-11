@@ -1,5 +1,7 @@
 import sqlite3
-#===========================sqlite support for nkparam token ===============
+
+
+# ===========================sqlite support for nkparam token ===============
 class NkparamDB:
     def __init__(self, db_path="nkparams.db"):
         self.db_path = db_path
@@ -23,7 +25,6 @@ class NkparamDB:
         conn.commit()
         conn.close()
 
-
     def add_nkparam(self, nkparam):
         conn = self._connect()
         cursor = conn.cursor()
@@ -31,12 +32,11 @@ class NkparamDB:
         try:
             cursor.execute(
                 "INSERT OR IGNORE INTO nkparams (nkparam, is_active) VALUES (?, 1)",
-                (nkparam,)
+                (nkparam,),
             )
             conn.commit()
         finally:
             conn.close()
-
 
     def get_nkparam(self):
         conn = self._connect()
@@ -55,8 +55,7 @@ class NkparamDB:
                 nk_id, nkparam = row
 
                 cursor.execute(
-                    "UPDATE nkparams SET is_active = 0 WHERE id = ?",
-                    (nk_id,)
+                    "UPDATE nkparams SET is_active = 0 WHERE id = ?", (nk_id,)
                 )
                 conn.commit()
 

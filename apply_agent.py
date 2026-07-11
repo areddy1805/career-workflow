@@ -1,45 +1,19 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
-from datetime import datetime, UTC
-from typing import Any, Protocol
 import csv
+import html
 import logging
 import os
+import re
 import time
+from dataclasses import dataclass, field, replace
+from datetime import UTC, datetime
+from typing import Any, Protocol
 
-from colorama import Fore, Back, Style, init
+from colorama import Fore, Style, init
 from dotenv import load_dotenv
 
 from config.candidate_profile import CANDIDATE_PROFILE
-from src.client.job_client import NaukriJobClient
-from src.client.job_classifier import JobFilterPipeline2
-from src.client.naukri_client import NaukriLoginClient
-from src.exceptions.exceptions import (
-    NaukriAuthError,
-    NaukriParseError,
-    NaukriSearchChallengeError,
-)
-from src.llm.client import OMLXClient
-from src.llm.question_resolver import LLMQuestionResolver
-from src.application.outcome import (
-    ApplicationOutcome,
-    ApplicationStatus,
-)
-from src.application.response_interpreter import (
-    interpret_application_response,
-)
-from src.application.policy import (
-    ApplicationPolicy,
-    evaluate_application_policy,
-)
-from src.application.failure import (
-    FailureKind,
-    classify_application_exception,
-)
-from src.application.response_store import save_response
-from src.application.ledger import ApplicationLedger
-from src.application.diversity import DiversityPolicy, diversify_jobs
 from src.application.adaptive_strategy import (
     AdaptiveStrategyConfig,
     build_adaptive_strategy,
@@ -47,17 +21,40 @@ from src.application.adaptive_strategy import (
     select_candidates_with_exploration,
     strategy_audit_payload,
 )
+from src.application.diversity import DiversityPolicy, diversify_jobs
+from src.application.failure import (
+    FailureKind,
+    classify_application_exception,
+)
+from src.application.ledger import ApplicationLedger
 from src.application.manual_action_queue import (
     ManualActionQueue,
 )
-from src.resolution.hybrid_resolver import HybridQuestionResolver
-from src.search.job_search_cache import JobSearchCache
+from src.application.outcome import (
+    ApplicationOutcome,
+    ApplicationStatus,
+)
+from src.application.policy import (
+    ApplicationPolicy,
+    evaluate_application_policy,
+)
+from src.application.response_interpreter import (
+    interpret_application_response,
+)
+from src.application.response_store import save_response
+from src.client.job_classifier import JobFilterPipeline2
+from src.client.job_client import NaukriJobClient
+from src.client.naukri_client import NaukriLoginClient
+from src.exceptions.exceptions import (
+    NaukriSearchChallengeError,
+)
+from src.llm.client import OMLXClient
+from src.llm.question_resolver import LLMQuestionResolver
 from src.orchestration.runtime import CircuitBreaker
+from src.resolution.hybrid_resolver import HybridQuestionResolver
 from src.search.challenge_cooldown import SearchChallengeCooldown
-
+from src.search.job_search_cache import JobSearchCache
 from src.utils.questionnaire_telemetry import log_unresolved_questions
-import html
-import re
 
 load_dotenv()
 init(autoreset=True)

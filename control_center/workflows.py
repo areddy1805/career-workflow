@@ -19,7 +19,9 @@ class WorkflowResult:
         return self.returncode == 0
 
 
-def _run_script(name: str, script_name: str, timeout_seconds: int = 600) -> WorkflowResult:
+def _run_script(
+    name: str, script_name: str, timeout_seconds: int = 600
+) -> WorkflowResult:
     script = REPO_ROOT / script_name
     if not script.exists():
         return WorkflowResult(

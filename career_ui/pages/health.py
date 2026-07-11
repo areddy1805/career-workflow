@@ -1,8 +1,16 @@
 from html import escape
+
 from nicegui import ui
-from career_ui.shell import shell
-from career_ui.components import page_header, metric_card, section, status_badge, callout, empty_state
+
+from career_ui.components import (
+    callout,
+    metric_card,
+    page_header,
+    section,
+    status_badge,
+)
 from career_ui.services.control_center import collect_health_checks, health_summary
+from career_ui.shell import shell
 
 
 def _status(check: dict) -> str:
@@ -14,15 +22,29 @@ def _group(checks: list[dict], names: list[str]) -> list[dict]:
 
 
 _RUNTIME_CHECKS = [
-    "Runtime state", "Heartbeat", "Pipeline lock", "Scheduler",
-    "Watchdog", "Current run", "Last successful run", "Recovery history",
+    "Runtime state",
+    "Heartbeat",
+    "Pipeline lock",
+    "Scheduler",
+    "Watchdog",
+    "Current run",
+    "Last successful run",
+    "Recovery history",
 ]
 _STORAGE_CHECKS = [
-    "Application ledger", "Run artifacts", "External action queue",
-    "Manual jobs database", "Workflow queue",
+    "Application ledger",
+    "Run artifacts",
+    "External action queue",
+    "Manual jobs database",
+    "Workflow queue",
 ]
-_ENV_CHECKS = ["Python", "NiceGUI package", "Pipeline entry point",
-               "Working directory", "Dry-run environment"]
+_ENV_CHECKS = [
+    "Python",
+    "NiceGUI package",
+    "Pipeline entry point",
+    "Working directory",
+    "Dry-run environment",
+]
 
 
 def _render_group(title: str, subtitle: str, checks: list[dict]) -> None:
@@ -39,8 +61,8 @@ def _render_group(title: str, subtitle: str, checks: list[dict]) -> None:
                 with ui.row().classes("w-full items-start justify-between gap-3"):
                     ui.html(
                         f"<div>"
-                        f"<div class=\"cw-health-name\">{escape(name)}</div>"
-                        f"<div class=\"cw-health-detail\">{escape(detail)}</div>"
+                        f'<div class="cw-health-name">{escape(name)}</div>'
+                        f'<div class="cw-health-detail">{escape(detail)}</div>'
                         f"<div class=\"cw-health-meta\">{'REQUIRED' if required else 'INFORMATIONAL'}</div>"
                         f"</div>"
                     )
@@ -56,12 +78,17 @@ def page() -> None:
         passed = int(s.get("pass", 0))
         warned = int(s.get("warn", 0))
         failed = int(s.get("fail", 0))
-        required_failed = sum(1 for c in checks if c.get("required") and _status(c) == "FAIL")
+        required_failed = sum(
+            1 for c in checks if c.get("required") and _status(c) == "FAIL"
+        )
         overall = (
-            "UNHEALTHY" if required_failed else ("DEGRADED" if failed or warned else "HEALTHY")
+            "UNHEALTHY"
+            if required_failed
+            else ("DEGRADED" if failed or warned else "HEALTHY")
         )
         page_header(
-            "SYSTEM", "System Health",
+            "SYSTEM",
+            "System Health",
             "Runtime, storage, configuration, and integration diagnostics.",
             overall,
         )
@@ -88,21 +115,25 @@ def page() -> None:
             )
 
         _render_group(
-            "Runtime", "Scheduler, heartbeat, lock, watchdog, and recovery status",
+            "Runtime",
+            "Scheduler, heartbeat, lock, watchdog, and recovery status",
             _group(checks, _RUNTIME_CHECKS),
         )
         _render_group(
-            "Storage", "Data files, ledger, queue, and artifact directories",
+            "Storage",
+            "Data files, ledger, queue, and artifact directories",
             _group(checks, _STORAGE_CHECKS),
         )
         _render_group(
-            "Environment", "Python, packages, and configuration",
+            "Environment",
+            "Python, packages, and configuration",
             _group(checks, _ENV_CHECKS),
         )
 
         # Anything not in a named group
         ungrouped = [
-            c for c in checks
+            c
+            for c in checks
             if c.get("check") not in _RUNTIME_CHECKS
             and c.get("check") not in _STORAGE_CHECKS
             and c.get("check") not in _ENV_CHECKS

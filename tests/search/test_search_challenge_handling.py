@@ -1,7 +1,6 @@
 from unittest.mock import Mock
 
 import apply_agent
-
 from src.exceptions.exceptions import NaukriSearchChallengeError
 from src.models.models import Job
 

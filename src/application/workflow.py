@@ -48,44 +48,60 @@ MAQ_STATUS_MAP: dict[str, WorkflowStatus] = {
 
 # Valid transitions: from_status → set of allowed to_statuses
 _VALID_TRANSITIONS: dict[WorkflowStatus, frozenset[WorkflowStatus]] = {
-    WorkflowStatus.NEW: frozenset({
-        WorkflowStatus.PENDING,
-        WorkflowStatus.ARCHIVED,
-    }),
-    WorkflowStatus.PENDING: frozenset({
-        WorkflowStatus.IN_PROGRESS,
-        WorkflowStatus.REJECTED,
-        WorkflowStatus.ARCHIVED,
-    }),
-    WorkflowStatus.IN_PROGRESS: frozenset({
-        WorkflowStatus.OPENED,
-        WorkflowStatus.APPLIED,
-        WorkflowStatus.REJECTED,
-        WorkflowStatus.ARCHIVED,
-    }),
-    WorkflowStatus.OPENED: frozenset({
-        WorkflowStatus.APPLIED,
-        WorkflowStatus.REJECTED,
-        WorkflowStatus.ARCHIVED,
-    }),
-    WorkflowStatus.APPLIED: frozenset({
-        WorkflowStatus.INTERVIEW,
-        WorkflowStatus.REJECTED,
-        WorkflowStatus.ARCHIVED,
-    }),
-    WorkflowStatus.INTERVIEW: frozenset({
-        WorkflowStatus.OFFER,
-        WorkflowStatus.REJECTED,
-        WorkflowStatus.ARCHIVED,
-    }),
-    WorkflowStatus.OFFER: frozenset({
-        WorkflowStatus.ARCHIVED,
-    }),
-    WorkflowStatus.REJECTED: frozenset({
-        WorkflowStatus.ARCHIVED,
-        # Allow re-opening if the employer reverses a rejection
-        WorkflowStatus.PENDING,
-    }),
+    WorkflowStatus.NEW: frozenset(
+        {
+            WorkflowStatus.PENDING,
+            WorkflowStatus.ARCHIVED,
+        }
+    ),
+    WorkflowStatus.PENDING: frozenset(
+        {
+            WorkflowStatus.IN_PROGRESS,
+            WorkflowStatus.REJECTED,
+            WorkflowStatus.ARCHIVED,
+        }
+    ),
+    WorkflowStatus.IN_PROGRESS: frozenset(
+        {
+            WorkflowStatus.OPENED,
+            WorkflowStatus.APPLIED,
+            WorkflowStatus.REJECTED,
+            WorkflowStatus.ARCHIVED,
+        }
+    ),
+    WorkflowStatus.OPENED: frozenset(
+        {
+            WorkflowStatus.APPLIED,
+            WorkflowStatus.REJECTED,
+            WorkflowStatus.ARCHIVED,
+        }
+    ),
+    WorkflowStatus.APPLIED: frozenset(
+        {
+            WorkflowStatus.INTERVIEW,
+            WorkflowStatus.REJECTED,
+            WorkflowStatus.ARCHIVED,
+        }
+    ),
+    WorkflowStatus.INTERVIEW: frozenset(
+        {
+            WorkflowStatus.OFFER,
+            WorkflowStatus.REJECTED,
+            WorkflowStatus.ARCHIVED,
+        }
+    ),
+    WorkflowStatus.OFFER: frozenset(
+        {
+            WorkflowStatus.ARCHIVED,
+        }
+    ),
+    WorkflowStatus.REJECTED: frozenset(
+        {
+            WorkflowStatus.ARCHIVED,
+            # Allow re-opening if the employer reverses a rejection
+            WorkflowStatus.PENDING,
+        }
+    ),
     WorkflowStatus.ARCHIVED: frozenset(),  # terminal — no further transitions
 }
 
@@ -138,9 +154,7 @@ class WorkflowStateMachine:
     Intentionally stateless — all state lives in the database.
     """
 
-    def validate(
-        self, from_status: WorkflowStatus, to_status: WorkflowStatus
-    ) -> bool:
+    def validate(self, from_status: WorkflowStatus, to_status: WorkflowStatus) -> bool:
         """Return True if the transition is legal."""
         return to_status in _VALID_TRANSITIONS.get(from_status, frozenset())
 

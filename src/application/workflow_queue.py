@@ -128,9 +128,7 @@ class WorkflowQueue:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _get_item(
-        self, conn: sqlite3.Connection, job_id: str
-    ) -> sqlite3.Row | None:
+    def _get_item(self, conn: sqlite3.Connection, job_id: str) -> sqlite3.Row | None:
         return conn.execute(
             "SELECT * FROM workflow_items WHERE job_id = ?", (job_id,)
         ).fetchone()
@@ -213,7 +211,11 @@ class WorkflowQueue:
         """
         # Derive job_id from duck-typed job object
         job_id = str(
-            (job.get("job_id") if isinstance(job, dict) else getattr(job, "job_id", None))
+            (
+                job.get("job_id")
+                if isinstance(job, dict)
+                else getattr(job, "job_id", None)
+            )
             or ""
         )
         if not job_id:
@@ -223,7 +225,12 @@ class WorkflowQueue:
         self._maq._enqueue(
             job=job,
             score=int(
-                (job.get("score") if isinstance(job, dict) else getattr(job, "score", 0)) or 0
+                (
+                    job.get("score")
+                    if isinstance(job, dict)
+                    else getattr(job, "score", 0)
+                )
+                or 0
             ),
             reason="workflow_queue",
             source=source or "workflow",
@@ -235,14 +242,16 @@ class WorkflowQueue:
             existing = self._get_item(conn, job_id)
             if existing is None:
                 self._upsert_item(
-                    conn, job_id,
+                    conn,
+                    job_id,
                     priority=priority,
                     expires_at=expires_at,
                     run_id=run_id,
                     source=source,
                 )
                 self._record_history(
-                    conn, job_id,
+                    conn,
+                    job_id,
                     from_status="",
                     to_status=WorkflowStatus.NEW.value,
                     actor="system",
@@ -309,7 +318,8 @@ class WorkflowQueue:
             elif ts_fields:
                 self._upsert_item(conn, job_id, **ts_fields)
             self._record_history(
-                conn, job_id,
+                conn,
+                job_id,
                 from_status=record.from_status,
                 to_status=record.to_status,
                 actor=actor,
@@ -317,9 +327,7 @@ class WorkflowQueue:
             )
         return True
 
-    def add_note(
-        self, job_id: str, text: str, *, author: str = "user"
-    ) -> bool:
+    def add_note(self, job_id: str, text: str, *, author: str = "user") -> bool:
         """Append a note to a queue item.  Never replaces existing notes."""
         job_id = str(job_id)
         now = _now()
@@ -399,21 +407,23 @@ class WorkflowQueue:
     ) -> dict[str, Any]:
         result = dict(maq_row)
         if db_row is None:
-            result.update({
-                "workflow_status": MAQ_STATUS_MAP.get(
-                    str(result.get("status", "")).upper(), WorkflowStatus.PENDING
-                ).value,
-                "priority": "P2",
-                "retry_count": 0,
-                "max_retries": 3,
-                "notes": [],
-                "expires_at": None,
-                "opened_at": None,
-                "interview_at": None,
-                "offer_at": None,
-                "rejected_at": None,
-                "archived_at": None,
-            })
+            result.update(
+                {
+                    "workflow_status": MAQ_STATUS_MAP.get(
+                        str(result.get("status", "")).upper(), WorkflowStatus.PENDING
+                    ).value,
+                    "priority": "P2",
+                    "retry_count": 0,
+                    "max_retries": 3,
+                    "notes": [],
+                    "expires_at": None,
+                    "opened_at": None,
+                    "interview_at": None,
+                    "offer_at": None,
+                    "rejected_at": None,
+                    "archived_at": None,
+                }
+            )
         else:
             db = dict(db_row)
             result["priority"] = db.get("priority", "P2")
@@ -466,7 +476,8 @@ class WorkflowQueue:
         if search:
             q = search.lower()
             merged = [
-                r for r in merged
+                r
+                for r in merged
                 if q in str(r.get("title", "")).lower()
                 or q in str(r.get("company", "")).lower()
                 or any(q in str(n.get("text", "")).lower() for n in r.get("notes", []))

@@ -1,8 +1,10 @@
 import httpcloak
-#============================test login with httpclok================
+
+
+# ============================test login with httpclok================
 def test_login(username, password):
     session = httpcloak.Session(preset="chrome-latest")
-    
+
     res = session.post(
         "https://www.naukri.com/central-login-services/v1/login",
         headers={
@@ -14,10 +16,7 @@ def test_login(username, password):
             "systemid": "jobseeker",
             "x-requested-with": "XMLHttpRequest",
         },
-        json={
-            "username": username,
-            "password": password
-        }
+        json={"username": username, "password": password},
     )
 
     print("Status:", res.status_code)
@@ -28,8 +27,8 @@ def test_login(username, password):
     print("Session cookies:", session.cookies)
     print("Response:", res.text[:500])
 
-# test_login("mynassae", ",usspass") 
- 
+
+# test_login("mynassae", ",usspass")
 
 
 session = httpcloak.Session(preset="chrome-latest")

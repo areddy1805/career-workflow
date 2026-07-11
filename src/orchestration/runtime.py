@@ -22,7 +22,6 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-
 # ---------------------------------------------------------------------------
 # Utilities
 # ---------------------------------------------------------------------------
@@ -101,13 +100,23 @@ class RuntimeState(str, Enum):
 _VALID_TRANSITIONS: dict[RuntimeState, frozenset[RuntimeState]] = {
     RuntimeState.STOPPED: frozenset({RuntimeState.STARTING}),
     RuntimeState.STARTING: frozenset(
-        {RuntimeState.IDLE, RuntimeState.FAILED, RuntimeState.RECOVERING, RuntimeState.STOPPED}
+        {
+            RuntimeState.IDLE,
+            RuntimeState.FAILED,
+            RuntimeState.RECOVERING,
+            RuntimeState.STOPPED,
+        }
     ),
     RuntimeState.IDLE: frozenset(
         {RuntimeState.RUNNING, RuntimeState.STOPPING, RuntimeState.FAILED}
     ),
     RuntimeState.RUNNING: frozenset(
-        {RuntimeState.IDLE, RuntimeState.STOPPING, RuntimeState.FAILED, RuntimeState.PAUSED}
+        {
+            RuntimeState.IDLE,
+            RuntimeState.STOPPING,
+            RuntimeState.FAILED,
+            RuntimeState.PAUSED,
+        }
     ),
     RuntimeState.PAUSED: frozenset(
         {RuntimeState.RUNNING, RuntimeState.STOPPING, RuntimeState.FAILED}
@@ -148,7 +157,9 @@ class RuntimeStateManager:
 
     def _load(self) -> None:
         self._cache = _read_json_safe(self._path)
-        raw = self._cache.get("state") or self._cache.get("status", RuntimeState.STOPPED.value)
+        raw = self._cache.get("state") or self._cache.get(
+            "status", RuntimeState.STOPPED.value
+        )
         try:
             self._state = RuntimeState(str(raw).upper())
         except ValueError:
@@ -187,9 +198,7 @@ class RuntimeStateManager:
                 )
             prev = self._state.value
             self._state = to
-            self._cache.update(
-                {"previous_state": prev, "transition_note": note}
-            )
+            self._cache.update({"previous_state": prev, "transition_note": note})
             self._flush()
 
     def force(self, to: RuntimeState, *, note: str = "forced") -> None:
@@ -290,7 +299,9 @@ class PipelineLock(AbstractContextManager):
             created = datetime.fromisoformat(str(payload.get("created_at", "")))
             if created.tzinfo is None:
                 created = created.replace(tzinfo=UTC)
-            age_sec: float | None = (datetime.now(UTC) - created.astimezone(UTC)).total_seconds()
+            age_sec: float | None = (
+                datetime.now(UTC) - created.astimezone(UTC)
+            ).total_seconds()
         except Exception:
             age_sec = None
         return {

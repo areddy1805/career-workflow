@@ -72,9 +72,7 @@ def get_runtime_logger(path: str | Path | None = None) -> logging.Logger:
     if logger.handlers:
         return logger
 
-    effective_path = Path(
-        path or os.getenv("RUNTIME_LOG_PATH", str(DEFAULT_LOG_PATH))
-    )
+    effective_path = Path(path or os.getenv("RUNTIME_LOG_PATH", str(DEFAULT_LOG_PATH)))
     try:
         effective_path.parent.mkdir(parents=True, exist_ok=True)
         handler: logging.Handler = logging.handlers.RotatingFileHandler(
@@ -120,50 +118,89 @@ def _emit(
 
 
 def log_startup(logger: logging.Logger, *, pid: int, **kwargs: Any) -> None:
-    _emit(logger, logging.INFO, "scheduler_startup",
-          {"event": "startup", "pid": pid, **kwargs})
+    _emit(
+        logger,
+        logging.INFO,
+        "scheduler_startup",
+        {"event": "startup", "pid": pid, **kwargs},
+    )
 
 
-def log_shutdown(logger: logging.Logger, *, pid: int, reason: str = "", **kwargs: Any) -> None:
-    _emit(logger, logging.INFO, "scheduler_shutdown",
-          {"event": "shutdown", "pid": pid, "reason": reason, **kwargs})
+def log_shutdown(
+    logger: logging.Logger, *, pid: int, reason: str = "", **kwargs: Any
+) -> None:
+    _emit(
+        logger,
+        logging.INFO,
+        "scheduler_shutdown",
+        {"event": "shutdown", "pid": pid, "reason": reason, **kwargs},
+    )
 
 
-def log_heartbeat(logger: logging.Logger, *, pid: int, state: str, **kwargs: Any) -> None:
-    _emit(logger, logging.DEBUG, "heartbeat",
-          {"event": "heartbeat", "pid": pid, "state": state, **kwargs})
+def log_heartbeat(
+    logger: logging.Logger, *, pid: int, state: str, **kwargs: Any
+) -> None:
+    _emit(
+        logger,
+        logging.DEBUG,
+        "heartbeat",
+        {"event": "heartbeat", "pid": pid, "state": state, **kwargs},
+    )
 
 
 def log_state_transition(
-    logger: logging.Logger, *, from_state: str, to_state: str, note: str = "", **kwargs: Any
+    logger: logging.Logger,
+    *,
+    from_state: str,
+    to_state: str,
+    note: str = "",
+    **kwargs: Any,
 ) -> None:
     _emit(
-        logger, logging.INFO,
+        logger,
+        logging.INFO,
         f"state_transition {from_state} → {to_state}",
-        {"event": "state_transition", "from_state": from_state,
-         "to_state": to_state, "note": note, **kwargs},
+        {
+            "event": "state_transition",
+            "from_state": from_state,
+            "to_state": to_state,
+            "note": note,
+            **kwargs,
+        },
     )
 
 
 def log_pipeline_event(
     logger: logging.Logger, *, event: str, run_id: str, mode: str = "", **kwargs: Any
 ) -> None:
-    _emit(logger, logging.INFO, f"pipeline_{event} run={run_id}",
-          {"event": f"pipeline_{event}", "run_id": run_id, "mode": mode, **kwargs})
+    _emit(
+        logger,
+        logging.INFO,
+        f"pipeline_{event} run={run_id}",
+        {"event": f"pipeline_{event}", "run_id": run_id, "mode": mode, **kwargs},
+    )
 
 
 def log_recovery(
     logger: logging.Logger, *, reason: str, action: str, **kwargs: Any
 ) -> None:
-    _emit(logger, logging.WARNING, f"recovery reason={reason}",
-          {"event": "recovery", "reason": reason, "action": action, **kwargs})
+    _emit(
+        logger,
+        logging.WARNING,
+        f"recovery reason={reason}",
+        {"event": "recovery", "reason": reason, "action": action, **kwargs},
+    )
 
 
 def log_watchdog(
     logger: logging.Logger, *, action: str, detail: str = "", **kwargs: Any
 ) -> None:
-    _emit(logger, logging.WARNING, f"watchdog action={action}",
-          {"event": "watchdog", "action": action, "detail": detail, **kwargs})
+    _emit(
+        logger,
+        logging.WARNING,
+        f"watchdog action={action}",
+        {"event": "watchdog", "action": action, "detail": detail, **kwargs},
+    )
 
 
 def log_crash(
@@ -171,7 +208,8 @@ def log_crash(
 ) -> None:
     tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
     _emit(
-        logger, logging.ERROR,
+        logger,
+        logging.ERROR,
         f"crash {type(exc).__name__}: {exc}",
         {
             "event": "crash",
@@ -185,13 +223,18 @@ def log_crash(
 
 
 def log_warning(logger: logging.Logger, message: str, **kwargs: Any) -> None:
-    _emit(logger, logging.WARNING, message,
-          {"event": "warning", "message": message, **kwargs})
+    _emit(
+        logger,
+        logging.WARNING,
+        message,
+        {"event": "warning", "message": message, **kwargs},
+    )
 
 
 def log_info(logger: logging.Logger, message: str, **kwargs: Any) -> None:
-    _emit(logger, logging.INFO, message,
-          {"event": "info", "message": message, **kwargs})
+    _emit(
+        logger, logging.INFO, message, {"event": "info", "message": message, **kwargs}
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -211,13 +254,13 @@ def read_recent_runtime_log(
     Optionally filter by the ``event`` field (e.g. ``"recovery"``).
     Returns an empty list on any I/O or parse error.
     """
-    effective_path = Path(
-        path or os.getenv("RUNTIME_LOG_PATH", str(DEFAULT_LOG_PATH))
-    )
+    effective_path = Path(path or os.getenv("RUNTIME_LOG_PATH", str(DEFAULT_LOG_PATH)))
     if not effective_path.exists():
         return []
     try:
-        lines = effective_path.read_text(encoding="utf-8", errors="replace").splitlines()
+        lines = effective_path.read_text(
+            encoding="utf-8", errors="replace"
+        ).splitlines()
     except OSError:
         return []
 

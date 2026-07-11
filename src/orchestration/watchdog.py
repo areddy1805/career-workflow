@@ -47,7 +47,9 @@ class Watchdog:
         if info.get("stale", False):
             pid = info.get("pid", "unknown")
             age = info.get("age_seconds")
-            detail = f"pid={pid} age_seconds={age} owner_alive={info.get('owner_alive')}"
+            detail = (
+                f"pid={pid} age_seconds={age} owner_alive={info.get('owner_alive')}"
+            )
             return WatchdogResult(stale_found=True, detail=detail, lock_info=info)
         return WatchdogResult(stale_found=False, detail="lock_is_live")
 

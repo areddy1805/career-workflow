@@ -1,6 +1,7 @@
 import json
 import os
 import re
+
 import requests
 
 
@@ -721,10 +722,11 @@ class JobFilterPipeline2:
 
     @staticmethod
     def _classify_work_mode(job):
-        structured = " ".join(
-            str(job.get(key) or "")
-            for key in ("work_mode", "workMode")
-        ).lower().strip()
+        structured = (
+            " ".join(str(job.get(key) or "") for key in ("work_mode", "workMode"))
+            .lower()
+            .strip()
+        )
 
         location = str(job.get("location") or "").lower().strip()
         description = str(job.get("description") or "").lower()

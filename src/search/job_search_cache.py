@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+import json
+import logging
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-import json
-import logging
 
 from src.models.models import Job
 from src.search.job_cache_codec import JobCacheCodec

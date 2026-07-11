@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import os
 
+from src.application.adaptive_strategy import (
+    build_adaptive_strategy,
+)
 from src.application.analytics import (
     age_distribution,
     application_velocity,
@@ -11,10 +14,6 @@ from src.application.analytics import (
     safe_rate,
 )
 from src.application.ledger import ApplicationLedger
-
-from src.application.adaptive_strategy import (
-    build_adaptive_strategy,
-)
 
 LEDGER_PATH = os.getenv(
     "APPLICATION_LEDGER_PATH",

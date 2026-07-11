@@ -1,6 +1,5 @@
 from src.llm.schemas import LLMQuestionDecision
 
-
 decision = LLMQuestionDecision(
     category="capability",
     action="answer",

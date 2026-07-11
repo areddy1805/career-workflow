@@ -3,8 +3,8 @@ import os
 
 from dotenv import load_dotenv
 
-from src.client.naukri_client import NaukriLoginClient
 from src.client.job_client import NaukriJobClient
+from src.client.naukri_client import NaukriLoginClient
 from src.models.models import Job
 
 JOB_ID = "290626015208"

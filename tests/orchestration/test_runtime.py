@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import json
 import os
-import tempfile
 import threading
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -23,10 +22,8 @@ from src.orchestration.runtime import (
     PipelineLockError,
     RuntimeState,
     RuntimeStateManager,
-    _atomic_write_json,
     pid_exists,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -267,7 +264,6 @@ class TestCircuitBreaker:
         assert tripped is True
         assert cb.tripped is True
         assert cb.reason == "e3"
-
 
     def test_success_resets_count(self) -> None:
         cb = CircuitBreaker(max_consecutive_failures=3)

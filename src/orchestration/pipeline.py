@@ -35,6 +35,10 @@ from src.application.diversity import (
     diversify_jobs,
     exclude_job_ids,
 )
+from src.application.eligibility import (
+    annotate_auto_apply_eligibility,
+    eligibility_rejection_summary,
+)
 from src.application.ledger import ApplicationLedger
 from src.application.policy import ApplicationPolicy
 from src.client.job_classifier import JobFilterPipeline2
@@ -49,10 +53,6 @@ from src.orchestration.stages import (
     PIPELINE_STAGES,
     PipelineStatus,
     StageStatus,
-)
-from src.application.eligibility import (
-    annotate_auto_apply_eligibility,
-    eligibility_rejection_summary,
 )
 from src.resolution.hybrid_resolver import HybridQuestionResolver
 from src.search.challenge_cooldown import SearchChallengeCooldown
@@ -684,7 +684,9 @@ class CareerWorkflowPipeline:
             "diversified": len(diversified_jobs),
             "diversity_rejected": len(eligible_jobs) - len(diversified_jobs),
             "selection_not_scanned": len(diversified_jobs) - len(selected_jobs),
-            "accounted_classified": len(rejected_decisions) + len(diversified_jobs) + (len(eligible_jobs) - len(diversified_jobs)),
+            "accounted_classified": len(rejected_decisions)
+            + len(diversified_jobs)
+            + (len(eligible_jobs) - len(diversified_jobs)),
             "selected": len(selected_jobs),
             "attempt_budget": (attempt_budget),
             "candidate_scan_budget": (candidate_scan_budget),
@@ -970,7 +972,6 @@ class CareerWorkflowPipeline:
         )
 
         return result
-
 
     def run(self) -> PipelineResult:
         lock_path = os.getenv("PIPELINE_LOCK_PATH", "data/ui_runtime/pipeline.lock")

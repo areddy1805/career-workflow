@@ -298,7 +298,10 @@ def build_adaptive_strategy(
                 config.base_max_applications_per_run - 1,
             )
 
-    elif global_response_rate >= 0.20 and config.base_max_applications_per_run is not None:
+    elif (
+        global_response_rate >= 0.20
+        and config.base_max_applications_per_run is not None
+    ):
         max_applications_per_run = config.base_max_applications_per_run + 1
 
     priority_performance = _group_performance(

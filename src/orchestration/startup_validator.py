@@ -63,9 +63,7 @@ class StartupValidator:
     # Individual checks
     # ------------------------------------------------------------------
 
-    def _check_configuration(
-        self, errors: list[str], warnings: list[str]
-    ) -> None:
+    def _check_configuration(self, errors: list[str], warnings: list[str]) -> None:
         required = ["NAUKRI_USERNAME", "NAUKRI_PASSWORD"]
         for key in required:
             if not os.getenv(key):
@@ -98,21 +96,15 @@ class StartupValidator:
             except OSError as exc:
                 errors.append(f"Cannot create directory {d}: {exc}")
 
-    def _check_permissions(
-        self, errors: list[str], warnings: list[str]
-    ) -> None:
+    def _check_permissions(self, errors: list[str], warnings: list[str]) -> None:
         write_probe = _RUNTIME_DIR / ".write_probe"
         try:
             write_probe.write_text("probe", encoding="utf-8")
             write_probe.unlink(missing_ok=True)
         except OSError as exc:
-            errors.append(
-                f"Runtime directory is not writable ({_RUNTIME_DIR}): {exc}"
-            )
+            errors.append(f"Runtime directory is not writable ({_RUNTIME_DIR}): {exc}")
 
-    def _check_artifacts(
-        self, errors: list[str], warnings: list[str]
-    ) -> None:
+    def _check_artifacts(self, errors: list[str], warnings: list[str]) -> None:
         if not _ARTIFACTS_DIR.exists():
             warnings.append(
                 f"Artifacts directory does not exist yet; it will be created on first run: {_ARTIFACTS_DIR}"
@@ -123,9 +115,7 @@ class StartupValidator:
                 f"Artifacts path exists but is not a directory: {_ARTIFACTS_DIR}"
             )
 
-    def _check_scheduler_state(
-        self, errors: list[str], warnings: list[str]
-    ) -> None:
+    def _check_scheduler_state(self, errors: list[str], warnings: list[str]) -> None:
         state_path = _RUNTIME_DIR / "scheduler_state.json"
         if not state_path.exists():
             # First run — not an error
@@ -141,9 +131,7 @@ class StartupValidator:
         except OSError as exc:
             warnings.append(f"Cannot read scheduler_state.json: {exc}")
 
-    def _check_queue_consistency(
-        self, errors: list[str], warnings: list[str]
-    ) -> None:
+    def _check_queue_consistency(self, errors: list[str], warnings: list[str]) -> None:
         queue_path = REPO_ROOT / "data" / "manual_action_queue.json"
         env_path = os.getenv("MANUAL_ACTION_QUEUE_PATH")
         if env_path:

@@ -66,8 +66,7 @@ class QueueAnalyticsService:
             if age is not None and ws in buckets:
                 buckets[ws].append(age)
         return {
-            s: (sum(vals) / len(vals) if vals else None)
-            for s, vals in buckets.items()
+            s: (sum(vals) / len(vals) if vals else None) for s, vals in buckets.items()
         }
 
     def retry_distribution(self) -> dict[str, int]:

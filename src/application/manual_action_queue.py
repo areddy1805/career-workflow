@@ -5,7 +5,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-
 QUEUE_STATUSES = (
     "PENDING",
     "IN_PROGRESS",
@@ -48,9 +47,7 @@ class ManualActionQueue:
         self,
         rows: list[dict],
     ) -> None:
-        temporary = self.path.with_suffix(
-            self.path.suffix + ".tmp"
-        )
+        temporary = self.path.with_suffix(self.path.suffix + ".tmp")
 
         temporary.write_text(
             json.dumps(
@@ -116,18 +113,14 @@ class ManualActionQueue:
         status = status.upper()
 
         if status not in QUEUE_STATUSES:
-            raise ValueError(
-                f"Unsupported queue status: {status}"
-            )
+            raise ValueError(f"Unsupported queue status: {status}")
 
         rows = self._load()
         now = datetime.now(timezone.utc).isoformat()
         updated = False
 
         for row in rows:
-            if str(
-                row.get("job_id")
-            ) != str(job_id):
+            if str(row.get("job_id")) != str(job_id):
                 continue
 
             row["status"] = status
@@ -137,10 +130,7 @@ class ManualActionQueue:
                 row["note"] = note
 
             if status == "APPLIED":
-                row["applied_at"] = (
-                    row.get("applied_at")
-                    or now
-                )
+                row["applied_at"] = row.get("applied_at") or now
 
             updated = True
             break
@@ -208,15 +198,10 @@ class ManualActionQueue:
         )
 
         if not url:
-            url = (
-                "https://www.naukri.com/"
-                f"job-listings-{job_id}"
-            )
+            url = "https://www.naukri.com/" f"job-listings-{job_id}"
 
         for row in rows:
-            if str(
-                row.get("job_id")
-            ) != job_id:
+            if str(row.get("job_id")) != job_id:
                 continue
 
             changed = False
