@@ -641,7 +641,7 @@ This prevents ambiguous API payloads from being silently counted as successful a
 
 ### 6. Persistent Application Ledger
 
-The SQLite ledger is the durable state layer of the system.
+The SQLite ledger is the durable state layer of the system and the single source of truth for all application state.
 
 Default database:
 
@@ -1104,6 +1104,23 @@ Every staged run produces a machine-readable summary with:
 This makes pipeline behavior auditable. A successful dry run can prove that all stages completed while still showing `attempted: 0` and `submitted: 0`, distinguishing execution correctness from live side effects.
 
 
+
+### Pipeline Observability
+
+Every pipeline run records structured execution metrics, including:
+
+- stage-level execution timings;
+- deterministic rejection counts by category;
+- jobs sent to AI evaluation;
+- qualified jobs;
+- applied jobs;
+- pipeline latency breakdown;
+- end-to-end execution summary.
+
+This observability layer is intended to identify bottlenecks, validate filtering behaviour, and guide future optimizations using production data rather than assumptions.
+
+---
+
 ## Operational Data Model
 
 ```mermaid
@@ -1165,7 +1182,6 @@ Typical local runtime state:
 ```text
 data/
 ├── application_ledger.db
-├── applied_jobs.csv
 ├── job_search_cache.json
 ├── score_cache.json
 ├── questionnaire_telemetry.csv
@@ -1177,7 +1193,6 @@ data/
 | Artifact | Purpose |
 |---|---|
 | `application_ledger.db` | Authoritative application and lifecycle state |
-| `applied_jobs.csv` | Compatibility application log |
 | `job_search_cache.json` | Search resilience fallback |
 | `score_cache.json` | Reuse previous scoring results |
 | `questionnaire_telemetry.csv` | Resolution diagnostics |
