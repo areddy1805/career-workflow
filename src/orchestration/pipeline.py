@@ -13,7 +13,7 @@ from apply_agent import (
     acquire_jobs,
     enrich_application_metadata,
     enrich_jobs_with_details,
-    load_applied_jobs,
+
     print_acquisition_summary,
     print_pipeline_results,
     print_runtime_policy,
@@ -190,7 +190,20 @@ class CareerWorkflowPipeline:
         print(f"\n[PIPELINE] {name.upper()} STARTED")
 
         try:
+            import time
+            start_time = time.perf_counter()
             function()
+            duration = time.perf_counter() - start_time
+            
+            # Record total runtime metrics depending on the stage
+            if self.context.metrics:
+                self.context.metrics.total_runtime += duration
+                if name == "acquire":
+                    self.context.metrics.add_network_time(duration)
+                elif name == "classify":
+                    # classify mixes LLM and network (details fetching) and local filtering.
+                    # We subtract llm_time and network_time tracked deeply.
+                    pass
 
         except Exception as error:
             self.stage_statuses[name] = StageStatus.FAILED
@@ -350,7 +363,7 @@ class CareerWorkflowPipeline:
         if self.context.job_client is None:
             raise RuntimeError("Job client unavailable")
 
-        classifier = JobFilterPipeline2()
+        classifier = JobFilterPipeline2(metrics=self.context.metrics)
 
         candidates = classifier.pre_filter(self.context.acquired_jobs)
 
@@ -360,7 +373,7 @@ class CareerWorkflowPipeline:
 
         candidates_before_suppression = len(candidates)
 
-        excluded_ids = load_applied_jobs() | self.context.ledger.applied_job_ids()
+        excluded_ids = self.context.ledger.applied_job_ids()
         candidates = exclude_job_ids(candidates, excluded_ids)
         candidates_after_history_suppression = len(candidates)
 
@@ -528,7 +541,7 @@ class CareerWorkflowPipeline:
     def select(self) -> None:
         ledger = self.context.ledger
 
-        self.context.applied_job_ids = load_applied_jobs() | ledger.applied_job_ids()
+        self.context.applied_job_ids = ledger.applied_job_ids()
 
         metadata_quality = ledger.metadata_completeness()
 
@@ -788,6 +801,7 @@ class CareerWorkflowPipeline:
             detail_cache=(self.context.detail_cache),
             ledger=ledger,
             run_id=self.context.run_id,
+            metrics=self.context.metrics,
         )
 
         self.context.application_summary = summary
@@ -977,7 +991,9 @@ class CareerWorkflowPipeline:
         lock_path = os.getenv("PIPELINE_LOCK_PATH", "data/ui_runtime/pipeline.lock")
         stale_minutes = int(os.getenv("PIPELINE_LOCK_STALE_MINUTES", "720"))
         with PipelineLock(lock_path, stale_after_minutes=stale_minutes):
-            return self._run_unlocked()
+            result = self._run_unlocked()
+            self.print_observability_report(result)
+            return result
 
     def _skip_remaining_pending_stages(
         self,
@@ -1057,3 +1073,41 @@ class CareerWorkflowPipeline:
             },
             errors=self.context.errors,
         )
+
+    def print_observability_report(self, result: PipelineResult) -> None:
+        m = self.context.metrics
+        print("\n" + "═" * 50)
+        print(" OBSERVABILITY REPORT")
+        print("═" * 50)
+        print(f"Jobs discovered: {m.acquired}")
+        
+        print("Rejected:")
+        for reason, count in sorted(m.skipped_reasons.items(), key=lambda x: x[1], reverse=True):
+            print(f"- {reason}: {count}")
+            
+        print(f"Sent to AI: {result.classified}")
+        print(f"Qualified: {result.selected}")
+        print(f"Applied: {result.submitted}")
+        
+        print("Skipped:")
+        print(f"- Manual review: {result.manual_review}")
+        print(f"- Already applied: {result.already_applied}")
+        print(f"- Policy rejected: {result.policy_rejected}")
+        
+        print("\nLatency Analysis:")
+        mins = int(m.total_runtime // 60)
+        secs = int(m.total_runtime % 60)
+        print(f"Pipeline runtime: {mins}m {secs}s")
+        
+        if result.classified > 0:
+            avg_job = m.total_runtime / result.classified
+            print(f"Average/job: {avg_job:.1f}s")
+            
+        if m.total_runtime > 0:
+            llm_pct = (m.llm_time / m.total_runtime) * 100
+            net_pct = (m.network_time / m.total_runtime) * 100
+            app_pct = (m.application_time / m.total_runtime) * 100
+            print(f"LLM time: {llm_pct:.1f}%")
+            print(f"Network: {net_pct:.1f}%")
+            print(f"Applying: {app_pct:.1f}%")
+        print("═" * 50 + "\n")

@@ -74,12 +74,17 @@ class ApplicationLedger:
 
     @contextmanager
     def _connect(self):
-        conn = sqlite3.connect(self.path)
+        # Enforce strict transactions for single source of truth
+        conn = sqlite3.connect(self.path, isolation_level="EXCLUSIVE")
         conn.row_factory = sqlite3.Row
 
         try:
             yield conn
             conn.commit()
+
+        except Exception:
+            conn.rollback()
+            raise
 
         finally:
             conn.close()
@@ -131,6 +136,9 @@ class ApplicationLedger:
 
                 CREATE INDEX IF NOT EXISTS idx_applications_company
                 ON applications(company);
+                
+                CREATE INDEX IF NOT EXISTS idx_applications_applied_at
+                ON applications(applied_at);
 
                 CREATE TABLE IF NOT EXISTS strategy_decisions (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,

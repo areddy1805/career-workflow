@@ -3,6 +3,8 @@ import os
 import re
 
 import requests
+import time
+from src.orchestration.metrics import PipelineRunMetrics
 
 
 class JobFilterPipeline2:
@@ -314,7 +316,9 @@ class JobFilterPipeline2:
         min_apply_score: int = 50,
         ai_score_limit: int = 300,
         batch_size: int = 5,
+        metrics: PipelineRunMetrics | None = None,
     ):
+        self.metrics = metrics
         self.api_key = api_key or os.getenv("OMLX_API_KEY")
 
         if not self.api_key:
@@ -517,6 +521,8 @@ class JobFilterPipeline2:
             title = (j.get("title") or "").lower()
             if any(kw in title for kw in self.VETO_TITLES):
                 print(f"  [VETO] {j.get('title')}")
+                if self.metrics:
+                    self.metrics.record_rejection("Hard Veto (Title)")
                 continue
             clean.append(j)
         return clean
@@ -582,6 +588,8 @@ class JobFilterPipeline2:
             ]
             if flagged:
                 print(f"  [RED FLAG {flagged}] {j.get('title')}")
+                if self.metrics:
+                    self.metrics.record_rejection(f"Red Flag (Desc): {flagged[0]}")
                 continue
             clean.append(j)
         return clean
@@ -611,6 +619,8 @@ class JobFilterPipeline2:
                     f"{job.get('title')} @ "
                     f"{job.get('company')}"
                 )
+                if self.metrics:
+                    self.metrics.record_rejection(f"Red Flag (Full JD): {flagged[0]}")
                 continue
 
             clean.append(job)
@@ -634,12 +644,16 @@ class JobFilterPipeline2:
                 keyword in title for keyword in self.SOFTWARE_KEYWORDS
             ):
                 print(f"  [TITLE FILTER - not software/AI] {job.get('title')}")
+                if self.metrics:
+                    self.metrics.record_rejection("Title Filter (Not SW/AI)")
                 continue
 
             if not explicit_ai_title and any(
                 keyword in title for keyword in self.WRONG_TRACK_TITLE_KEYWORDS
             ):
                 print(f"  [TITLE FILTER - wrong track] {job.get('title')}")
+                if self.metrics:
+                    self.metrics.record_rejection("Title Filter (Wrong Track)")
                 continue
 
             result.append(job)
@@ -652,6 +666,8 @@ class JobFilterPipeline2:
             company = (j.get("company") or "").lower()
             if any(vc in company for vc in self.VETO_COMPANIES):
                 print(f"  [COMPANY VETO] {j.get('title')} @ {j.get('company')}")
+                if self.metrics:
+                    self.metrics.record_rejection("Company Veto")
                 continue
             clean.append(j)
         return clean
@@ -697,6 +713,8 @@ class JobFilterPipeline2:
                     f"  [AI RELEVANCE REJECT] "
                     f"{job.get('title')} @ {job.get('company')}"
                 )
+                if self.metrics:
+                    self.metrics.record_rejection("Non-AI")
                 continue
 
             job["ai_relevance"] = True
@@ -1219,6 +1237,7 @@ Jobs:
 """
 
         try:
+            start_time = time.perf_counter()
             res = requests.post(
                 self.url,
                 headers={
@@ -1244,6 +1263,9 @@ Jobs:
                 },
                 timeout=300,
             )
+            duration = time.perf_counter() - start_time
+            if self.metrics:
+                self.metrics.add_llm_time(duration)
 
             if res.status_code != 200:
                 print("AI HTTP ERROR:", res.status_code, res.text[:200])
