@@ -1,3 +1,3 @@
-from career_ui.app import main
+from career_ui_legacy.app import main
 
 main()
