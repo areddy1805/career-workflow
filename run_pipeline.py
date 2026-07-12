@@ -37,6 +37,11 @@ def parse_args():
         action="store_true",
         help="Force a live run to at most one application.",
     )
+    parser.add_argument(
+        "--force-live",
+        action="store_true",
+        help="Bypass search challenge cooldowns and force a live acquisition.",
+    )
     return parser.parse_args()
 
 
@@ -60,6 +65,7 @@ def main() -> None:
         dry_run=not args.live,
         max_applications=max_applications,
         acquisition_mode=args.acquisition_mode,
+        force_live=args.force_live,
     )
     result = pipeline.run()
     print()

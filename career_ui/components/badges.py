@@ -21,5 +21,5 @@ def status_badge(status: str, classes: str = ""):
         color = "danger"
     elif s in {"SKIPPED", "EXPIRED", "ARCHIVED"}:
         color = "neutral"
-    
+
     badge(s, color, classes)

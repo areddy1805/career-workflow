@@ -10,29 +10,29 @@ class PipelineRunMetrics:
     acquired: int = 0
     qualified: int = 0
     applied: int = 0
-    
+
     # Detailed skip/rejection reasons
     skipped_reasons: dict[str, int] = field(default_factory=dict)
-    
+
     # Latencies in seconds
     total_runtime: float = 0.0
     network_time: float = 0.0
     llm_time: float = 0.0
     filtering_time: float = 0.0
     application_time: float = 0.0
-    
+
     def record_rejection(self, reason: str):
         self.skipped_reasons[reason] = self.skipped_reasons.get(reason, 0) + 1
-        
+
     def add_llm_time(self, duration: float):
         self.llm_time += duration
-        
+
     def add_network_time(self, duration: float):
         self.network_time += duration
 
     def add_filtering_time(self, duration: float):
         self.filtering_time += duration
-        
+
     def add_application_time(self, duration: float):
         self.application_time += duration
 

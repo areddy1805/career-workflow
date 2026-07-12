@@ -14,7 +14,12 @@ import logging
 from typing import Any
 
 from src.orchestration.run_manager import RunManager
-from src.orchestration.runtime import PipelineLock, RuntimeState, RuntimeStateManager
+from src.orchestration.runtime import (
+    PipelineLock,
+    RuntimeState,
+    RuntimeStateManager,
+    pid_exists,
+)
 from src.orchestration.runtime_logger import log_recovery, read_recent_runtime_log
 
 
@@ -46,6 +51,19 @@ class RecoveryManager:
         Side effect: if interrupted, the stale lock is removed and the
         active run (if any) is marked RECOVERED.
         """
+        # Always attempt to recover a stale run, regardless of scheduler state
+        active = self._run_mgr.get_unvalidated_run()
+        if active is not None and active.status in {"RUNNING", "STARTING"}:
+            if active.pid and not pid_exists(active.pid):
+                self._run_mgr.recover_run(active)
+                log_recovery(
+                    self._logger,
+                    reason="stale_current_run",
+                    action="run_recovered",
+                    prev_state=active.status,
+                    stale_pid=active.pid,
+                )
+
         current = self._state.state
         interrupted_states = {RuntimeState.RUNNING, RuntimeState.STARTING}
         if current not in interrupted_states:
@@ -59,10 +77,6 @@ class RecoveryManager:
 
         # Stale lock → interrupted run detected
         self.cleanup_stale_lock()
-
-        active = self._run_mgr.load_active_run()
-        if active is not None:
-            self._run_mgr.recover_run(active)
 
         log_recovery(
             self._logger,

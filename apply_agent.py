@@ -927,15 +927,17 @@ def acquire_jobs(
     cache: JobSearchCache,
     cooldown: SearchChallengeCooldown,
     mode: str = "full",
+    force_live: bool = False,
 ) -> tuple[list, JobFetchResult]:
     """
     Execute cooldown-aware job acquisition.
 
     The cooldown prevents repeated search requests after a CAPTCHA
     challenge while still allowing cache-backed pipeline execution.
+    If force_live is True, the cooldown check is bypassed.
     """
 
-    if cooldown.is_active():
+    if not force_live and cooldown.is_active():
         fetch_result = JobFetchResult(
             jobs=[],
             challenge_encountered=False,
@@ -1382,6 +1384,7 @@ def run_application_batch(
     ledger: ApplicationLedger | None = None,
     run_id: str = "",
     metrics: PipelineRunMetrics | None = None,
+    rejected_jobs: list | None = None,
 ) -> ApplicationRunSummary:
     """
     Execute the application workflow for a batch of filtered jobs.
@@ -1422,6 +1425,18 @@ def run_application_batch(
     )
 
     total_candidates = len(jobs)
+    rejected_jobs_list = rejected_jobs if rejected_jobs is not None else []
+    def _record_app_reject(job, code, reason):
+        from datetime import datetime, timezone
+        rejected_jobs_list.append({
+            "job_id": str(getattr(job, "job_id", "")),
+            "title": str(getattr(job, "title", "Unknown")),
+            "company": str(getattr(job, "company", "Unknown")),
+            "stage": "Application",
+            "code": code,
+            "reason": str(reason),
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        })
 
     manual_action_queue = ManualActionQueue(
         os.getenv(
@@ -1463,9 +1478,10 @@ def run_application_batch(
                 job.job_id,
             )
 
-            skipped_local_count += 1
+            already_applied_count += 1
+            _record_app_reject(job, 'ALREADY_APPLIED', 'Previously applied in an earlier run.')
             if ledger is not None:
-                ledger.record(job, "skipped_local", meta=meta)
+                ledger.record(job, "already_applied", meta=meta)
             continue
 
         # ----------------------------------------------------------
@@ -1486,6 +1502,7 @@ def run_application_batch(
             )
 
             policy_rejected_count += 1
+            _record_app_reject(job, policy_evaluation.reason.value, policy_evaluation.detail)
             if ledger is not None:
                 ledger.record(
                     job,
@@ -1509,6 +1526,8 @@ def run_application_batch(
                 "Leaving %s queued candidate(s) for a later run.",
                 run_limit_reached_count,
             )
+            for remaining_job in jobs[index - 1:]:
+                _record_app_reject(remaining_job, 'APPLICATION_QUOTA', 'Per-run successful submission limit reached')
             break
 
         if effective_policy.dry_run:
@@ -1532,6 +1551,7 @@ def run_application_batch(
                 print_status_skipped_external()
 
                 skipped_external_count += 1
+                _record_app_reject(job, 'EXTERNAL_REJECTION', 'Job requires applying on external portal')
                 if ledger is not None:
                     ledger.record(job, "external_apply", meta=meta)
                 job_id = str(job.job_id)
@@ -1610,6 +1630,7 @@ def run_application_batch(
 
 
                 already_applied_count += 1
+                _record_app_reject(job, 'ALREADY_APPLIED', 'Server reports job already applied')
 
                 if ledger is not None:
                     ledger.record(job, "already_applied", meta=meta)
@@ -1641,6 +1662,7 @@ def run_application_batch(
         except ManualReviewRequired as exc:
             print_status_manual_review(exc)
             manual_review_count += 1
+            _record_app_reject(job, 'MANUAL_REVIEW', str(exc))
             breaker.success()
 
             if ledger is not None:

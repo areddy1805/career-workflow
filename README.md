@@ -85,6 +85,26 @@ The objective is a controlled system that sends better applications, avoids repe
 
 ---
 
+## Daily Operations
+
+```text
+Start UI
+↓
+Start Scheduler
+↓
+Review Queue
+↓
+Review Manual Queue
+↓
+Scheduler applies jobs
+↓
+Monitor Applications
+↓
+Review Analytics
+```
+
+---
+
 ## System at a Glance
 
 | Layer | What it does | State |
@@ -110,7 +130,9 @@ The objective is a controlled system that sends better applications, avoids repe
 | Pipeline operations | Dry-run/live launch controls, bounded execution and runtime inspection | ✅ |
 | Run inspection | Immutable artifact history, stage state and diagnostic evidence | ✅ |
 | System health | Runtime, storage, configuration and integration diagnostics | ✅ |
-| Automation | Unattended scheduled operation and notifications | 🚧 |
+| Automation | Daemon scheduler with runtime recovery, locking, heartbeat and interactive workstation mode | ✅ |
+| Runtime | Process state, lock management, recovery, watchdog and heartbeat | ✅ |
+| Observability | Stage metrics, rejection analytics, runtime artifacts and execution reports | ✅ |
 
 ---
 
@@ -198,6 +220,28 @@ Portfolio: 147 applications
 ```
 
 is a valid state. It means no pipeline process is active, the latest run artifact was left without a terminal result, and the persistent portfolio remains intact.
+
+### Runtime Components
+
+The scheduler coordinates several runtime services.
+
+- Runtime State Manager
+- Pipeline Lock
+- Heartbeat Manager
+- Run Manager
+- Recovery Manager
+- Watchdog
+- Circuit Breaker
+
+These services provide:
+
+- single active pipeline instance
+- stale lock recovery
+- heartbeat monitoring
+- crash recovery
+- orphaned run detection
+- graceful shutdown
+- runtime state persistence
 
 ### UI architecture
 
@@ -397,6 +441,7 @@ Current acquisition capabilities include:
 - challenge detection with partial results preserved;
 - persistent challenge cooldown state;
 - suppression of aggressive live search during cooldown;
+- explicit bypass of challenge cooldown via `--force-live`;
 - cached fallback when live search cannot continue;
 - acquisition telemetry including request count, challenge state and source composition.
 
@@ -890,6 +935,88 @@ The CLI entry points remain available for automation, debugging and direct opera
 
 `run_pipeline.py` is the staged orchestration entry point. `apply_agent.py` contains acquisition and application-domain functionality used by the pipeline.
 
+## Scheduler
+
+Career Workflow supports two execution models.
+
+### Daemon Mode (Production)
+
+Runs continuously using the configured schedule.
+
+```bash
+python run_scheduler.py
+```
+
+Behavior:
+
+- waits until the configured full-run window
+- executes incremental searches using the configured interval
+- intended for always-on systems
+- graceful shutdown with Ctrl+C
+
+---
+
+### Interactive Mode (Workstation)
+
+Optimized for running on a local development machine.
+
+```bash
+python run_scheduler.py --interactive
+```
+
+Behavior:
+
+- immediately performs a full pipeline run
+- stays alive after completion
+- performs incremental searches every 30 minutes by default
+- continues until Ctrl+C
+
+---
+
+### Interactive Session
+
+Automatically terminates after a work session.
+
+```bash
+python run_scheduler.py \
+    --interactive \
+    --session-hours 2
+```
+
+Example:
+
+09:00 Full Run
+
+09:30 Incremental
+
+10:00 Incremental
+
+10:30 Incremental
+
+11:00 Scheduler exits automatically
+
+---
+
+### Custom Incremental Interval
+
+```bash
+python run_scheduler.py \
+    --interactive \
+    --incremental 20
+```
+
+Only interactive mode uses this override.
+
+Daemon mode always follows the configured schedule.
+
+---
+
+### Immediate Execution
+
+A full run is automatically performed when interactive mode starts.
+
+This eliminates waiting for the next scheduled execution during local development.
+
 ### Broad validation dry run
 
 ```bash
@@ -961,27 +1088,84 @@ python monitor_applications.py
 python application_report.py
 ```
 
-### Full validation
+## Validation
+
+Complete validation:
 
 ```bash
-python -m compileall -q \
-  src \
-  config \
-  tools \
-  control_center \
-  career_ui \
-  tests \
-  apply_agent.py \
-  monitor_applications.py \
-  application_report.py \
-  run_nicegui.py
+python -m pytest
+```
 
-python -m pytest -q tests/nicegui_ui
+Scheduler:
 
-python -m pytest -q
+```bash
+python -m pytest tests/orchestration -v
+```
 
+Application:
+
+```bash
+python -m pytest tests/application -v
+```
+
+Interactive scheduler:
+
+```bash
+python -m pytest tests/orchestration/test_scheduler_interactive.py
+```
+
+Formatting:
+
+```bash
 git diff --check
 ```
+
+Current validation status:
+
+- 326 backend tests passing
+- Scheduler runtime tests passing
+- Interactive scheduler tests passing
+- Application tests passing
+---
+
+## Factory Reset (Fresh Start)
+
+Use this procedure when you want to discard all runtime state and begin with a completely fresh portfolio.
+
+> **Warning**
+>
+> This permanently removes local application history, cached search results, runtime state, run artifacts, logs, and generated data. Only use it when intentionally starting from scratch.
+
+```bash
+# Stop the UI and scheduler first.
+
+rm -rf artifacts/runs/*
+rm -rf logs/*
+
+rm -f data/application_ledger.db
+rm -f data/job_search_cache.json
+rm -f data/score_cache.json
+rm -f data/manual_jobs.db
+rm -f data/manual_action_queue.json
+rm -f data/search_challenge_state.json
+rm -f data/runtime_state.json
+rm -f data/scheduler_state.json
+rm -f data/pipeline_state.json
+rm -f data/heartbeat.json
+
+rm -rf data/ui_runtime/*
+rm -rf data/responses/*
+
+mkdir -p artifacts/runs logs data/responses data/ui_runtime
+
+echo "Factory reset complete."
+```
+
+After the reset:
+
+1. Start the Operations Control Plane.
+2. Start the scheduler (or run a manual pipeline).
+3. A fresh application ledger, artifacts, caches, and runtime state will be created automatically.
 
 ---
 
@@ -1000,6 +1184,26 @@ The system is designed for different execution modes rather than one permanently
 A normal operating cycle is:
 
 ```text
+### Acquisition Mode vs Cache Policy
+
+Acquisition depth is controlled by the mode (`full` or `incremental`). 
+
+By default, if Naukri presents a CAPTCHA or blocking challenge, the orchestrator records a cooldown and falls back to cached results to avoid banning your IP. This safety mechanism is active regardless of acquisition mode.
+
+To explicitly bypass a recorded cooldown and force a live search, use `--force-live`:
+
+```bash
+# Respects cooldown if active
+python run_pipeline.py --acquisition-mode full
+
+# Ignores cooldown and forces a live search attempt
+python run_pipeline.py --acquisition-mode full --force-live
+```
+
+This flag is also available on the scheduler daemon (`python run_scheduler.py --interactive --force-live`) and in the UI Control Plane.
+
+### Step-by-Step Flow
+
 1. Broad or incremental acquisition
 2. Classification and ranking
 3. Controlled application batch
@@ -1105,19 +1309,44 @@ This makes pipeline behavior auditable. A successful dry run can prove that all 
 
 
 
-### Pipeline Observability
+## Pipeline Observability
 
-Every pipeline run records structured execution metrics, including:
+Every run produces structured operational metrics.
 
-- stage-level execution timings;
-- deterministic rejection counts by category;
-- jobs sent to AI evaluation;
-- qualified jobs;
-- applied jobs;
-- pipeline latency breakdown;
-- end-to-end execution summary.
+Recorded metrics include:
 
-This observability layer is intended to identify bottlenecks, validate filtering behaviour, and guide future optimizations using production data rather than assumptions.
+- jobs acquired
+- deterministic rejection breakdown
+- jobs sent to AI scoring
+- qualified jobs
+- attempted applications
+- successful applications
+- already applied jobs
+- manual review jobs
+- policy rejections
+- stage execution status
+- pipeline runtime
+- latency breakdown
+
+Example:
+
+```text
+Jobs discovered: 712
+
+Rejected:
+- Non-AI
+- Title Filter
+- Hard Veto
+- Experience
+- Red Flag
+
+Sent to AI: 45
+Qualified: 44
+Applied: 20
+
+Pipeline runtime: 7m 2s
+Average/job: 9.4s
+```
 
 ---
 
@@ -1197,6 +1426,24 @@ data/
 | `score_cache.json` | Reuse previous scoring results |
 | `questionnaire_telemetry.csv` | Resolution diagnostics |
 | `responses/` | Raw and unresolved API response captures |
+
+### Pipeline Artifacts (`artifacts/runs/<run_id>/`)
+
+| Artifact | Purpose |
+|---|---|
+| `manifest.json` | Run metadata, timestamp, and status |
+| `timeline.json` | Execution stage durations |
+| `environment.json` | Execution context and policies |
+| `diagnostics.json` | System state and health |
+| `classification.json` | Core classification stage summary |
+| `selection.json` | Selection stage summary |
+| `application.json` | Application stage summary |
+| `selected_jobs.json` | Jobs selected for application with decision history |
+| `rejected_jobs.json` | All rejected jobs with rejection stage, code, and reason |
+| `applied_jobs.json` | Successfully applied jobs for this run |
+| `already_applied.json` | Jobs skipped due to duplicate application state |
+| `external_apply.json` | Jobs requiring external application |
+| `manual_review.json` | Jobs flagged for human review |
 
 Runtime data can contain private application and candidate information and should not be committed to a public repository.
 
@@ -1411,11 +1658,19 @@ timeline
                         : Run inspection
                         : Analytics dashboards
                         : System diagnostics
-    Next Phase          : Unified daily cycle
-                        : Scheduling
-                        : Run locking
+    Scheduler Generation
+                        : Daemon execution
+                        : Interactive workstation mode
+                        : Session mode
+                        : Runtime locking
+                        : Heartbeat
+                        : Crash recovery
+                        : Watchdog
+                        : Circuit breaker
+    Next Phase
                         : Notifications
                         : Daily operational summaries
+                        : Multi-node execution
 ```
 
 ---
@@ -1432,7 +1687,8 @@ Current boundaries include:
 - no autonomous credential management;
 - no guarantee of compatibility with future upstream API changes;
 - no claim that LLM-generated questionnaire answers are authoritative without candidate evidence;
-- no production-grade unattended scheduler or notification subsystem yet;
+- unattended single-node scheduler with runtime locking, heartbeat, watchdog and recovery is implemented;
+- notifications and distributed scheduling remain future work;
 - no automatic strategy adaptation before minimum evidence thresholds are satisfied.
 
 The architecture separates platform access, decisioning, execution, tracking, and analytics so these boundaries can evolve independently.
@@ -1453,10 +1709,15 @@ The architecture separates platform access, decisioning, execution, tracking, an
 - [x] manual-job and human-review operational queues
 - [x] lifecycle, priority, subtrack and execution analytics dashboards
 - [x] immutable run inspection, preflight diagnostics and system-health visibility
+- [x] daemon scheduler with runtime locking and recovery
+- [x] interactive workstation scheduler mode
+- [x] session-based scheduler execution
+- [x] runtime heartbeat and watchdog
+- [x] circuit breaker and crash recovery
+- [x] structured pipeline observability
 
 ### Next Operational Phase
 
-- [ ] full unattended automation with scheduling, safe concurrency control, recovery and operational notifications;
 - [ ] multi-platform job-source and application adapters beyond Naukri;
 - [ ] stronger browser automation for application flows that cannot be completed through direct APIs;
 - [ ] production deployment and remote operations for continuously running the workflow;

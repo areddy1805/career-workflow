@@ -27,6 +27,7 @@ class PipelineContext:
     ledger: Any | None = None
 
     acquisition_mode: str = "full"
+    force_live: bool = False
 
     # Acquisition
     acquired_jobs: list[Any] = field(default_factory=list)
@@ -58,6 +59,11 @@ class PipelineContext:
     # Generic stage state
     stage_results: dict[str, Any] = field(default_factory=dict)
     errors: list[dict[str, Any]] = field(default_factory=list)
+
+    # Observability
+    generated_artifacts: list[str] = field(default_factory=list)
+    timeline: list[dict[str, Any]] = field(default_factory=list)
+    rejected_jobs: list[dict[str, Any]] = field(default_factory=list)
 
     def record_error(
         self,

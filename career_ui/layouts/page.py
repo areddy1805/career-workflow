@@ -10,7 +10,7 @@ def page_header(title: str, subtitle: str = "", kicker: str = "", status: str | 
             ui.html(f'<div class="text-xl font-semibold" style="color:var(--text);letter-spacing:-0.02em">{escape(title)}</div>')
             if subtitle:
                 ui.html(f'<div class="text-xs" style="color:var(--muted)">{escape(subtitle)}</div>')
-        
+
         if status:
             from career_ui.components.badges import status_badge
             status_badge(status)

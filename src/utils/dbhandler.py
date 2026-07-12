@@ -44,9 +44,9 @@ class NkparamDB:
 
         try:
             cursor.execute("""
-                SELECT id, nkparam 
-                FROM nkparams 
-                WHERE is_active = 1 
+                SELECT id, nkparam
+                FROM nkparams
+                WHERE is_active = 1
                 LIMIT 1
             """)
             row = cursor.fetchone()

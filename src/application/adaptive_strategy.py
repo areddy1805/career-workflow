@@ -387,7 +387,7 @@ def _candidate_adaptive_score(
 
     # Freshness boost: being applicant #40 is better than #900.
     bonus += max(0, 7 - days_old) * strategy.freshness_weight
-    
+
     # Experience penalty: softly penalize roles asking for more than 6 years.
     if exp_min > 6:
         bonus -= (exp_min - 6) * strategy.experience_penalty_weight

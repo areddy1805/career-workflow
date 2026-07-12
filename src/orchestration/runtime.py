@@ -266,6 +266,15 @@ class PipelineLock(AbstractContextManager):
         """Return True if the lock is corrupt, its owner is dead, or it is too old."""
         payload = self._read()
         if not payload:
+            try:
+                mtime = self.path.stat().st_mtime
+                if (datetime.now(UTC).timestamp() - mtime) < 5.0:
+                    # File is empty/corrupt but was modified less than 5 seconds ago.
+                    # It might be currently being written to by another thread.
+                    # Do not treat as stale.
+                    return False
+            except OSError:
+                pass
             return True
         pid = payload.get("pid")
         if pid is not None:

@@ -4,15 +4,18 @@ from career_ui.layouts.page import section_header, metrics_grid
 from career_ui.components.cards import panel_p, metric_card
 from career_ui.tables.data_table import DataTable
 from career_ui.widgets.work_queue import work_queue_layout
+from career_ui.components.job_drawer import show_job_drawer
 
 from career_ui.services.control_center import (
     MANUAL_JOB_SOURCES,
     add_manual_job,
-    read_manual_action_queue,
     read_manual_jobs,
     update_external_action_status,
     update_manual_job_status,
+    latest_terminal_run
 )
+from control_center.run_inspector import read_json_artifact
+import pandas as pd
 
 @ui.page("/manual-queue")
 def page():
@@ -21,47 +24,43 @@ def page():
             with ui.tabs().classes('w-full') as tabs:
                 ui.tab('Auto Detected', icon='auto_awesome')
                 ui.tab('Manually Sourced', icon='person_add')
-            
+
             with ui.tab_panels(tabs, value='Auto Detected').classes('w-full flex-grow min-h-0 bg-transparent p-0'):
-                
+
                 with ui.tab_panel('Auto Detected').classes('p-0 h-full flex flex-col gap-4'):
                     auto_host = ui.column().classes("w-full h-full flex-grow min-h-0 gap-4")
-                    
+
                     def refresh_auto():
                         auto_host.clear()
-                        frame = read_manual_action_queue()
+                        run_id = latest_terminal_run()
+                        if run_id:
+                            manual = read_json_artifact(run_id, "manual_review.json") or []
+                            external = read_json_artifact(run_id, "external_apply.json") or []
+                            frame = pd.DataFrame(manual + external)
+                        else:
+                            frame = pd.DataFrame()
+
                         with auto_host:
-                            pending = int((frame.status == "PENDING").sum()) if not frame.empty and "status" in frame else 0
-                            applied = int((frame.status == "APPLIED").sum()) if not frame.empty and "status" in frame else 0
-                            
+                            pending = len(frame) if not frame.empty else 0
+                            applied = 0
+
                             with metrics_grid(cols=4):
                                 metric_card("Total", len(frame), "detected")
                                 metric_card("Pending", pending, "requires action")
                                 metric_card("Applied", applied, "completed externally")
                                 metric_card("Remaining", max(0, len(frame) - applied), "open lifecycle")
-                                
+
                             if frame.empty:
                                 from career_ui.components.feedback import empty_state
                                 empty_state("No external-apply jobs detected")
                             else:
                                 display = [c for c in ("job_id", "title", "company", "score", "status", "run_id", "updated_at") if c in frame.columns]
-                                DataTable(frame[display], title="External applications", classes="flex-grow min-h-[300px]")
-                                
-                                with panel_p("w-full bg-[var(--bg)] border-t-0 rounded-t-none"):
-                                    with ui.row().classes("items-end gap-3"):
-                                        jid = ui.input("Job ID").props("outlined dense")
-                                        status = ui.select(["PENDING", "IN_PROGRESS", "APPLIED", "SKIPPED", "EXPIRED"], label="Move to").props("outlined dense")
-                                        note = ui.input("Note").props("outlined dense")
-                                        def move_external():
-                                            if not jid.value or not status.value: return
-                                            ok = update_external_action_status(str(jid.value), status.value, note.value or "")
-                                            ui.notify("Status updated" if ok else "Job ID not found", type="positive" if ok else "warning")
-                                            refresh_auto()
-                                        ui.button("Update Status", on_click=move_external).props("color=primary unelevated")
+                                table = DataTable(frame[display], title="External applications", classes="flex-grow min-h-[300px]")
+                                table.grid.on('rowClicked', lambda e: show_job_drawer(e.args.get('data', {}), on_change=refresh_auto))
                     refresh_auto()
-                
+
                 with ui.tab_panel('Manually Sourced').classes('p-0 h-full flex flex-col gap-4'):
-                    
+
                     with ui.expansion("Add manually sourced opportunity", icon="add_circle").classes("w-full bg-[var(--panel)] border border-[var(--border)] rounded"):
                         with ui.grid(columns=2).classes("w-full gap-3 p-4"):
                             title = ui.input("Title").props("outlined dense")
@@ -96,18 +95,8 @@ def page():
                                 empty_state("Manual opportunity list is empty")
                             else:
                                 display = [c for c in ("id", "title", "company", "location", "source", "status", "priority", "updated_at") if c in frame.columns]
-                                DataTable(frame[display], title="Manually Sourced", classes="flex-grow min-h-[300px]")
-                                
-                                with panel_p("w-full bg-[var(--bg)] border-t-0 rounded-t-none"):
-                                    with ui.row().classes("items-end gap-3"):
-                                        jid = ui.number("ID", min=1).props("outlined dense")
-                                        status = ui.select(["SHORTLISTED", "TO_APPLY", "APPLIED", "SKIPPED", "EXPIRED"], label="Move to").props("outlined dense")
-                                        def move_manual():
-                                            if not jid.value or not status.value: return
-                                            update_manual_job_status(int(jid.value), status.value)
-                                            ui.notify("Status updated", type="positive")
-                                            refresh_manual()
-                                        ui.button("Update Status", on_click=move_manual).props("color=primary unelevated")
+                                table = DataTable(frame[display], title="Manually Sourced", classes="flex-grow min-h-[300px]")
+                                table.grid.on('rowClicked', lambda e: show_job_drawer(e.args.get('data', {}), on_change=refresh_manual))
                     refresh_manual()
-                    
+
     work_queue_layout("/manual-queue", builder)

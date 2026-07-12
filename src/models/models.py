@@ -36,6 +36,7 @@ class Job:
     apply_link: str
     description: str = ""
     tags: list = field(default_factory=list)
+    decision_history: list = field(default_factory=list)
 
 
 @dataclass

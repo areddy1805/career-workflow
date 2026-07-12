@@ -25,7 +25,7 @@ def _ensure_runtime_dir() -> None:
 
 
 def build_pipeline_command(
-    *, live: bool, max_applications: int, canary: bool = False
+    *, live: bool, max_applications: int, canary: bool = False, force_live: bool = False
 ) -> list[str]:
     if max_applications <= 0:
         raise ValueError("max_applications must be greater than zero")
@@ -39,6 +39,8 @@ def build_pipeline_command(
         command.extend(["--live", "--confirm-live", LIVE_CONFIRMATION])
     if live and canary:
         command.append("--canary")
+    if force_live:
+        command.append("--force-live")
     return command
 
 
@@ -145,13 +147,13 @@ def pipeline_is_running() -> bool:
 
 
 def launch_pipeline(
-    *, live: bool, max_applications: int, canary: bool = False
+    *, live: bool, max_applications: int, canary: bool = False, force_live: bool = False
 ) -> dict[str, Any]:
     if pipeline_is_running():
         raise RuntimeError("A pipeline process is already running.")
 
     command = build_pipeline_command(
-        live=live, max_applications=max_applications, canary=canary
+        live=live, max_applications=max_applications, canary=canary, force_live=force_live
     )
     _ensure_runtime_dir()
     EXIT_PATH.unlink(missing_ok=True)

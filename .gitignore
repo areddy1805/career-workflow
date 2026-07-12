@@ -37,6 +37,7 @@ __pycache__/
 
 venv/
 .venv/
+venv2/
 env/
 ENV/
 
@@ -173,3 +174,5 @@ Desktop.ini
 .Spotlight-V100
 .Trashes
 .fseventsd
+
+.playwright-mcp/**

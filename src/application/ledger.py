@@ -136,7 +136,7 @@ class ApplicationLedger:
 
                 CREATE INDEX IF NOT EXISTS idx_applications_company
                 ON applications(company);
-                
+
                 CREATE INDEX IF NOT EXISTS idx_applications_applied_at
                 ON applications(applied_at);
 
@@ -356,7 +356,8 @@ class ApplicationLedger:
                             'qualified',
                             'dry_run_suppressed',
                             'run_limit_suppressed',
-                            'skipped_local'
+                            'skipped_local',
+                            'already_applied'
                         )
                         THEN applications.status
                         ELSE excluded.status
