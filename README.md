@@ -85,6 +85,26 @@ The objective is a controlled system that sends better applications, avoids repe
 
 ---
 
+## Daily Operations
+
+```text
+Start UI
+↓
+Start Scheduler
+↓
+Review Workflow Queue
+↓
+Review Manual Queue
+↓
+Scheduler applies jobs
+↓
+Monitor Applications
+↓
+Review Analytics
+```
+
+---
+
 ## System at a Glance
 
 | Layer | What it does | State |

@@ -340,6 +340,22 @@ class JobFilterPipeline2:
         self.cache = self._load_cache()
 
     # =========================================================
+    # STATE TRACKING
+    # =========================================================
+
+    def record_decision(self, job: dict, stage: str, code: str, reason: str):
+        job["rejection_stage"] = stage
+        job["rejection_code"] = code
+        job["rejection_reason"] = reason
+        if "decisions" not in job:
+            job["decisions"] = []
+        job["decisions"].append({
+            "stage": stage,
+            "code": code,
+            "reason": reason
+        })
+
+    # =========================================================
     # MAIN
     # =========================================================
 
