@@ -21,7 +21,7 @@ def format_duration(ms: int | float | None) -> str:
     """Format duration in milliseconds to a human-readable string."""
     if ms is None:
         return "0s"
-    
+
     seconds = ms / 1000.0
     if seconds < 1:
         return f"{int(ms)}ms"
@@ -45,9 +45,9 @@ def format_relative_time(iso_string: str | None) -> str:
             dt = dt.replace(tzinfo=timezone.utc)
         now = datetime.now(timezone.utc)
         diff = now - dt
-        
+
         seconds = diff.total_seconds()
-        
+
         if seconds < 60:
             return "just now"
         if seconds < 3600:
@@ -56,7 +56,7 @@ def format_relative_time(iso_string: str | None) -> str:
         if seconds < 86400:
             hours = int(seconds / 3600)
             return f"{hours} hour{'s' if hours != 1 else ''} ago"
-        
+
         days = int(seconds / 86400)
         return f"{days} day{'s' if days != 1 else ''} ago"
     except Exception:

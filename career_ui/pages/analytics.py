@@ -32,22 +32,22 @@ def page():
     shell("/analytics")
     with ui.column().classes("w-full max-w-[1600px] mx-auto p-4 gap-6 pb-20"):
         page_header("Analytics", "Conversion, response velocity, portfolio mix, and execution throughput.", kicker="Inspect")
-        
+
         apps = read_applications()
         s = application_summary()
         total = int(s.get("total", 0))
         responded = sum(int(s.get(k, 0)) for k in ("viewed", "shortlisted", "interview", "rejected", "offer"))
         avg = average_time_to_first_response_hours(apps)
-        
+
         with metrics_grid(cols=4):
             metric_card("Applications", total, "ledger total")
             metric_card("Response Rate", f"{responded/total*100:.1f}%" if total else "0.0%", "any recruiter response")
             metric_card("Interview Rate", f'{(int(s.get("interview",0))+int(s.get("offer",0)))/total*100:.1f}%' if total else "0.0%", "interview or offer")
             metric_card("Avg Response", f"{avg:.1f}h" if avg is not None else "—", "time to first response")
-            
+
         runs = run_history(100)
         outcomes = run_outcome_totals(runs)
-        
+
         with panel_p("w-full gap-4"):
             section_header("Automation Outcomes", "Aggregate execution outcomes from recent run artifacts")
             with metrics_grid(cols=4):
@@ -55,7 +55,7 @@ def page():
                 metric_card("Failed", outcomes["failed"], "application failures", classes="border-none shadow-none bg-[var(--bg)]")
                 metric_card("External", outcomes["skipped_external"], "manual external apply", classes="border-none shadow-none bg-[var(--bg)]")
                 metric_card("Manual Review", outcomes["manual_review"], "questionnaire backlog", classes="border-none shadow-none bg-[var(--bg)]")
-                
+
         with ui.element("div").classes("grid grid-cols-2 gap-6 w-full h-[400px]"):
             with panel_p("w-full min-w-0 overflow-hidden flex flex-col"):
                 section_header("Lifecycle Distribution", "Current recruiting outcomes")
@@ -72,7 +72,7 @@ def page():
                 else:
                     from career_ui.components.feedback import empty_state
                     empty_state("No data")
-                    
+
             with panel_p("w-full min-w-0 overflow-hidden flex flex-col"):
                 section_header("Application Velocity", "Submissions over time")
                 if not apps.empty and "applied_at" in apps:
@@ -91,7 +91,7 @@ def page():
                 else:
                     from career_ui.components.feedback import empty_state
                     empty_state("No velocity data")
-                    
+
         with ui.element("div").classes("grid grid-cols-2 gap-6 w-full h-[450px]"):
             with panel_p("w-full min-w-0 overflow-hidden flex flex-col gap-2"):
                 section_header("Performance by Priority", "Segment conversion")
@@ -99,7 +99,7 @@ def page():
             with panel_p("w-full min-w-0 overflow-hidden flex flex-col gap-2"):
                 section_header("Performance by Subtrack", "Role-family conversion")
                 DataTable(_compact_segment(segment_funnel(apps, "subtrack")), classes="flex-1")
-                
+
         with panel_p("w-full h-[400px] flex flex-col gap-2"):
             section_header("Pipeline Throughput", "Recent execution history")
             DataTable(_compact_runs(run_history(20)), classes="h-full flex-grow")

@@ -49,7 +49,7 @@ def get_event_statuses(
     return [str(row["status"]) for row in rows]
 
 
-def test_applied_is_not_downgraded_by_skipped_local(
+def test_applied_is_not_downgraded_by_already_applied(
     tmp_path,
 ):
     ledger = ApplicationLedger(str(tmp_path / "ledger.db"))
@@ -59,7 +59,7 @@ def test_applied_is_not_downgraded_by_skipped_local(
     ledger.record(job, "qualified")
     ledger.record(job, "applying")
     ledger.record(job, "applied")
-    ledger.record(job, "skipped_local")
+    ledger.record(job, "already_applied")
 
     row = get_application_row(
         ledger,
@@ -75,7 +75,7 @@ def test_applied_is_not_downgraded_by_skipped_local(
         "qualified",
         "applying",
         "applied",
-        "skipped_local",
+        "already_applied",
     ]
 
 
@@ -191,7 +191,7 @@ def test_applied_at_survives_later_events(
     )["applied_at"]
 
     ledger.record(job, "qualified")
-    ledger.record(job, "skipped_local")
+    ledger.record(job, "already_applied")
 
     final = get_application_row(
         ledger,

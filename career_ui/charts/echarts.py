@@ -23,11 +23,11 @@ class Chart:
                 'fontFamily': 'Inter, sans-serif'
             }
         }
-        
+
         # Merge options (simple top-level merge, for complex deep merges custom logic is needed if user passes these keys)
         merged = {**default_opts, **options}
-        
+
         self.chart = ui.echart(merged).classes(classes)
-        
+
     def update(self):
         self.chart.update()

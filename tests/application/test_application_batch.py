@@ -100,7 +100,7 @@ def test_local_applied_job_is_skipped_without_network_call(
     )
 
     assert summary.total_candidates == 1
-    assert summary.skipped_local == 1
+    assert summary.already_applied == 1
     assert summary.applied == 0
     assert summary.failed == 0
 

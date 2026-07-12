@@ -27,14 +27,14 @@ def _render_group(title: str, subtitle: str, checks: list[dict]) -> None:
             detail = str(check.get("detail") or "No detail")
             status = _status(check)
             required = bool(check.get("required"))
-            
+
             with panel_p("w-[30%] min-w-[300px] flex-grow flex flex-col justify-between"):
                 with ui.column().classes("gap-2"):
                     with ui.row().classes("w-full justify-between items-start flex-nowrap gap-2"):
                         ui.html(f'<div class="text-[13px] font-bold text-[var(--text)]">{escape(name)}</div>')
                         status_badge(status)
                     ui.html(f'<div class="text-[12px] text-[var(--muted)] leading-tight">{escape(detail)}</div>')
-                
+
                 if required:
                     ui.html('<div class="text-[9px] font-bold uppercase tracking-wider text-[var(--danger)] mt-4">REQUIRED</div>')
                 else:
@@ -51,15 +51,15 @@ def page() -> None:
         failed = int(s.get("fail", 0))
         required_failed = sum(1 for c in checks if c.get("required") and _status(c) == "FAIL")
         overall = "UNHEALTHY" if required_failed else ("DEGRADED" if failed or warned else "HEALTHY")
-        
+
         page_header("System Health", "Runtime, storage, configuration, and integration diagnostics.", kicker="Inspect", status=overall)
-        
+
         with metrics_grid(cols=4):
             metric_card("Checks", len(checks), "diagnostics executed")
             metric_card("Passing", passed, "healthy checks")
             metric_card("Warnings", warned, "review recommended")
             metric_card("Required Gate", "BLOCKED" if required_failed else "READY", f"{required_failed} required failures")
-            
+
         if required_failed:
             callout("Runtime gate blocked", f"{required_failed} required diagnostic check(s) failed. Resolve required failures before relying on pipeline execution.", type="danger")
         elif failed or warned:

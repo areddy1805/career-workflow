@@ -1476,10 +1476,10 @@ def run_application_batch(
                 job.job_id,
             )
 
-            skipped_local_count += 1
-            _record_app_reject(job, 'ALREADY_APPLIED', 'Job previously applied (local check)')
+            already_applied_count += 1
+            _record_app_reject(job, 'ALREADY_APPLIED', 'Previously applied in an earlier run.')
             if ledger is not None:
-                ledger.record(job, "skipped_local", meta=meta)
+                ledger.record(job, "already_applied", meta=meta)
             continue
 
         # ----------------------------------------------------------

@@ -188,6 +188,8 @@ def run_scheduler(
     config: SchedulerConfig | None = None,
     *,
     sleep_fn: Callable[[float], None] = time.sleep,
+    run_immediately: bool = False,
+    session_hours: float | None = None,
 ) -> None:
     config = config or SchedulerConfig.from_env()
     logger = get_runtime_logger()
@@ -259,11 +261,17 @@ def run_scheduler(
 
     last_heartbeat_at = 0.0
     current_run = None
+    session_start_mono = time.monotonic()
 
     try:
         while not shutdown_requested:
             now = datetime.now().astimezone()
             mono = time.monotonic()
+
+            if session_hours and (mono - session_start_mono) >= session_hours * 3600:
+                log_warning(logger, "session_timeout_reached", session_hours=session_hours)
+                _request_shutdown()
+                continue
 
             # ── Watchdog ──────────────────────────────────────────────
             if state.state == RuntimeState.IDLE:
@@ -304,7 +312,12 @@ def run_scheduler(
                 break
 
             # ── Schedule decision ─────────────────────────────────────
-            mode = next_mode(now, last_full, last_incremental, config)
+            if run_immediately:
+                mode = "full"
+                run_immediately = False
+            else:
+                mode = next_mode(now, last_full, last_incremental, config)
+
             if not mode:
                 sleep_fn(config.poll_seconds)
                 continue

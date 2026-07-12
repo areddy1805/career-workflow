@@ -154,6 +154,16 @@ class RunManager:
         _atomic_write_json(self._path, run.to_dict())
         return run
 
+    def get_unvalidated_run(self) -> PipelineRun | None:
+        """
+        Read current_run.json without checking PID liveness or terminal status.
+        Used by RecoveryManager to find and clean up stale runs.
+        """
+        data = _read_json_safe(self._path)
+        if not data:
+            return None
+        return PipelineRun.from_dict(data)
+
     def load_active_run(self) -> PipelineRun | None:
         """
         Read current_run.json and validate that the run is still live.
@@ -163,10 +173,9 @@ class RunManager:
           - the run is in a terminal state (not RUNNING)
           - the owning PID is no longer alive
         """
-        data = _read_json_safe(self._path)
-        if not data:
+        run = self.get_unvalidated_run()
+        if run is None:
             return None
-        run = PipelineRun.from_dict(data)
         if run.status != "RUNNING":
             return None
         if run.pid and not pid_exists(run.pid):

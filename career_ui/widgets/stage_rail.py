@@ -16,7 +16,7 @@ def stage_rail(stages: Mapping[str, Any] | Sequence):
                     color = "var(--warning)"
                 elif s in {"FAILED", "FAIL", "ERROR"}:
                     color = "var(--danger)"
-                
+
                 with ui.column().classes("items-center gap-2 min-w-[80px]"):
                     ui.html(f'<div style="width:12px;height:12px;border-radius:50%;background:{color};box-shadow:0 0 10px {color}88"></div>')
                     ui.html(f'<div style="font-size:12px;color:var(--text);font-weight:600;white-space:nowrap">{escape(str(name).replace("_"," ").title())}</div>')

@@ -11,7 +11,7 @@ def funnel(items: Sequence[tuple[str, int]]):
             v = int(value or 0)
             width = (v / peak * 100) if v else 0
             bg = "var(--primary)" if v else "var(--muted)"
-            
+
             with ui.row().classes("w-full items-center no-wrap gap-3"):
                 ui.html(f'<div style="width:80px;font-size:12px;color:var(--text);font-weight:500;text-align:right">{escape(str(name))}</div>')
                 with ui.element("div").classes("flex-grow h-2 bg-[var(--hover)] rounded overflow-hidden"):
