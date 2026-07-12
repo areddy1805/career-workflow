@@ -8,6 +8,11 @@ if __name__ == "__main__":
     parser.add_argument("--interactive", action="store_true", help="Run in interactive mode")
     parser.add_argument("--session-hours", type=float, help="Automatically exit after this many hours (interactive mode)")
     parser.add_argument("--incremental", type=int, help="Custom incremental interval in minutes (interactive mode)")
+    parser.add_argument(
+        "--force-live",
+        action="store_true",
+        help="Bypass challenge cooldown and force live search.",
+    )
     args = parser.parse_args()
 
     config = SchedulerConfig.from_env()
@@ -25,4 +30,5 @@ if __name__ == "__main__":
         config=config,
         run_immediately=run_immediately,
         session_hours=session_hours,
+        force_live=args.force_live,
     )

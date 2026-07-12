@@ -927,15 +927,17 @@ def acquire_jobs(
     cache: JobSearchCache,
     cooldown: SearchChallengeCooldown,
     mode: str = "full",
+    force_live: bool = False,
 ) -> tuple[list, JobFetchResult]:
     """
     Execute cooldown-aware job acquisition.
 
     The cooldown prevents repeated search requests after a CAPTCHA
     challenge while still allowing cache-backed pipeline execution.
+    If force_live is True, the cooldown check is bypassed.
     """
 
-    if cooldown.is_active():
+    if not force_live and cooldown.is_active():
         fetch_result = JobFetchResult(
             jobs=[],
             challenge_encountered=False,

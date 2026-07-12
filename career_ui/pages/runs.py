@@ -49,6 +49,10 @@ def page():
                             t_overview = ui.tab("Overview")
                             t_timeline = ui.tab("Timeline")
                             t_stages = ui.tab("Stages")
+                            t_selected = ui.tab("Selected")
+                            t_applied = ui.tab("Applied")
+                            t_already = ui.tab("Already Applied")
+                            t_external = ui.tab("External Apply")
                             t_rejected = ui.tab("Rejected Jobs")
                             t_artifacts = ui.tab("Artifacts")
                             t_env = ui.tab("Environment")
@@ -106,15 +110,7 @@ def page():
 
                             with ui.tab_panel(t_rejected).classes("p-0 h-full flex flex-col"):
                                 with panel_p("w-full h-full flex flex-col gap-2"):
-                                    rejected = []
-                                    if classification and "rejected_jobs" in classification:
-                                        rejected.extend(classification["rejected_jobs"])
-                                    if selection and "rejected_jobs" in selection:
-                                        rejected.extend(selection["rejected_jobs"])
-
-                                    application = read_json_artifact(run_id, "application.json")
-                                    if application and "rejected_jobs" in application:
-                                        rejected.extend(application["rejected_jobs"])
+                                    rejected = read_json_artifact(run_id, "rejected_jobs.json") or []
 
                                     if classification and "rejection_summary" in classification:
                                         ui.label("Overall Rejection Analytics").classes("font-bold mt-2")
@@ -143,6 +139,25 @@ def page():
                                         update_rejected_table()
                                     else:
                                         ui.label("No rejected jobs tracked in this run.")
+
+                            def build_json_table(tab_ref, artifact_name, label, cols=None):
+                                with ui.tab_panel(tab_ref).classes("p-0 h-full flex flex-col"):
+                                    with panel_p("w-full h-full flex flex-col gap-2"):
+                                        data = read_json_artifact(run_id, artifact_name) or []
+                                        if data:
+                                            df = pd.DataFrame(data)
+                                            if cols:
+                                                display = [c for c in cols if c in df.columns]
+                                                DataTable(df[display] if display else df, classes="w-full h-full flex-grow")
+                                            else:
+                                                DataTable(df, classes="w-full h-full flex-grow")
+                                        else:
+                                            ui.label(f"No {label} tracked in this run.")
+                            
+                            build_json_table(t_selected, "selected_jobs.json", "selected jobs", ["job_id", "title", "company", "score", "priority"])
+                            build_json_table(t_applied, "applied_jobs.json", "applied jobs", ["job_id", "status", "application_time"])
+                            build_json_table(t_already, "already_applied.json", "already applied jobs", ["job_id", "title", "company", "reason"])
+                            build_json_table(t_external, "external_apply.json", "external apply jobs", ["job_id", "title", "company", "reason"])
 
                             with ui.tab_panel(t_artifacts).classes("p-0 h-full flex flex-col"):
                                 with panel_p("w-full h-full flex flex-col gap-2"):

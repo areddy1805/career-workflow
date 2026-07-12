@@ -384,6 +384,15 @@ class JobFilterPipeline2:
             }
         )
 
+        decision_history = job.setdefault("decision_history", [])
+        decision_history.append(
+            {
+                "stage": stage,
+                "code": code,
+                "reason": reason,
+            }
+        )
+
         if not job.get("_rejection_recorded"):
             self.rejected_jobs.append(job)
             job["_rejection_recorded"] = True
@@ -540,6 +549,7 @@ class JobFilterPipeline2:
                     "experience_max": exp_max,
                     "search_track": (job.get("search_track") or "UNKNOWN"),
                     "search_query": (job.get("search_query") or ""),
+                    "decision_history": [{"stage": "Acquisition"}],
                 }
             )
 
@@ -811,6 +821,9 @@ class JobFilterPipeline2:
             job["ai_relevance_reason"] = relevance_reason
             job["ai_signal_count"] = (
                 len(title_hits) + len(strong_hits) + len(medium_hits)
+            )
+            job.setdefault("decision_history", []).append(
+                {"stage": "AI Filter", "decision": "PASS"}
             )
             relevant.append(job)
 
@@ -1260,6 +1273,11 @@ class JobFilterPipeline2:
                 result.append(job)
 
             self._save_cache()
+
+        for job in result:
+            job.setdefault("decision_history", []).append(
+                {"stage": "AI Score", "score": job.get("ai_score")}
+            )
 
         return result
 

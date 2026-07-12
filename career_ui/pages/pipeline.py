@@ -96,6 +96,7 @@ def page():
                     mode = ui.toggle(["Dry Run", "Live"], value="Dry Run").props("spread").classes("w-full")
                     limit = ui.number("Application ceiling", value=500, min=1, max=1000).classes("w-full text-sm")
                     canary = ui.switch("Canary · one live application").classes("text-sm")
+                    force_live = ui.switch("Force Live · Bypass challenge cooldown").classes("text-sm")
                     confirm = ui.checkbox("I understand LIVE mode can submit applications").classes("text-sm text-[var(--danger)]")
 
                     def mode_change():
@@ -117,6 +118,7 @@ def page():
                                 live=live,
                                 max_applications=int(limit.value),
                                 canary=bool(canary.value),
+                                force_live=bool(force_live.value),
                             )
                             ui.notify("Pipeline launched", type="positive")
                             render_state()

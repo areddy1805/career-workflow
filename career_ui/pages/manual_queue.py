@@ -9,11 +9,13 @@ from career_ui.components.job_drawer import show_job_drawer
 from career_ui.services.control_center import (
     MANUAL_JOB_SOURCES,
     add_manual_job,
-    read_manual_action_queue,
     read_manual_jobs,
     update_external_action_status,
     update_manual_job_status,
+    latest_terminal_run
 )
+from control_center.run_inspector import read_json_artifact
+import pandas as pd
 
 @ui.page("/manual-queue")
 def page():
@@ -30,10 +32,17 @@ def page():
 
                     def refresh_auto():
                         auto_host.clear()
-                        frame = read_manual_action_queue()
+                        run_id = latest_terminal_run()
+                        if run_id:
+                            manual = read_json_artifact(run_id, "manual_review.json") or []
+                            external = read_json_artifact(run_id, "external_apply.json") or []
+                            frame = pd.DataFrame(manual + external)
+                        else:
+                            frame = pd.DataFrame()
+
                         with auto_host:
-                            pending = int((frame.status == "PENDING").sum()) if not frame.empty and "status" in frame else 0
-                            applied = int((frame.status == "APPLIED").sum()) if not frame.empty and "status" in frame else 0
+                            pending = len(frame) if not frame.empty else 0
+                            applied = 0
 
                             with metrics_grid(cols=4):
                                 metric_card("Total", len(frame), "detected")

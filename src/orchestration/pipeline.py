@@ -67,6 +67,7 @@ class CareerWorkflowPipeline:
         dry_run: bool,
         max_applications: int | None,
         acquisition_mode: str = "full",
+        force_live: bool = False,
         artifacts_root: str | Path = "artifacts/runs",
     ) -> None:
         if max_applications is not None and max_applications < 0:
@@ -77,6 +78,7 @@ class CareerWorkflowPipeline:
             dry_run=dry_run,
             max_applications=max_applications,
             acquisition_mode=acquisition_mode,
+            force_live=force_live,
         )
 
         self.artifacts_root = Path(
@@ -445,6 +447,7 @@ class CareerWorkflowPipeline:
             cache=job_cache,
             cooldown=search_cooldown,
             mode=self.context.acquisition_mode,
+            force_live=self.context.force_live,
         )
 
         self.context.login_client = login_client
@@ -583,7 +586,7 @@ class CareerWorkflowPipeline:
 
         rejection_summary = {}
         for r in self.context.rejected_jobs:
-            code = r.get("code") or "UNKNOWN"
+            code = r.get("rejection_code", r.get("code", "UNKNOWN"))
             rejection_summary[code] = rejection_summary.get(code, 0) + 1
 
         self.context.stage_results["classification"] = {
@@ -875,6 +878,12 @@ class CareerWorkflowPipeline:
                 )
 
         self.context.selected_jobs = selected_jobs
+
+        for j in selected_jobs:
+            if sm_job := self.context.score_map.get(str(j.job_id)):
+                sm_job.setdefault("decision_history", []).append(
+                    {"stage": "Selection", "decision": "SELECTED"}
+                )
 
         print(f"CANDIDATE SCAN BUDGET: {candidate_scan_budget}")
         print(f"FINAL APPLICATION QUEUE: {len(selected_jobs)}")
@@ -1195,6 +1204,9 @@ class CareerWorkflowPipeline:
                 result.to_dict(),
             )
 
+            self._generate_dedicated_artifacts(result)
+            self._validate_artifacts(result)
+
             return result
         finally:
             if self.status == PipelineStatus.RUNNING:
@@ -1286,6 +1298,79 @@ class CareerWorkflowPipeline:
             errors=self.context.errors,
         )
 
+    def _generate_dedicated_artifacts(self, result: PipelineResult) -> None:
+        self._write_artifact("rejected_jobs.json", self.context.rejected_jobs)
+
+        selected = []
+        for j in self.context.selected_jobs:
+            if sm_job := self.context.score_map.get(str(j.job_id)):
+                selected.append(sm_job)
+        self._write_artifact("selected_jobs.json", selected)
+
+        manual = [r for r in self.context.rejected_jobs if r.get("code") in {"MANUAL_REVIEW", "EXTERNAL_REJECTION"}]
+        self._write_artifact("manual_review.json", manual)
+        self._write_artifact("external_apply.json", manual)
+
+        already = [r for r in self.context.rejected_jobs if r.get("code") == "ALREADY_APPLIED"]
+        self._write_artifact("already_applied.json", already)
+        
+        applied = []
+        if self.context.ledger:
+            rows = self.context.ledger.analytics_rows()
+            for row in rows:
+                if row.get("run_id") == self.context.ledger_run_id and row.get("status") == "applied":
+                    applied.append({
+                        "job_id": row.get("job_id"),
+                        "status": "SUBMITTED",
+                        "application_time": row.get("timestamp")
+                    })
+        self._write_artifact("applied_jobs.json", applied)
+
+    def _validate_artifacts(self, result: PipelineResult) -> None:
+        diagnostics = []
+        
+        # 1. acquired = classified + rejected (at classification phase)
+        rejected_at_class = len([j for j in self.context.rejected_jobs if j.get("stage", "") not in ["Selection", "Application"]])
+        if result.acquired != (result.classified + rejected_at_class):
+            diagnostics.append(
+                f"Mismatch at classification: acquired({result.acquired}) != "
+                f"classified({result.classified}) + rejected({rejected_at_class})"
+            )
+
+        # 2. classified = selected + low_score + manual_review + other_classification_rejections
+        # Actually, selection rejections are captured in rejected_jobs with stage="Selection". 
+        rejected_at_select = len([j for j in self.context.rejected_jobs if j.get("stage", "") == "Selection"])
+        # Wait, the prompt says low_score, manual_review... 
+        # But simply put: classified = selected + rejected (at selection phase).
+        if result.classified != (result.selected + rejected_at_select):
+            diagnostics.append(
+                f"Mismatch at selection: classified({result.classified}) != "
+                f"selected({result.selected}) + rejected({rejected_at_select})"
+            )
+
+        # 3. selected = submitted + already_applied + external_apply + policy_rejected + failed
+        selected_calc = (
+            result.submitted +
+            result.already_applied +
+            result.skipped_external +
+            result.policy_rejected +
+            result.failed + 
+            result.manual_review +
+            result.skipped_local +
+            result.run_limit_reached +
+            result.dry_run_skipped
+        )
+        if result.selected != selected_calc:
+            diagnostics.append(
+                f"Mismatch at application: selected({result.selected}) != "
+                f"breakdown_total({selected_calc})"
+            )
+            
+        if diagnostics:
+            print("[DIAGNOSTICS] Pipeline artifact validation issues found:")
+            for d in diagnostics:
+                print(f"  - {d}")
+
     def print_observability_report(self, result: PipelineResult) -> None:
         m = self.context.metrics
         print("\n" + "═" * 50)
@@ -1307,6 +1392,11 @@ class CareerWorkflowPipeline:
         print(f"- Manual review: {result.manual_review}")
         print(f"- Already applied: {result.already_applied}")
         print(f"- Policy rejected: {result.policy_rejected}")
+        print(f"- Dry run skipped: {result.dry_run_skipped}")
+        print(f"- Run limit reached: {result.run_limit_reached}")
+        print(f"- External/Local skipped: {result.skipped_external + result.skipped_local}")
+        if result.failed > 0:
+            print(f"- Failed: {result.failed}")
 
         print("\nLatency Analysis:")
         mins = int(m.total_runtime // 60)

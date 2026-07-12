@@ -190,6 +190,7 @@ def run_scheduler(
     sleep_fn: Callable[[float], None] = time.sleep,
     run_immediately: bool = False,
     session_hours: float | None = None,
+    force_live: bool = False,
 ) -> None:
     config = config or SchedulerConfig.from_env()
     logger = get_runtime_logger()
@@ -351,6 +352,9 @@ def run_scheduler(
                 "--acquisition-mode",
                 mode,
             ]
+            
+            if force_live:
+                command.append("--force-live")
 
             try:
                 completed = subprocess.run(command, cwd=str(REPO_ROOT), check=False)

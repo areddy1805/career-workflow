@@ -27,6 +27,7 @@ class PipelineContext:
     ledger: Any | None = None
 
     acquisition_mode: str = "full"
+    force_live: bool = False
 
     # Acquisition
     acquired_jobs: list[Any] = field(default_factory=list)

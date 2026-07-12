@@ -92,7 +92,7 @@ Start UI
 ↓
 Start Scheduler
 ↓
-Review Workflow Queue
+Review Queue
 ↓
 Review Manual Queue
 ↓
@@ -441,6 +441,7 @@ Current acquisition capabilities include:
 - challenge detection with partial results preserved;
 - persistent challenge cooldown state;
 - suppression of aggressive live search during cooldown;
+- explicit bypass of challenge cooldown via `--force-live`;
 - cached fallback when live search cannot continue;
 - acquisition telemetry including request count, challenge state and source composition.
 
@@ -1183,6 +1184,26 @@ The system is designed for different execution modes rather than one permanently
 A normal operating cycle is:
 
 ```text
+### Acquisition Mode vs Cache Policy
+
+Acquisition depth is controlled by the mode (`full` or `incremental`). 
+
+By default, if Naukri presents a CAPTCHA or blocking challenge, the orchestrator records a cooldown and falls back to cached results to avoid banning your IP. This safety mechanism is active regardless of acquisition mode.
+
+To explicitly bypass a recorded cooldown and force a live search, use `--force-live`:
+
+```bash
+# Respects cooldown if active
+python run_pipeline.py --acquisition-mode full
+
+# Ignores cooldown and forces a live search attempt
+python run_pipeline.py --acquisition-mode full --force-live
+```
+
+This flag is also available on the scheduler daemon (`python run_scheduler.py --interactive --force-live`) and in the UI Control Plane.
+
+### Step-by-Step Flow
+
 1. Broad or incremental acquisition
 2. Classification and ranking
 3. Controlled application batch
@@ -1405,6 +1426,24 @@ data/
 | `score_cache.json` | Reuse previous scoring results |
 | `questionnaire_telemetry.csv` | Resolution diagnostics |
 | `responses/` | Raw and unresolved API response captures |
+
+### Pipeline Artifacts (`artifacts/runs/<run_id>/`)
+
+| Artifact | Purpose |
+|---|---|
+| `manifest.json` | Run metadata, timestamp, and status |
+| `timeline.json` | Execution stage durations |
+| `environment.json` | Execution context and policies |
+| `diagnostics.json` | System state and health |
+| `classification.json` | Core classification stage summary |
+| `selection.json` | Selection stage summary |
+| `application.json` | Application stage summary |
+| `selected_jobs.json` | Jobs selected for application with decision history |
+| `rejected_jobs.json` | All rejected jobs with rejection stage, code, and reason |
+| `applied_jobs.json` | Successfully applied jobs for this run |
+| `already_applied.json` | Jobs skipped due to duplicate application state |
+| `external_apply.json` | Jobs requiring external application |
+| `manual_review.json` | Jobs flagged for human review |
 
 Runtime data can contain private application and candidate information and should not be committed to a public repository.
 
