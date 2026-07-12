@@ -1,165 +1,164 @@
 import { useQuery } from '@tanstack/react-query';
-import { fetchDashboard, fetchRuntime } from '@/lib/api';
+import { fetchDashboard } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Activity, Play, Settings, ShieldCheck, Clock } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
+import { Activity, AlertTriangle, PlayCircle, CheckCircle2 } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { RelativeTime } from '@/components/RelativeTime';
 
 export default function Dashboard() {
-  const { data: dashboard, isLoading: dashLoading } = useQuery({
+  const { data: dashboard, isLoading } = useQuery({
     queryKey: ['dashboard'],
     queryFn: fetchDashboard,
-    refetchInterval: 10000,
   });
 
-  const { data: runtime, isLoading: runLoading } = useQuery({
-    queryKey: ['runtime'],
-    queryFn: fetchRuntime,
-    refetchInterval: 5000,
-  });
-
-  if (dashLoading || runLoading) {
+  if (isLoading) {
     return (
-      <div className="p-8 space-y-6">
-        <h2 className="text-3xl font-bold tracking-tight mb-6">Dashboard</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {[1,2,3,4,5,6,7,8].map(i => <Skeleton key={i} className="h-32 rounded-xl" />)}
+      <div className="h-full flex flex-col bg-background p-6">
+        <div className="animate-pulse space-y-6">
+          <div className="h-8 bg-muted w-1/4 rounded" />
+          <div className="grid grid-cols-4 gap-4">
+            {[1, 2, 3, 4].map(i => <div key={i} className="h-24 bg-muted rounded-md" />)}
+          </div>
         </div>
       </div>
     );
   }
 
   const { summary, lifecycle, latest_run } = dashboard || {};
-  const { scheduler, pipeline } = runtime || {};
+  const totalJobs = summary?.total_jobs || 0;
+  const totalApplied = summary?.total_applied || 0;
+  const applicationRate = totalJobs > 0 ? ((totalApplied / totalJobs) * 100).toFixed(1) : '0';
 
   return (
-    <div className="p-8 space-y-8">
-      <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight">Dashboard</h2>
-          <p className="text-muted-foreground">Welcome to your Career Workflow Console.</p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm">
-            <Play className="w-4 h-4 mr-2" /> Start Scheduler
-          </Button>
-          <Button variant="outline" size="sm">
-            <Activity className="w-4 h-4 mr-2" /> Run Pipeline
-          </Button>
-        </div>
+    <div className="h-full flex flex-col bg-background">
+      <div className="flex items-center px-6 py-4 border-b shrink-0 bg-background/95 backdrop-blur z-10">
+        <h2 className="font-semibold text-lg tracking-tight">Executive Dashboard</h2>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Scheduler Status</CardTitle>
-            <Activity className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              <Badge variant={scheduler?.status === 'RUNNING' ? 'default' : 'secondary'}>
-                {scheduler?.status || 'UNKNOWN'}
-              </Badge>
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {scheduler?.is_alive ? 'Process active' : 'Process stopped'}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Pipeline Status</CardTitle>
-            <Settings className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              <Badge variant={pipeline?.status === 'RUNNING' ? 'default' : 'outline'}>
-                {pipeline?.status || 'IDLE'}
-              </Badge>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Applications</CardTitle>
-            <ShieldCheck className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{summary?.total || 0}</div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Heartbeat</CardTitle>
-            <Clock className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {scheduler?.heartbeat_age ? `${Math.round(scheduler.heartbeat_age)}s ago` : 'N/A'}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card className="col-span-1">
-          <CardHeader>
-            <CardTitle>Lifecycle Funnel</CardTitle>
-          </CardHeader>
-          <CardContent className="h-[300px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={lifecycle} layout="vertical" margin={{ left: 20, right: 20 }}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis type="number" />
-                <YAxis dataKey="lifecycle_stage" type="category" width={100} />
-                <Tooltip />
-                <Bar dataKey="count" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-
-        <Card className="col-span-1">
-          <CardHeader>
-            <CardTitle>Latest Run Overview</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {latest_run ? (
-              <div className="space-y-4">
-                <div className="flex justify-between items-center">
-                  <span className="font-semibold">Run ID</span>
-                  <span>{latest_run._run_dir?.split('/').pop() || 'N/A'}</span>
+      <div className="flex-1 overflow-auto p-6 space-y-8">
+        {/* KPI Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <Card className="shadow-none border-border/50 bg-card/50">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-[10px] uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                <DatabaseIcon className="w-3.5 h-3.5" /> Total Ingested Jobs
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-semibold tracking-tight">{totalJobs.toLocaleString()}</div>
+            </CardContent>
+          </Card>
+          <Card className="shadow-none border-border/50 bg-card/50">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-[10px] uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                <CheckCircle2 className="w-3.5 h-3.5" /> Total Applied
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-semibold tracking-tight text-primary">{totalApplied.toLocaleString()}</div>
+            </CardContent>
+          </Card>
+          <Card className="shadow-none border-border/50 bg-card/50">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-[10px] uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                <Activity className="w-3.5 h-3.5" /> Conversion Rate
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-semibold tracking-tight">{applicationRate}%</div>
+            </CardContent>
+          </Card>
+          
+          <Card className="shadow-none border-border/50 bg-card/50">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-[10px] uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                <PlayCircle className="w-3.5 h-3.5" /> Latest Run Status
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center gap-2">
+                <div className="text-lg font-semibold tracking-tight truncate max-w-[120px]" title={latest_run?.run_id}>
+                  {latest_run?.run_id ? latest_run.run_id.split('T')[0] : 'None'}
                 </div>
-                <div className="flex justify-between items-center">
-                  <span className="font-semibold">Status</span>
-                  <Badge variant={latest_run.status === 'SUCCESS' ? 'default' : 'destructive'}>
-                    {latest_run.status || 'UNKNOWN'}
+                {latest_run?.status && (
+                  <Badge variant="outline" className={`font-mono text-[10px] uppercase rounded-sm border px-1.5 ${latest_run.status === 'SUCCESS' ? 'text-green-500 border-green-500/20 bg-green-500/10' : 'text-red-500 border-red-500/20 bg-red-500/10'}`}>
+                    {latest_run.status}
                   </Badge>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="font-semibold">Acquired</span>
-                  <span>{latest_run.counts?.acquired || latest_run.acquired || 0}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="font-semibold">Submitted</span>
-                  <span>{latest_run.submitted || 0}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="font-semibold">Failed</span>
-                  <span className="text-destructive font-medium">{latest_run.failed || 0}</span>
-                </div>
+                )}
               </div>
-            ) : (
-              <p className="text-muted-foreground">No recent run found.</p>
-            )}
-          </CardContent>
-        </Card>
+              <p className="text-xs text-muted-foreground mt-1">
+                {latest_run?.started_at ? <RelativeTime date={latest_run.started_at} /> : 'Unknown time'}
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Funnel Chart */}
+          <Card className="col-span-2 shadow-none border-border/50">
+            <CardHeader>
+              <CardTitle className="text-sm font-semibold">Pipeline Funnel</CardTitle>
+            </CardHeader>
+            <CardContent className="h-[300px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={lifecycle} layout="vertical" margin={{ left: 50, right: 20, top: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border))" />
+                  <XAxis type="number" tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} />
+                  <YAxis dataKey="lifecycle_stage" type="category" width={100} tick={{ fontSize: 10, fill: 'hsl(var(--foreground))' }} />
+                  <Tooltip 
+                    cursor={{ fill: 'hsl(var(--muted)/0.5)' }}
+                    contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '4px', fontSize: '12px' }} 
+                  />
+                  <Bar dataKey="count" fill="hsl(var(--primary))" radius={[0, 2, 2, 0]} maxBarSize={30} />
+                </BarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+
+          {/* Backend Enhancement Notice */}
+          <Card className="col-span-1 shadow-none border-dashed border-border/50 bg-muted/10 flex flex-col">
+            <CardHeader>
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-orange-500" />
+                Missing Metrics
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="flex-1 flex flex-col justify-center space-y-4">
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                <strong className="text-foreground">Backend Enhancement Opportunity:</strong> The PRD requires visibility into System Health, Pipeline Health, Scheduler State, Top Companies, and Upcoming Executions on the dashboard.
+              </p>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Currently, the <code>/api/dashboard</code> endpoint only provides aggregated summary counts, lifecycle distribution, and the latest run metadata. 
+              </p>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                To maintain trust and avoid fabricating operational metrics, these have been intentionally omitted until backend telemetry APIs are exposed.
+              </p>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </div>
   );
+}
+
+function DatabaseIcon(props: any) {
+  return (
+    <svg
+      {...props}
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <ellipse cx="12" cy="5" rx="9" ry="3" />
+      <path d="M3 5V19A9 3 0 0 0 21 19V5" />
+      <path d="M3 12A9 3 0 0 0 21 12" />
+    </svg>
+  )
 }

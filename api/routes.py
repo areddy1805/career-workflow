@@ -23,6 +23,31 @@ from control_center.runtime_status import (
     get_ui_runtime,
     get_latest_run_runtime
 )
+from control_center.runner import (
+    launch_pipeline,
+    pipeline_is_running,
+    read_pipeline_log,
+    refresh_process_state
+)
+from control_center.manual_jobs import (
+    add_manual_job,
+    read_manual_jobs,
+)
+from career_ui_legacy.services.control_center import (
+    get_workflow_queue,
+    get_queue_analytics,
+    workflow_queue_transition,
+    workflow_queue_add_note,
+    workflow_queue_retry,
+    latest_terminal_run
+)
+from control_center.run_inspector import read_json_artifact
+from api.schemas import (
+    PipelineLaunchRequest,
+    ManualJobRequest,
+    WorkflowTransitionRequest,
+    WorkflowNoteRequest
+)
 
 router = APIRouter()
 
@@ -112,3 +137,94 @@ def get_artifacts() -> list[dict[str, Any]]:
             "result": result
         })
     return artifacts
+
+# --- Pipeline Control ---
+
+@router.get("/pipeline/state")
+def api_pipeline_state() -> dict[str, Any]:
+    state = refresh_process_state()
+    running = pipeline_is_running()
+    log = read_pipeline_log() if running else "No active process."
+    return {
+        "state": state,
+        "running": running,
+        "log": log
+    }
+
+@router.post("/pipeline/launch")
+def api_pipeline_launch(req: PipelineLaunchRequest) -> dict[str, str]:
+    try:
+        launch_pipeline(
+            live=req.live,
+            max_applications=req.max_applications,
+            canary=req.canary,
+            force_live=req.force_live
+        )
+        return {"status": "Pipeline launched"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+# --- Manual Queue ---
+
+@router.get("/queues/manual")
+def api_get_manual_queue() -> dict[str, Any]:
+    auto_detected = []
+    run_id = latest_terminal_run()
+    if run_id:
+        manual = read_json_artifact(run_id, "manual_review.json") or []
+        external = read_json_artifact(run_id, "external_apply.json") or []
+        auto_detected = manual + external
+        
+    manual_sourced = df_to_dict(read_manual_jobs())
+    return {
+        "auto_detected": auto_detected,
+        "manual_sourced": manual_sourced
+    }
+
+@router.post("/queues/manual")
+def api_add_manual_job(req: ManualJobRequest) -> dict[str, str]:
+    try:
+        add_manual_job(
+            title=req.title,
+            company=req.company,
+            location=req.location,
+            source=req.source,
+            source_url=req.source_url,
+            priority=req.priority,
+            notes=req.notes or ""
+        )
+        return {"status": "Job added"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+# --- Review Queue ---
+
+@router.get("/queues/review")
+def api_get_review_queue() -> list[dict[str, Any]]:
+    run_id = latest_terminal_run()
+    if not run_id:
+        return []
+    jobs = read_json_artifact(run_id, "selected_jobs.json") or []
+    return jobs
+
+# --- Workflow Queue ---
+
+@router.get("/queues/workflow")
+def api_get_workflow_queue() -> dict[str, Any]:
+    wq = get_workflow_queue()
+    analytics = get_queue_analytics(wq)
+    funnel = analytics.conversion_funnel()
+    items = wq.list(sort_by="updated_at", sort_dir="desc")
+    
+    return {
+        "funnel": funnel,
+        "items": items
+    }
+
+@router.post("/queues/workflow/{job_id}/transition")
+def api_workflow_transition(job_id: str, req: WorkflowTransitionRequest) -> dict[str, str]:
+    success = workflow_queue_transition(job_id, req.to_status, note=req.note or "")
+    if not success:
+        raise HTTPException(status_code=400, detail="Failed to transition job")
+    return {"status": "Transitioned"}
+

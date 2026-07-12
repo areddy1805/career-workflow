@@ -1,9 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { fetchRuntime } from '@/lib/api';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Activity, Server, Clock } from 'lucide-react';
+import { Activity, Server, Clock, Lock, Cpu } from 'lucide-react';
 
 export default function Runtime() {
   const { data: runtime, isLoading } = useQuery({
@@ -14,11 +12,10 @@ export default function Runtime() {
 
   if (isLoading) {
     return (
-      <div className="p-8 space-y-6">
-        <h2 className="text-3xl font-bold tracking-tight mb-6">Runtime Monitoring</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Skeleton className="h-48 rounded-xl" />
-          <Skeleton className="h-48 rounded-xl" />
+      <div className="h-full flex flex-col bg-background">
+        <div className="p-6 animate-pulse space-y-4">
+          <div className="h-4 bg-muted w-1/4 rounded" />
+          <div className="h-32 bg-muted rounded" />
         </div>
       </div>
     );
@@ -27,91 +24,92 @@ export default function Runtime() {
   const { scheduler, pipeline, ui } = runtime || {};
 
   return (
-    <div className="p-8 space-y-8">
-      <div>
-        <h2 className="text-3xl font-bold tracking-tight">Runtime Monitoring</h2>
-        <p className="text-muted-foreground">Live status of background processes.</p>
+    <div className="h-full flex flex-col bg-background text-sm">
+      <div className="flex items-center px-6 py-4 border-b shrink-0 bg-background/95 backdrop-blur z-10">
+        <h2 className="font-semibold text-lg tracking-tight flex items-center gap-2">
+          <Activity className="w-5 h-5 text-primary" />
+          Runtime Monitor
+        </h2>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Clock className="w-5 h-5 text-primary" />
-              Scheduler
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex justify-between items-center">
-              <span className="font-semibold text-muted-foreground">Status</span>
-              <Badge variant={scheduler?.status === 'RUNNING' ? 'default' : scheduler?.status === 'STALE' ? 'destructive' : 'secondary'}>
-                {scheduler?.status || 'UNKNOWN'}
-              </Badge>
+      <div className="flex-1 overflow-auto p-6 max-w-4xl space-y-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Scheduler Module */}
+          <div className="border border-border/50 rounded-md bg-card/30 flex flex-col">
+            <div className="h-10 px-4 border-b bg-secondary/30 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              <Clock className="w-4 h-4" /> Scheduler
             </div>
-            <div className="flex justify-between items-center">
-              <span className="font-semibold text-muted-foreground">Process Alive</span>
-              <span>{scheduler?.is_alive ? 'Yes' : 'No'}</span>
+            <div className="p-4 space-y-3">
+              <div className="flex items-center justify-between border-b border-border/40 pb-2">
+                <span className="text-muted-foreground text-xs font-medium">Status</span>
+                <Badge variant="outline" className={`font-mono text-[10px] rounded-sm px-1.5 ${scheduler?.status === 'RUNNING' ? 'text-green-500 border-green-500/20 bg-green-500/10' : scheduler?.status === 'STALE' ? 'text-red-500 border-red-500/20 bg-red-500/10' : 'text-muted-foreground'}`}>
+                  {scheduler?.status || 'UNKNOWN'}
+                </Badge>
+              </div>
+              <div className="flex items-center justify-between border-b border-border/40 pb-2">
+                <span className="text-muted-foreground text-xs font-medium">Process Alive</span>
+                <span className="font-mono text-xs">{scheduler?.is_alive ? 'True' : 'False'}</span>
+              </div>
+              <div className="flex items-center justify-between border-b border-border/40 pb-2">
+                <span className="text-muted-foreground text-xs font-medium">Heartbeat Age</span>
+                <span className="font-mono text-xs">{scheduler?.heartbeat_age ? `${Math.round(scheduler.heartbeat_age)}s` : 'N/A'}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground text-xs font-medium">PID</span>
+                <span className="font-mono text-xs text-primary">{scheduler?.pid || 'N/A'}</span>
+              </div>
             </div>
-            <div className="flex justify-between items-center">
-              <span className="font-semibold text-muted-foreground">PID</span>
-              <span className="font-mono text-sm">{scheduler?.pid || 'N/A'}</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="font-semibold text-muted-foreground">Heartbeat Age</span>
-              <span>{scheduler?.heartbeat_age ? `${Math.round(scheduler.heartbeat_age)}s` : 'N/A'}</span>
-            </div>
-          </CardContent>
-        </Card>
+          </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Activity className="w-5 h-5 text-primary" />
-              Pipeline
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex justify-between items-center">
-              <span className="font-semibold text-muted-foreground">Status</span>
-              <Badge variant={pipeline?.status === 'RUNNING' ? 'default' : 'outline'}>
-                {pipeline?.status || 'IDLE'}
-              </Badge>
+          {/* Pipeline Module */}
+          <div className="border border-border/50 rounded-md bg-card/30 flex flex-col">
+            <div className="h-10 px-4 border-b bg-secondary/30 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              <Cpu className="w-4 h-4" /> Pipeline Worker
             </div>
-            <div className="flex justify-between items-center">
-              <span className="font-semibold text-muted-foreground">Process Alive</span>
-              <span>{pipeline?.is_alive ? 'Yes' : 'No'}</span>
+            <div className="p-4 space-y-3">
+              <div className="flex items-center justify-between border-b border-border/40 pb-2">
+                <span className="text-muted-foreground text-xs font-medium">State</span>
+                <Badge variant="outline" className={`font-mono text-[10px] rounded-sm px-1.5 ${pipeline?.status === 'RUNNING' ? 'text-green-500 border-green-500/20 bg-green-500/10' : 'text-muted-foreground'}`}>
+                  {pipeline?.status || 'IDLE'}
+                </Badge>
+              </div>
+              <div className="flex items-center justify-between border-b border-border/40 pb-2">
+                <span className="text-muted-foreground text-xs font-medium">Process Alive</span>
+                <span className="font-mono text-xs">{pipeline?.is_alive ? 'True' : 'False'}</span>
+              </div>
+              <div className="flex items-center justify-between border-b border-border/40 pb-2">
+                <span className="text-muted-foreground text-xs font-medium">Execution Lock</span>
+                <div className="flex items-center gap-1.5 font-mono text-xs">
+                  {scheduler?.lock ? <Lock className="w-3 h-3 text-red-500" /> : <Lock className="w-3 h-3 text-muted-foreground/30" />}
+                  {scheduler?.lock ? <span className="text-red-500">LOCKED</span> : <span>FREE</span>}
+                </div>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground text-xs font-medium">PID</span>
+                <span className="font-mono text-xs text-primary">{pipeline?.pid || 'N/A'}</span>
+              </div>
             </div>
-            <div className="flex justify-between items-center">
-              <span className="font-semibold text-muted-foreground">PID</span>
-              <span className="font-mono text-sm">{pipeline?.pid || 'N/A'}</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="font-semibold text-muted-foreground">Pipeline Lock</span>
-              <Badge variant={scheduler?.lock ? 'destructive' : 'secondary'}>
-                {scheduler?.lock ? 'LOCKED' : 'FREE'}
-              </Badge>
-            </div>
-          </CardContent>
-        </Card>
+          </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Server className="w-5 h-5 text-primary" />
-              UI Server
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex justify-between items-center">
-              <span className="font-semibold text-muted-foreground">Status</span>
-              <Badge variant="default">{ui?.status || 'ONLINE'}</Badge>
+          {/* UI Server Module */}
+          <div className="border border-border/50 rounded-md bg-card/30 flex flex-col md:col-span-2 lg:col-span-1">
+            <div className="h-10 px-4 border-b bg-secondary/30 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              <Server className="w-4 h-4" /> Core API (UI Server)
             </div>
-            <div className="flex justify-between items-center">
-              <span className="font-semibold text-muted-foreground">PID</span>
-              <span className="font-mono text-sm">{ui?.pid || 'N/A'}</span>
+            <div className="p-4 space-y-3">
+              <div className="flex items-center justify-between border-b border-border/40 pb-2">
+                <span className="text-muted-foreground text-xs font-medium">Status</span>
+                <Badge variant="outline" className="font-mono text-[10px] rounded-sm px-1.5 text-green-500 border-green-500/20 bg-green-500/10">
+                  {ui?.status || 'ONLINE'}
+                </Badge>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground text-xs font-medium">PID</span>
+                <span className="font-mono text-xs text-primary">{ui?.pid || 'N/A'}</span>
+              </div>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       </div>
     </div>
   );
