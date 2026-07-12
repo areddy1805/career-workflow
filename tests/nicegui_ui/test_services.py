@@ -1,6 +1,6 @@
 import pandas as pd
 
-from career_ui.services.control_center import records, run_count
+from career_ui_legacy.services.control_center import records, run_count
 
 
 def test_records_normalizes_dataframe():

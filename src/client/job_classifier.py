@@ -549,7 +549,10 @@ class JobFilterPipeline2:
                     "experience_max": exp_max,
                     "search_track": (job.get("search_track") or "UNKNOWN"),
                     "search_query": (job.get("search_query") or ""),
+                    "search_profile": (job.get("search_profile") or "unknown"),
+                    "matched_technology": (job.get("matched_technology") or ""),
                     "decision_history": [{"stage": "Acquisition"}],
+                    "rejection_reason": "",
                 }
             )
 

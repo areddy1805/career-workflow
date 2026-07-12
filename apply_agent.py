@@ -51,8 +51,9 @@ from src.exceptions.exceptions import (
 )
 from src.llm.client import OMLXClient
 from src.llm.question_resolver import LLMQuestionResolver
+
 from src.orchestration.runtime import CircuitBreaker
-from src.resolution.hybrid_resolver import HybridQuestionResolver
+from src.search.planner import SearchPlanner
 from src.search.challenge_cooldown import SearchChallengeCooldown
 from src.search.job_search_cache import JobSearchCache
 from src.utils.questionnaire_telemetry import log_unresolved_questions
@@ -541,32 +542,12 @@ def fetch_all_jobs(
     mode: str = "full",
 ) -> JobFetchResult:
 
-    SEARCH_TRACKS = [
-        {"keyword": "Generative AI Engineer", "location": "Pune", "track": "TIER_A"},
-        {"keyword": "AI Engineer", "location": "Pune", "track": "TIER_B"},
-        {"keyword": "AI ML Engineer", "location": "Pune", "track": "TIER_C"},
-        {"keyword": "Machine Learning Engineer", "location": "Pune", "track": "TIER_C"},
-        {"keyword": "LLM Engineer", "location": "Pune", "track": "TIER_A"},
-        {"keyword": "RAG Engineer", "location": "Pune", "track": "TIER_A"},
-        {"keyword": "Agentic AI Engineer", "location": "Pune", "track": "TIER_A"},
-        {"keyword": "Applied AI Engineer", "location": "Pune", "track": "TIER_A"},
-        {"keyword": "AI Platform Engineer", "location": "Pune", "track": "TIER_A"},
-        {"keyword": "AI Infrastructure Engineer", "location": "Pune", "track": "TIER_A"},
-        {"keyword": "AI Systems Engineer", "location": "Pune", "track": "TIER_A"},
-        {"keyword": "AI Solutions Engineer", "location": "Pune", "track": "TIER_A"},
-        {"keyword": "AI Automation Engineer", "location": "Pune", "track": "TIER_A"},
-        {"keyword": "AI Developer", "location": "Pune", "track": "TIER_B"},
-        {"keyword": "AI Application Developer", "location": "Pune", "track": "TIER_B"},
-        {"keyword": "NLP Engineer", "location": "Pune", "track": "TIER_B"},
-        {"keyword": "Computer Vision Engineer", "location": "Pune", "track": "TIER_C"},
-        {"keyword": "Deep Learning Engineer", "location": "Pune", "track": "TIER_C"},
-        {"keyword": "Data Scientist AI", "location": "Pune", "track": "TIER_C"},
-        {"keyword": "MLOps Engineer AI", "location": "Pune", "track": "TIER_C"},
-        {"keyword": "Full Stack AI Engineer", "location": "Pune", "track": "TIER_B"},
-        {"keyword": "Python AI Developer", "location": "Pune", "track": "TIER_B"},
-        {"keyword": "Azure OpenAI Developer", "location": "Pune", "track": "TIER_A"},
-        {"keyword": "LangChain Developer", "location": "Pune", "track": "TIER_A"},
-    ]
+    # Generate queries from configuration
+    planner = SearchPlanner()
+    SEARCH_TRACKS = planner.generate_queries()
+    
+    if not SEARCH_TRACKS:
+        raise ValueError("SearchPlanner generated 0 queries. Check config/user_profile.yaml")
 
     def _env_int_list(name: str, default: str) -> list[int]:
         raw = os.getenv(name, default)
@@ -691,6 +672,18 @@ def fetch_all_jobs(
                             job,
                             "search_query",
                             query["keyword"],
+                        )
+                        
+                        setattr(
+                            job,
+                            "search_profile",
+                            query.get("search_profile", "unknown"),
+                        )
+                        
+                        setattr(
+                            job,
+                            "matched_technology",
+                            query.get("matched_technology", ""),
                         )
 
                         setattr(

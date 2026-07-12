@@ -15,7 +15,10 @@ from control_center.data import (
     safe_settings,
     runs_path,
     read_run_state,
-    read_run_result
+    read_run_result,
+    system_health,
+    upcoming_executions,
+    top_companies
 )
 from control_center.runtime_status import (
     get_scheduler_runtime,
@@ -32,6 +35,11 @@ from control_center.runner import (
 from control_center.manual_jobs import (
     add_manual_job,
     read_manual_jobs,
+)
+from control_center.review_state import (
+    get_review_states,
+    mark_reviewed,
+    dismiss_job
 )
 from career_ui_legacy.services.control_center import (
     get_workflow_queue,
@@ -59,11 +67,17 @@ def get_dashboard() -> dict[str, Any]:
     summary = application_summary()
     lifecycle = df_to_dict(lifecycle_distribution())
     latest = latest_run()
+    health = system_health()
+    upcoming = upcoming_executions()
+    companies = top_companies()
     
     return {
         "summary": summary,
         "lifecycle": lifecycle,
-        "latest_run": latest
+        "latest_run": latest,
+        "system_health": health,
+        "upcoming_executions": upcoming,
+        "top_companies": companies
     }
 
 @router.get("/jobs")
@@ -173,7 +187,21 @@ def api_get_manual_queue() -> dict[str, Any]:
     if run_id:
         manual = read_json_artifact(run_id, "manual_review.json") or []
         external = read_json_artifact(run_id, "external_apply.json") or []
-        auto_detected = manual + external
+        raw_auto = manual + external
+        
+        states = get_review_states()
+        for job in raw_auto:
+            jid = job.get("job_id")
+            state = states.get(jid)
+            if state:
+                job["review_status"] = state.get("status")
+                job["review_note"] = state.get("note")
+            else:
+                job["review_status"] = "PENDING"
+                job["review_note"] = ""
+                
+        # Filter out dismissed jobs
+        auto_detected = [j for j in raw_auto if j.get("review_status") != "DISMISSED"]
         
     manual_sourced = df_to_dict(read_manual_jobs())
     return {
@@ -197,6 +225,16 @@ def api_add_manual_job(req: ManualJobRequest) -> dict[str, str]:
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+@router.post("/queues/manual/{job_id}/transition")
+def api_manual_transition(job_id: str, req: WorkflowTransitionRequest) -> dict[str, str]:
+    if req.to_status.upper() == "DISMISSED":
+        dismiss_job(job_id, req.note or "")
+    elif req.to_status.upper() == "REVIEWED":
+        mark_reviewed(job_id, req.note or "")
+    else:
+        raise HTTPException(status_code=400, detail="Invalid status for auto-detected queue")
+    return {"status": "Transitioned"}
+
 # --- Review Queue ---
 
 @router.get("/queues/review")
@@ -205,7 +243,17 @@ def api_get_review_queue() -> list[dict[str, Any]]:
     if not run_id:
         return []
     jobs = read_json_artifact(run_id, "selected_jobs.json") or []
-    return jobs
+    
+    states = get_review_states()
+    for job in jobs:
+        jid = job.get("job_id")
+        state = states.get(jid)
+        if state:
+            job["review_status"] = state.get("status")
+        else:
+            job["review_status"] = "PENDING"
+            
+    return [j for j in jobs if j.get("review_status") != "DISMISSED"]
 
 # --- Workflow Queue ---
 
@@ -227,4 +275,19 @@ def api_workflow_transition(job_id: str, req: WorkflowTransitionRequest) -> dict
     if not success:
         raise HTTPException(status_code=400, detail="Failed to transition job")
     return {"status": "Transitioned"}
+
+# --- Search Intelligence ---
+
+@router.get("/search-intelligence")
+def api_get_search_intelligence() -> dict[str, Any]:
+    from src.search.planner import SearchPlanner
+    planner = SearchPlanner()
+    queries = planner.generate_queries()
+    
+    return {
+        "active_profiles": planner.user_profile.get("active_profiles", []),
+        "locations": planner.user_profile.get("preferred_locations", []),
+        "total_queries": len(queries),
+        "queries": queries
+    }
 

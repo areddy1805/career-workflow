@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { fetchManualQueues, fetchReviewQueue, fetchWorkflowQueue, transitionWorkflowQueue, addManualJob } from '@/lib/api';
+import { fetchManualQueues, fetchReviewQueue, fetchWorkflowQueue, transitionWorkflowQueue, transitionManualQueue, addManualJob } from '@/lib/api';
 import { UserPlus, Activity } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
@@ -158,6 +158,7 @@ function ReviewQueueView() {
               <th className="px-4 py-2 font-medium">Company</th>
               <th className="px-4 py-2 font-medium">Score</th>
               <th className="px-4 py-2 font-medium">Priority</th>
+              <th className="px-4 py-2 font-medium text-right">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -168,6 +169,26 @@ function ReviewQueueView() {
                 <td className="px-4 py-2">{item.company}</td>
                 <td className="px-4 py-2 font-mono text-primary">{item.score}</td>
                 <td className="px-4 py-2"><Badge variant="outline" className="text-[10px] uppercase">{item.priority}</Badge></td>
+                <td className="px-4 py-2 text-right">
+                  <select 
+                    className="bg-background border border-border/50 rounded px-2 py-1 text-[10px] uppercase"
+                    onChange={async (e) => {
+                      if (e.target.value) {
+                        try {
+                          await transitionManualQueue(item.job_id, e.target.value);
+                          // We should invalidate or just refresh the page
+                          window.location.reload();
+                        } catch (err) {
+                          console.error(err);
+                        }
+                      }
+                    }}
+                    defaultValue=""
+                  >
+                    <option value="" disabled>Action...</option>
+                    <option value="DISMISSED">Dismiss</option>
+                  </select>
+                </td>
               </tr>
             ))}
             {!data?.length && (
@@ -222,6 +243,7 @@ function ManualQueueView() {
                 <th className="px-4 py-2 font-medium">Title</th>
                 <th className="px-4 py-2 font-medium">Company</th>
                 <th className="px-4 py-2 font-medium">Status</th>
+                <th className="px-4 py-2 font-medium text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -230,7 +252,35 @@ function ManualQueueView() {
                   <td className="px-4 py-2 font-mono flex items-center gap-2"><CopyButton value={item.job_id} /> {item.job_id.substring(0, 8)}...</td>
                   <td className="px-4 py-2 truncate max-w-[150px]">{item.title}</td>
                   <td className="px-4 py-2 truncate max-w-[150px]">{item.company}</td>
-                  <td className="px-4 py-2"><Badge variant="outline" className="text-[10px] uppercase">{item.status || 'PENDING'}</Badge></td>
+                  <td className="px-4 py-2"><Badge variant="outline" className="text-[10px] uppercase">{item.review_status || 'PENDING'}</Badge></td>
+                  <td className="px-4 py-2 text-right">
+                    <select 
+                      className="bg-background border border-border/50 rounded px-2 py-1 text-[10px] uppercase"
+                      onChange={async (e) => {
+                        if (e.target.value) {
+                          if (e.target.value === 'OPEN') {
+                            if (item.url || item.source_url) {
+                              window.open(item.url || item.source_url, '_blank');
+                            }
+                          } else {
+                            try {
+                              await transitionManualQueue(item.job_id, e.target.value);
+                              queryClient.invalidateQueries({ queryKey: ['manual_queue'] });
+                            } catch (err) {
+                              console.error(err);
+                            }
+                          }
+                          e.target.value = '';
+                        }
+                      }}
+                      defaultValue=""
+                    >
+                      <option value="" disabled>Action...</option>
+                      <option value="OPEN">Open URL</option>
+                      <option value="REVIEWED">Mark Reviewed</option>
+                      <option value="DISMISSED">Dismiss</option>
+                    </select>
+                  </td>
                 </tr>
               ))}
               {!data?.auto_detected?.length && (

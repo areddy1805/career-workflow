@@ -368,35 +368,23 @@ def read_application_events(
     finally:
         connection.close()
 
-
 def application_summary() -> dict[str, int]:
     applications = read_applications()
 
     if applications.empty:
         return {
-            "total": 0,
-            "submitted": 0,
-            "viewed": 0,
-            "shortlisted": 0,
-            "interview": 0,
-            "rejected": 0,
-            "offer": 0,
+            "total_jobs": 0,
+            "total_applied": 0,
+            "total_rejected": 0,
+            "total_offer": 0,
         }
 
-    lifecycle = (
-        applications["lifecycle_stage"].fillna("UNKNOWN").astype(str).str.upper()
-    )
-
     return {
-        "total": int(len(applications)),
-        "submitted": int((lifecycle == "SUBMITTED").sum()),
-        "viewed": int((lifecycle == "VIEWED").sum()),
-        "shortlisted": int((lifecycle == "SHORTLISTED").sum()),
-        "interview": int((lifecycle == "INTERVIEW").sum()),
-        "rejected": int((lifecycle == "REJECTED").sum()),
-        "offer": int((lifecycle == "OFFER").sum()),
+        "total_jobs": len(applications),
+        "total_applied": len(applications[applications["workflow_status"].isin(["APPLIED", "INTERVIEW", "OFFER"])]),
+        "total_rejected": len(applications[applications["workflow_status"] == "REJECTED"]),
+        "total_offer": len(applications[applications["workflow_status"] == "OFFER"]),
     }
-
 
 def lifecycle_distribution() -> pd.DataFrame:
     applications = read_applications()

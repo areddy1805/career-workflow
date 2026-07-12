@@ -25,7 +25,7 @@ export default function Dashboard() {
     );
   }
 
-  const { summary, lifecycle, latest_run } = dashboard || {};
+  const { summary, lifecycle, latest_run, system_health, upcoming_executions, top_companies } = dashboard || {};
   const totalJobs = summary?.total_jobs || 0;
   const totalApplied = summary?.total_applied || 0;
   const applicationRate = totalJobs > 0 ? ((totalApplied / totalJobs) * 100).toFixed(1) : '0';
@@ -116,24 +116,71 @@ export default function Dashboard() {
             </CardContent>
           </Card>
 
-          {/* Backend Enhancement Notice */}
-          <Card className="col-span-1 shadow-none border-dashed border-border/50 bg-muted/10 flex flex-col">
+          {/* System Health */}
+          <Card className="col-span-1 shadow-none border-border/50">
             <CardHeader>
               <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 text-orange-500" />
-                Missing Metrics
+                <Activity className="w-4 h-4 text-primary" />
+                System Health
               </CardTitle>
             </CardHeader>
-            <CardContent className="flex-1 flex flex-col justify-center space-y-4">
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                <strong className="text-foreground">Backend Enhancement Opportunity:</strong> The PRD requires visibility into System Health, Pipeline Health, Scheduler State, Top Companies, and Upcoming Executions on the dashboard.
-              </p>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                Currently, the <code>/api/dashboard</code> endpoint only provides aggregated summary counts, lifecycle distribution, and the latest run metadata. 
-              </p>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                To maintain trust and avoid fabricating operational metrics, these have been intentionally omitted until backend telemetry APIs are exposed.
-              </p>
+            <CardContent className="space-y-4">
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-muted-foreground">Status</span>
+                <Badge variant="outline" className={system_health?.status === 'HEALTHY' ? 'text-green-500 border-green-500' : system_health?.status === 'WARNING' ? 'text-orange-500 border-orange-500' : ''}>
+                  {system_health?.status || 'UNKNOWN'}
+                </Badge>
+              </div>
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-muted-foreground">Scheduler</span>
+                <span>{system_health?.scheduler_running ? 'Running' : 'Stopped'}</span>
+              </div>
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-muted-foreground">Pipeline</span>
+                <span>{system_health?.pipeline_running ? 'Active' : 'Idle'}</span>
+              </div>
+              <div className="flex justify-between items-center text-xs border-t pt-3">
+                <span className="text-muted-foreground">Disk Usage</span>
+                <span>{system_health?.disk_usage_pct}%</span>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Top Companies */}
+          <Card className="col-span-1 shadow-none border-border/50">
+            <CardHeader>
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                <DatabaseIcon className="w-4 h-4 text-primary" />
+                Top Companies
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {top_companies?.map((c: any, i: number) => (
+                <div key={i} className="flex justify-between items-center text-xs border-b border-border/20 last:border-0 pb-2 last:pb-0">
+                  <span className="truncate max-w-[150px] font-medium" title={c.name}>{c.name}</span>
+                  <span className="text-muted-foreground">{c.count} applications</span>
+                </div>
+              ))}
+              {!top_companies?.length && <p className="text-xs text-muted-foreground text-center">No data available.</p>}
+            </CardContent>
+          </Card>
+          
+          {/* Upcoming Executions */}
+          <Card className="col-span-1 shadow-none border-border/50">
+            <CardHeader>
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                <PlayCircle className="w-4 h-4 text-primary" />
+                Upcoming Executions
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {upcoming_executions?.map((e: any, i: number) => (
+                <div key={i} className="flex justify-between items-center text-xs border-b border-border/20 last:border-0 pb-2 last:pb-0">
+                  <span className="font-medium">{e.task}</span>
+                  <span className="text-muted-foreground"><RelativeTime date={e.scheduled_for} /></span>
+                </div>
+              ))}
+              {!upcoming_executions?.length && <p className="text-xs text-muted-foreground text-center">No scheduled executions.</p>}
             </CardContent>
           </Card>
         </div>

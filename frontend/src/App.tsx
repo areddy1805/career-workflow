@@ -17,6 +17,7 @@ import Analytics from '@/pages/Analytics';
 import AppSettings from '@/pages/Settings';
 import Pipeline from '@/pages/Pipeline';
 import Queues from '@/pages/Queues';
+import SearchPage from '@/pages/Search';
 
 const queryClient = new QueryClient();
 
@@ -26,13 +27,14 @@ function Sidebar() {
   
   const navItems = [
     { name: 'Dashboard', path: '/', icon: LayoutDashboard },
+    { name: 'Search', path: '/search', icon: Search },
+    { name: 'Queues', path: '/queues', icon: ListTodo },
     { name: 'Jobs', path: '/jobs', icon: Briefcase },
+    { name: 'Pipeline', path: '/pipeline', icon: Play },
     { name: 'Runs', path: '/runs', icon: PlaySquare },
     { name: 'Runtime', path: '/runtime', icon: Activity },
     { name: 'Artifacts', path: '/artifacts', icon: FileJson },
     { name: 'Analytics', path: '/analytics', icon: BarChart2 },
-    { name: 'Pipeline', path: '/pipeline', icon: Play },
-    { name: 'Queues', path: '/queues', icon: ListTodo },
   ];
 
   return (
@@ -153,9 +155,10 @@ function App() {
                 <Route path="/runtime" element={<Runtime />} />
                 <Route path="/artifacts" element={<Artifacts />} />
                 <Route path="/analytics" element={<Analytics />} />
+                <Route path="/queues" element={<Queues />} />
+                <Route path="/search" element={<SearchPage />} />
                 <Route path="/settings" element={<AppSettings />} />
                 <Route path="/pipeline" element={<Pipeline />} />
-                <Route path="/queues" element={<Queues />} />
               </Routes>
             </Layout>
           </Router>
