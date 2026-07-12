@@ -520,7 +520,7 @@ class JobFilterPipeline2:
         for j in jobs:
             title = (j.get("title") or "").lower()
             if any(kw in title for kw in self.VETO_TITLES):
-                print(f"  [VETO] {j.get('title')}")
+                self.record_decision(j, "Hard Veto", "WALK_IN_RECRUITMENT", f"Title matched veto pattern")
                 if self.metrics:
                     self.metrics.record_rejection("Hard Veto (Title)")
                 continue
@@ -573,6 +573,9 @@ class JobFilterPipeline2:
             )
 
             if junior_only or too_senior:
+                code = "EXPERIENCE_TOO_LOW" if junior_only else "EXPERIENCE_TOO_HIGH"
+                reason = "Requires fresher/0 years experience" if junior_only else "Title indicates non-target seniority level"
+                self.record_decision(job, "Experience Filter", code, reason)
                 if self.metrics:
                     self.metrics.record_rejection("Hard Veto (Experience/Seniority)")
                 continue
@@ -595,6 +598,7 @@ class JobFilterPipeline2:
             ]
             if flagged:
                 print(f"  [RED FLAG {flagged}] {j.get('title')}")
+                self.record_decision(j, "Desc Red Flag Check", "DESC_RED_FLAG", f"Description matched red flag pattern: {flagged[0]}")
                 if self.metrics:
                     self.metrics.record_rejection(f"Red Flag (Desc): {flagged[0]}")
                 continue
@@ -626,6 +630,7 @@ class JobFilterPipeline2:
                     f"{job.get('title')} @ "
                     f"{job.get('company')}"
                 )
+                self.record_decision(job, "Full Desc Red Flag Check", "FULL_DESC_RED_FLAG", f"Full description matched red flag pattern: {flagged[0]}")
                 if self.metrics:
                     self.metrics.record_rejection(f"Red Flag (Full JD): {flagged[0]}")
                 continue
@@ -650,7 +655,7 @@ class JobFilterPipeline2:
             if not explicit_ai_title and not any(
                 keyword in title for keyword in self.SOFTWARE_KEYWORDS
             ):
-                print(f"  [TITLE FILTER - not software/AI] {job.get('title')}")
+                self.record_decision(job, "Title Filter", "NON_SOFTWARE_ROLE", "Non-software role")
                 if self.metrics:
                     self.metrics.record_rejection("Title Filter (Not SW/AI)")
                 continue
@@ -658,7 +663,7 @@ class JobFilterPipeline2:
             if not explicit_ai_title and any(
                 keyword in title for keyword in self.WRONG_TRACK_TITLE_KEYWORDS
             ):
-                print(f"  [TITLE FILTER - wrong track] {job.get('title')}")
+                self.record_decision(job, "Title Filter", "TITLE_WRONG_TRACK", "Target track mismatch")
                 if self.metrics:
                     self.metrics.record_rejection("Title Filter (Wrong Track)")
                 continue
@@ -673,6 +678,7 @@ class JobFilterPipeline2:
             company = (j.get("company") or "").lower()
             if any(vc in company for vc in self.VETO_COMPANIES):
                 print(f"  [COMPANY VETO] {j.get('title')} @ {j.get('company')}")
+                self.record_decision(j, "Company Veto", "COMPANY_VETO", "Company is blacklisted")
                 if self.metrics:
                     self.metrics.record_rejection("Company Veto")
                 continue
@@ -720,6 +726,7 @@ class JobFilterPipeline2:
                     f"  [AI RELEVANCE REJECT] "
                     f"{job.get('title')} @ {job.get('company')}"
                 )
+                self.record_decision(job, "AI Relevance Gate", "LOW_AI_RELEVANCE", "Traditional backend role with no meaningful AI responsibilities")
                 if self.metrics:
                     self.metrics.record_rejection("Non-AI")
                 continue
@@ -869,6 +876,7 @@ class JobFilterPipeline2:
                         f"  [LOCATION REJECT - {mode}] "
                         f"{job.get('title')} @ {job.get('company')} | {location}"
                     )
+                    self.record_decision(job, "Location Filter", "LOCATION_OUTSIDE_PUNE", "Role outside target location")
                 continue
 
             if is_pune:
@@ -878,6 +886,7 @@ class JobFilterPipeline2:
                     "  [LOCATION REJECT - unknown-mode-non-pune] "
                     f"{job.get('title')} @ {job.get('company')} | {location}"
                 )
+                self.record_decision(job, "Location Filter", "LOCATION_OUTSIDE_PUNE", "Role outside target location")
 
         return eligible
 
@@ -1381,6 +1390,7 @@ Jobs:
                     f"  [POST-SCORE REJECT - INCIDENTAL AUTOMATION] "
                     f"{job.get('title')} @ {job.get('company')}"
                 )
+                self.record_decision(job, "Post Score Guard", "NON_SOFTWARE_ROLE", "Role is incidental automation (VBA/macros) rather than engineering")
                 continue
 
             if content_role_hits >= 2 and engineering_hits <= 2:
@@ -1388,6 +1398,7 @@ Jobs:
                     f"  [POST-SCORE REJECT - NON-ENGINEERING AI] "
                     f"{job.get('title')} @ {job.get('company')}"
                 )
+                self.record_decision(job, "Post Score Guard", "NON_SOFTWARE_ROLE", "Role is content creation rather than software engineering")
                 continue
 
             # Generic software with one weak AI mention stays below application floor.

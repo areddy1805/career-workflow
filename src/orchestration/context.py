@@ -59,6 +59,11 @@ class PipelineContext:
     stage_results: dict[str, Any] = field(default_factory=dict)
     errors: list[dict[str, Any]] = field(default_factory=list)
 
+    # Observability
+    generated_artifacts: list[str] = field(default_factory=list)
+    timeline: list[dict[str, Any]] = field(default_factory=list)
+    rejected_jobs: list[dict[str, Any]] = field(default_factory=list)
+
     def record_error(
         self,
         *,

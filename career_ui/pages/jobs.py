@@ -1,3 +1,4 @@
+import html
 from nicegui import ui
 
 from career_ui.shell import shell
@@ -37,7 +38,7 @@ def page():
             with ui.column().classes("flex-grow min-w-0 h-full overflow-hidden"):
                 table = DataTable(frame[display], classes="h-full")
                 # Bind search filter to table quick filter
-                search.on('update:model-value', lambda e: table.grid.run_grid_method('setQuickFilter', e.value))
+                search.on('update:model-value', lambda e: table.grid.run_grid_method('setQuickFilter', e.value or ''))
                 
             # Right: Details Inspector
             with panel_p("w-80 flex-shrink-0 flex flex-col gap-4 overflow-y-auto bg-[var(--bg)] border-l border-[var(--border)]"):
@@ -61,6 +62,6 @@ def page():
                         for k, v in row.items():
                             if k not in ("title", "company", "status"):
                                 ui.html(f'<div class="text-[10px] font-bold uppercase tracking-wider mt-2" style="color:var(--muted)">{str(k).replace("_", " ")}</div>')
-                                ui.html(f'<div class="text-[13px] break-words" style="color:var(--text)">{str(v)}</div>')
+                                ui.html(f'<div class="text-[13px] break-words" style="color:var(--text)">{html.escape(str(v))}</div>')
                 
                 table.grid.on('rowClicked', on_row_click)

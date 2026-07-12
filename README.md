@@ -982,6 +982,46 @@ python -m pytest -q
 
 git diff --check
 ```
+---
+
+## Factory Reset (Fresh Start)
+
+Use this procedure when you want to discard all runtime state and begin with a completely fresh portfolio.
+
+> **Warning**
+>
+> This permanently removes local application history, cached search results, runtime state, run artifacts, logs, and generated data. Only use it when intentionally starting from scratch.
+
+```bash
+# Stop the UI and scheduler first.
+
+rm -rf artifacts/runs/*
+rm -rf logs/*
+
+rm -f data/application_ledger.db
+rm -f data/job_search_cache.json
+rm -f data/score_cache.json
+rm -f data/manual_jobs.db
+rm -f data/manual_action_queue.json
+rm -f data/search_challenge_state.json
+rm -f data/runtime_state.json
+rm -f data/scheduler_state.json
+rm -f data/pipeline_state.json
+rm -f data/heartbeat.json
+
+rm -rf data/ui_runtime/*
+rm -rf data/responses/*
+
+mkdir -p artifacts/runs logs data/responses data/ui_runtime
+
+echo "Factory reset complete."
+```
+
+After the reset:
+
+1. Start the Operations Control Plane.
+2. Start the scheduler (or run a manual pipeline).
+3. A fresh application ledger, artifacts, caches, and runtime state will be created automatically.
 
 ---
 

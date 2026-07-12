@@ -126,23 +126,7 @@ class CareerWorkflowPipeline:
             "errors": self.context.errors,
         }
 
-        target = self.run_dir / "run.json"
-
-        temporary = self.run_dir / "run.json.tmp"
-
-        temporary.write_text(
-            json.dumps(
-                payload,
-                indent=2,
-                ensure_ascii=False,
-                default=str,
-            ),
-            encoding="utf-8",
-        )
-
-        temporary.replace(
-            target,
-        )
+        self._write_artifact("run.json", payload)
 
     def _write_artifact(
         self,
@@ -154,13 +138,20 @@ class CareerWorkflowPipeline:
             exist_ok=True,
         )
 
+        envelope = {
+            "schema_version": 2,
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "run_id": self.context.run_id,
+            "data": payload,
+        }
+
         target = self.run_dir / filename
 
         temporary = target.with_suffix(target.suffix + ".tmp")
 
         temporary.write_text(
             json.dumps(
-                payload,
+                envelope,
                 indent=2,
                 ensure_ascii=False,
                 default=str,
@@ -171,6 +162,25 @@ class CareerWorkflowPipeline:
         temporary.replace(
             target,
         )
+
+        if filename not in self.context.generated_artifacts:
+            self.context.generated_artifacts.append(filename)
+            
+        self._write_manifest()
+
+    def _write_manifest(self) -> None:
+        self.run_dir.mkdir(parents=True, exist_ok=True)
+        manifest = {
+            "run_id": self.context.run_id,
+            "status": self.status.value,
+            "schema_version": 2,
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "artifacts": self.context.generated_artifacts,
+        }
+        target = self.run_dir / "manifest.json"
+        tmp = target.with_suffix(".tmp")
+        tmp.write_text(json.dumps(manifest, indent=2, ensure_ascii=False, default=str), encoding="utf-8")
+        tmp.replace(target)
 
     # ------------------------------------------------------------------
     # Stage execution
@@ -188,6 +198,17 @@ class CareerWorkflowPipeline:
         self._persist_state()
 
         print(f"\n[PIPELINE] {name.upper()} STARTED")
+        
+        stage_record = {
+            "stage": name,
+            "started_at": datetime.now(timezone.utc).isoformat(),
+            "completed_at": None,
+            "duration_ms": 0,
+            "status": "RUNNING",
+            "error": None,
+            "metadata": {}
+        }
+        self.context.timeline.append(stage_record)
 
         try:
             import time
@@ -204,9 +225,17 @@ class CareerWorkflowPipeline:
                     # classify mixes LLM and network (details fetching) and local filtering.
                     # We subtract llm_time and network_time tracked deeply.
                     pass
+                    
+            stage_record["duration_ms"] = int(duration * 1000)
 
         except Exception as error:
             self.stage_statuses[name] = StageStatus.FAILED
+            
+            stage_record["completed_at"] = datetime.now(timezone.utc).isoformat()
+            stage_record["status"] = "FAILED"
+            stage_record["error"] = str(error)
+            
+            self._write_artifact("timeline.json", self.context.timeline)
 
             self.context.record_error(
                 stage=name,
@@ -225,6 +254,10 @@ class CareerWorkflowPipeline:
             return False
 
         self.stage_statuses[name] = StageStatus.SUCCESS
+        
+        stage_record["completed_at"] = datetime.now(timezone.utc).isoformat()
+        stage_record["status"] = "SUCCESS"
+        self._write_artifact("timeline.json", self.context.timeline)
 
         self._persist_state()
 
@@ -273,6 +306,52 @@ class CareerWorkflowPipeline:
             "preflight.json",
             self.context.stage_results["preflight"],
         )
+
+        import platform, sys
+        
+        diagnostics = {
+            "python_version": sys.version,
+            "platform": platform.platform(),
+            "hostname": platform.node(),
+            "pid": os.getpid(),
+            "cwd": os.getcwd(),
+            "virtualenv": os.environ.get("VIRTUAL_ENV"),
+        }
+        
+        try:
+            import psutil
+            diagnostics["cpu_count"] = psutil.cpu_count()
+            diagnostics["memory_total"] = psutil.virtual_memory().total
+        except ImportError:
+            pass
+            
+        try:
+            import subprocess
+            diagnostics["git_commit"] = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+        except Exception:
+            diagnostics["git_commit"] = None
+            
+        try:
+            import nicegui
+            diagnostics["nicegui_version"] = nicegui.__version__
+        except Exception:
+            diagnostics["nicegui_version"] = None
+
+        self._write_artifact("diagnostics.json", diagnostics)
+        
+        environment = {
+            "max_applications": self.context.max_applications,
+            "acquisition_mode": self.context.acquisition_mode,
+            "llm_model": os.environ.get("OMLX_MODEL", "qwen3.5-4b"),
+            "daily_apply_limit": int(os.environ.get("DAILY_APPLY_LIMIT", "50")),
+            "min_apply_score": int(os.environ.get("MIN_APPLY_SCORE", "50")),
+            "ai_score_limit": int(os.environ.get("AI_SCORE_LIMIT", "300")),
+            "batch_size": int(os.environ.get("BATCH_SIZE", "5")),
+            "job_search_cache_ttl_days": int(os.environ.get("JOB_SEARCH_CACHE_TTL_DAYS", "3")),
+            "search_challenge_cooldown_minutes": int(os.environ.get("SEARCH_CHALLENGE_COOLDOWN_MINUTES", "120")),
+            "application_delay_seconds": int(os.environ.get("APPLICATION_DELAY_SECONDS", "3")),
+        }
+        self._write_artifact("environment.json", environment)
 
     # ------------------------------------------------------------------
     # Acquisition
@@ -365,7 +444,19 @@ class CareerWorkflowPipeline:
 
         classifier = JobFilterPipeline2(metrics=self.context.metrics)
 
-        candidates = classifier.pre_filter(self.context.acquired_jobs)
+        jobs = self.context.acquired_jobs
+        jobs = classifier.normalize_jobs(jobs)
+        jobs = classifier.dedup(jobs)
+        jobs = classifier.hard_veto(jobs)
+        jobs = classifier.experience_filter(jobs)
+        jobs = classifier.desc_red_flag_check(jobs)
+        jobs = classifier.title_filter(jobs)
+        jobs = classifier.ai_relevance_gate(jobs)
+        jobs = classifier.tag_presort(jobs)
+        
+        candidates = jobs[: classifier.ai_score_limit]
+        for j in jobs[classifier.ai_score_limit:]:
+            classifier.record_decision(j, "AI Score Limit", "ATTEMPT_BUDGET", "Job fell below score batch cutoff")
 
         detail_fetch_budget = int(os.getenv("DETAIL_FETCH_BUDGET", "60"))
         if detail_fetch_budget < 1:
@@ -374,7 +465,16 @@ class CareerWorkflowPipeline:
         candidates_before_suppression = len(candidates)
 
         excluded_ids = self.context.ledger.applied_job_ids()
-        candidates = exclude_job_ids(candidates, excluded_ids)
+        
+        # history exclusion directly
+        history_kept = []
+        for j in candidates:
+            if str(j.get("job_id", "")) in excluded_ids:
+                classifier.record_decision(j, "History Exclusion", "ALREADY_APPLIED", "Job previously applied")
+            else:
+                history_kept.append(j)
+        candidates = history_kept
+        
         candidates_after_history_suppression = len(candidates)
 
         candidates = allocate_detail_budget(
@@ -393,7 +493,18 @@ class CareerWorkflowPipeline:
         enriched_before_dedup = len(enriched_candidates)
         enriched_candidates = deduplicate_enriched_jobs(enriched_candidates)
 
-        final_jobs = classifier.score_and_select(enriched_candidates)
+        jobs = enriched_candidates
+        jobs = classifier.full_description_red_flag_check(jobs)
+        jobs = classifier.location_work_mode_gate(jobs)
+        jobs = classifier.ai_score_batch(jobs)
+        jobs = classifier.post_score_guard(jobs)
+        jobs = classifier.rank(jobs)
+        
+        final_jobs = jobs[: classifier.daily_apply_limit]
+        for j in jobs[classifier.daily_apply_limit:]:
+            classifier.record_decision(j, "Daily Apply Limit", "ATTEMPT_BUDGET", "Exceeded daily application limit")
+
+        self.context.rejected_jobs.extend(classifier.decisions)
 
         for result in final_jobs:
             result["score"] = result.get(
@@ -432,6 +543,11 @@ class CareerWorkflowPipeline:
 
         print_pipeline_results(final_jobs)
 
+        rejection_summary = {}
+        for r in self.context.rejected_jobs:
+            code = r.get("code") or "UNKNOWN"
+            rejection_summary[code] = rejection_summary.get(code, 0) + 1
+
         self.context.stage_results["classification"] = {
             "prefiltered": candidates_before_suppression,
             "history_suppressed": candidates_before_suppression
@@ -450,7 +566,9 @@ class CareerWorkflowPipeline:
             "classification.json",
             {
                 "summary": (self.context.stage_results["classification"]),
+                "rejection_summary": rejection_summary,
                 "jobs": final_jobs,
+                "rejected_jobs": self.context.rejected_jobs,
             },
         )
 
@@ -616,6 +734,16 @@ class CareerWorkflowPipeline:
                 f"| score={decision['score']} "
                 f"| {reasons}"
             )
+            
+            self.context.rejected_jobs.append({
+                "job_id": str(decision["job_id"]),
+                "title": str(decision["title"]),
+                "company": str(decision["company"]),
+                "stage": "Selection / Eligibility",
+                "code": "SELECTION_INELIGIBLE",
+                "reason": str(reasons),
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            })
 
         if rejection_summary:
             print("HARD-GATE REJECTION SUMMARY:")
@@ -651,6 +779,19 @@ class CareerWorkflowPipeline:
             ),
         )
 
+        diversified_ids = {str(j.job_id) for j in diversified_jobs}
+        for j in eligible_jobs:
+            if str(j.job_id) not in diversified_ids:
+                self.context.rejected_jobs.append({
+                    "job_id": str(j.job_id),
+                    "title": str(getattr(j, "title", "Unknown")),
+                    "company": str(getattr(j, "company", "Unknown")),
+                    "stage": "Diversity Policy",
+                    "code": "DIVERSITY_POLICY",
+                    "reason": "Failed diversity constraints",
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                })
+
         attempt_budget = effective_limit(
             strategy.max_applications_per_run,
             self.context.max_applications,
@@ -678,6 +819,19 @@ class CareerWorkflowPipeline:
             strategy=strategy,
             limit=candidate_scan_budget,
         )
+
+        selected_ids = {str(j.job_id) for j in selected_jobs}
+        for j in diversified_jobs:
+            if str(j.job_id) not in selected_ids:
+                self.context.rejected_jobs.append({
+                    "job_id": str(j.job_id),
+                    "title": str(getattr(j, "title", "Unknown")),
+                    "company": str(getattr(j, "company", "Unknown")),
+                    "stage": "Selection Limit",
+                    "code": "ATTEMPT_BUDGET",
+                    "reason": "Exceeded attempt budget / strategy limits",
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                })
 
         self.context.selected_jobs = selected_jobs
 
@@ -711,7 +865,10 @@ class CareerWorkflowPipeline:
 
         self._write_artifact(
             "selection.json",
-            self.context.stage_results["selection"],
+            {
+                **self.context.stage_results["selection"],
+                "rejected_jobs": [j for j in self.context.rejected_jobs if j.get("stage", "").startswith("Selection") or j.get("stage", "") == "Diversity Policy"]
+            }
         )
 
     # ------------------------------------------------------------------
@@ -802,6 +959,7 @@ class CareerWorkflowPipeline:
             ledger=ledger,
             run_id=self.context.run_id,
             metrics=self.context.metrics,
+            rejected_jobs=self.context.rejected_jobs,
         )
 
         self.context.application_summary = summary
@@ -838,7 +996,10 @@ class CareerWorkflowPipeline:
 
         self._write_artifact(
             "application.json",
-            self.context.stage_results["application"],
+            {
+                **self.context.stage_results["application"],
+                "rejected_jobs": [j for j in self.context.rejected_jobs if j.get("stage", "") == "Application"]
+            }
         )
 
     # ------------------------------------------------------------------

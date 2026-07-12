@@ -29,7 +29,7 @@ def page():
             
             with ui.row().classes("w-full h-full gap-4 flex-nowrap items-stretch min-h-0"):
                 
-                with panel_p("w-1/2 flex-shrink-0 flex flex-col gap-2 min-h-0"):
+                with panel_p("flex-[1] min-w-0 flex flex-col gap-2"):
                     section_header("Application failures", "Investigate before retrying")
                     if failures.empty:
                         from career_ui.components.feedback import empty_state

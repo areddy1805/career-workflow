@@ -41,10 +41,6 @@ def test_selection_uses_scan_budget_not_attempt_budget(tmp_path):
     )
 
     with (
-        patch(
-            "src.orchestration.pipeline.load_applied_jobs",
-            return_value=set(),
-        ),
         patch.object(
             pipeline,
             "_build_adaptive_strategy",

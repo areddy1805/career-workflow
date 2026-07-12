@@ -74,7 +74,6 @@ def test_local_applied_job_is_skipped_without_network_call(
     client = FakeBatchClient()
 
     process_calls: list[str] = []
-    saved_jobs: list[str] = []
     sleep_calls: list[int] = []
 
     def fake_process(**kwargs):
@@ -98,7 +97,6 @@ def test_local_applied_job_is_skipped_without_network_call(
         questionnaire_resolver=FakeResolver(),
         applied_jobs_set={"1"},
         sleep_fn=sleep_calls.append,
-        save_fn=lambda item: saved_jobs.append(item.job_id),
     )
 
     assert summary.total_candidates == 1
@@ -108,7 +106,6 @@ def test_local_applied_job_is_skipped_without_network_call(
 
     assert client.external_checks == []
     assert process_calls == []
-    assert saved_jobs == []
     assert sleep_calls == []
 
 
@@ -119,7 +116,6 @@ def test_external_job_is_skipped() -> None:
         external_job_ids={"1"},
     )
 
-    saved_jobs: list[str] = []
     sleep_calls: list[int] = []
 
     summary = run_application_batch(
@@ -129,7 +125,6 @@ def test_external_job_is_skipped() -> None:
         questionnaire_resolver=FakeResolver(),
         applied_jobs_set=set(),
         sleep_fn=sleep_calls.append,
-        save_fn=lambda item: saved_jobs.append(item.job_id),
     )
 
     assert summary.skipped_external == 1
@@ -137,7 +132,6 @@ def test_external_job_is_skipped() -> None:
     assert summary.failed == 0
 
     assert client.external_checks == ["1"]
-    assert saved_jobs == []
     assert sleep_calls == []
 
 
@@ -149,7 +143,6 @@ def test_successful_application_is_persisted(
     client = FakeBatchClient()
 
     applied_jobs_set: set[str] = set()
-    saved_jobs: list[str] = []
     sleep_calls: list[int] = []
 
     monkeypatch.setattr(
@@ -168,14 +161,12 @@ def test_successful_application_is_persisted(
         questionnaire_resolver=FakeResolver(),
         applied_jobs_set=applied_jobs_set,
         sleep_fn=sleep_calls.append,
-        save_fn=lambda item: saved_jobs.append(item.job_id),
     )
 
     assert summary.applied == 1
     assert summary.failed == 0
 
     assert applied_jobs_set == {"1"}
-    assert saved_jobs == ["1"]
     assert sleep_calls == [3]
 
 
@@ -187,7 +178,6 @@ def test_server_already_applied_repairs_local_state(
     client = FakeBatchClient()
 
     applied_jobs_set: set[str] = set()
-    saved_jobs: list[str] = []
     sleep_calls: list[int] = []
 
     monkeypatch.setattr(
@@ -206,7 +196,6 @@ def test_server_already_applied_repairs_local_state(
         questionnaire_resolver=FakeResolver(),
         applied_jobs_set=applied_jobs_set,
         sleep_fn=sleep_calls.append,
-        save_fn=lambda item: saved_jobs.append(item.job_id),
     )
 
     assert summary.already_applied == 1
@@ -214,7 +203,6 @@ def test_server_already_applied_repairs_local_state(
     assert summary.failed == 0
 
     assert applied_jobs_set == {"1"}
-    assert saved_jobs == ["1"]
     assert sleep_calls == [3]
 
 
@@ -229,7 +217,6 @@ def test_failed_job_does_not_stop_batch(
     client = FakeBatchClient()
 
     process_calls: list[str] = []
-    saved_jobs: list[str] = []
     sleep_calls: list[int] = []
 
     def fake_process(**kwargs):
@@ -261,7 +248,6 @@ def test_failed_job_does_not_stop_batch(
         questionnaire_resolver=FakeResolver(),
         applied_jobs_set=set(),
         sleep_fn=sleep_calls.append,
-        save_fn=lambda item: saved_jobs.append(item.job_id),
     )
 
     assert process_calls == [
@@ -273,7 +259,6 @@ def test_failed_job_does_not_stop_batch(
     assert summary.applied == 1
     assert summary.failed == 1
 
-    assert saved_jobs == ["2"]
 
     assert sleep_calls == [
         3,
@@ -288,7 +273,6 @@ def test_non_success_outcome_counts_as_failure(
 
     client = FakeBatchClient()
 
-    saved_jobs: list[str] = []
     sleep_calls: list[int] = []
 
     monkeypatch.setattr(
@@ -307,13 +291,11 @@ def test_non_success_outcome_counts_as_failure(
         questionnaire_resolver=FakeResolver(),
         applied_jobs_set=set(),
         sleep_fn=sleep_calls.append,
-        save_fn=lambda item: saved_jobs.append(item.job_id),
     )
 
     assert summary.applied == 0
     assert summary.failed == 1
 
-    assert saved_jobs == []
     assert sleep_calls == [3]
 
 
@@ -325,7 +307,6 @@ def test_policy_rejected_job_never_reaches_application_boundary(
     client = FakeBatchClient()
 
     process_calls: list[str] = []
-    saved_jobs: list[str] = []
     sleep_calls: list[int] = []
 
     def fake_process(**kwargs):
@@ -359,7 +340,6 @@ def test_policy_rejected_job_never_reaches_application_boundary(
             dry_run=False,
         ),
         sleep_fn=sleep_calls.append,
-        save_fn=lambda item: saved_jobs.append(item.job_id),
     )
 
     assert summary.policy_rejected == 1
@@ -368,7 +348,6 @@ def test_policy_rejected_job_never_reaches_application_boundary(
 
     assert process_calls == []
     assert client.external_checks == []
-    assert saved_jobs == []
     assert sleep_calls == []
 
 
@@ -380,7 +359,6 @@ def test_dry_run_job_never_reaches_application_boundary(
     client = FakeBatchClient()
 
     process_calls: list[str] = []
-    saved_jobs: list[str] = []
     sleep_calls: list[int] = []
 
     def fake_process(**kwargs):
@@ -414,7 +392,6 @@ def test_dry_run_job_never_reaches_application_boundary(
             dry_run=True,
         ),
         sleep_fn=sleep_calls.append,
-        save_fn=lambda item: saved_jobs.append(item.job_id),
     )
 
     assert summary.dry_run_skipped == 1
@@ -424,7 +401,6 @@ def test_dry_run_job_never_reaches_application_boundary(
 
     assert process_calls == []
     assert client.external_checks == []
-    assert saved_jobs == []
     assert sleep_calls == []
 
 
@@ -436,7 +412,6 @@ def test_policy_allowed_live_job_reaches_application_boundary(
     client = FakeBatchClient()
 
     process_calls: list[str] = []
-    saved_jobs: list[str] = []
 
     def fake_process(**kwargs):
         job_id = kwargs["job"].job_id
@@ -473,7 +448,6 @@ def test_policy_allowed_live_job_reaches_application_boundary(
             dry_run=False,
         ),
         sleep_fn=lambda _: None,
-        save_fn=lambda item: saved_jobs.append(item.job_id),
     )
 
     assert summary.applied == 1
@@ -482,7 +456,6 @@ def test_policy_allowed_live_job_reaches_application_boundary(
 
     assert process_calls == ["1"]
     assert client.external_checks == ["1"]
-    assert saved_jobs == ["1"]
 
 
 def test_per_run_limit_prevents_additional_application_attempts(
@@ -497,7 +470,6 @@ def test_per_run_limit_prevents_additional_application_attempts(
     client = FakeBatchClient()
 
     process_calls: list[str] = []
-    saved_jobs: list[str] = []
     sleep_calls: list[int] = []
 
     def fake_process(**kwargs):
@@ -532,7 +504,6 @@ def test_per_run_limit_prevents_additional_application_attempts(
             max_applications_per_run=2,
         ),
         sleep_fn=sleep_calls.append,
-        save_fn=lambda item: saved_jobs.append(item.job_id),
     )
 
     assert process_calls == [
@@ -545,10 +516,6 @@ def test_per_run_limit_prevents_additional_application_attempts(
         "2",
     ]
 
-    assert saved_jobs == [
-        "1",
-        "2",
-    ]
 
     assert sleep_calls == [
         3,
@@ -600,7 +567,6 @@ def test_failed_application_attempt_does_not_consume_submission_quota(
             max_applications_per_run=1,
         ),
         sleep_fn=lambda _: None,
-        save_fn=lambda item: None,
     )
 
     assert process_calls == ["1", "2"]
@@ -660,7 +626,6 @@ def test_external_job_does_not_consume_run_quota(
             max_applications_per_run=1,
         ),
         sleep_fn=lambda _: None,
-        save_fn=lambda item: None,
     )
 
     assert client.external_checks == [
@@ -712,7 +677,6 @@ def test_zero_run_limit_blocks_all_application_attempts(
             max_applications_per_run=0,
         ),
         sleep_fn=lambda _: None,
-        save_fn=lambda item: None,
     )
 
     assert process_calls == []

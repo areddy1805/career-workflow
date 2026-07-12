@@ -56,8 +56,8 @@ def page():
                 metric_card("External", outcomes["skipped_external"], "manual external apply", classes="border-none shadow-none bg-[var(--bg)]")
                 metric_card("Manual Review", outcomes["manual_review"], "questionnaire backlog", classes="border-none shadow-none bg-[var(--bg)]")
                 
-        with ui.row().classes("w-full gap-6 flex-nowrap items-stretch h-[400px]"):
-            with panel_p("w-1/2 flex-shrink-0 flex flex-col"):
+        with ui.element("div").classes("grid grid-cols-2 gap-6 w-full h-[400px]"):
+            with panel_p("w-full min-w-0 overflow-hidden flex flex-col"):
                 section_header("Lifecycle Distribution", "Current recruiting outcomes")
                 lifecycle = lifecycle_distribution()
                 if not lifecycle.empty:
@@ -73,7 +73,7 @@ def page():
                     from career_ui.components.feedback import empty_state
                     empty_state("No data")
                     
-            with panel_p("w-1/2 flex-shrink-0 flex flex-col"):
+            with panel_p("w-full min-w-0 overflow-hidden flex flex-col"):
                 section_header("Application Velocity", "Submissions over time")
                 if not apps.empty and "applied_at" in apps:
                     ts = pd.to_datetime(apps.applied_at, errors="coerce", utc=True)
@@ -92,13 +92,13 @@ def page():
                     from career_ui.components.feedback import empty_state
                     empty_state("No velocity data")
                     
-        with ui.row().classes("w-full gap-6 flex-nowrap items-stretch h-[350px]"):
-            with panel_p("w-1/2 flex flex-col gap-2"):
+        with ui.element("div").classes("grid grid-cols-2 gap-6 w-full h-[450px]"):
+            with panel_p("w-full min-w-0 overflow-hidden flex flex-col gap-2"):
                 section_header("Performance by Priority", "Segment conversion")
-                DataTable(_compact_segment(segment_funnel(apps, "priority")), classes="h-full flex-grow")
-            with panel_p("w-1/2 flex flex-col gap-2"):
+                DataTable(_compact_segment(segment_funnel(apps, "priority")), classes="flex-1")
+            with panel_p("w-full min-w-0 overflow-hidden flex flex-col gap-2"):
                 section_header("Performance by Subtrack", "Role-family conversion")
-                DataTable(_compact_segment(segment_funnel(apps, "subtrack")), classes="h-full flex-grow")
+                DataTable(_compact_segment(segment_funnel(apps, "subtrack")), classes="flex-1")
                 
         with panel_p("w-full h-[400px] flex flex-col gap-2"):
             section_header("Pipeline Throughput", "Recent execution history")

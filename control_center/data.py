@@ -91,11 +91,14 @@ def _read_json(path: Path) -> dict[str, Any] | list[Any] | None:
         return None
 
     try:
-        return json.loads(
+        payload = json.loads(
             path.read_text(
                 encoding="utf-8",
             )
         )
+        if isinstance(payload, dict) and payload.get("schema_version") == 2 and "data" in payload:
+            return payload["data"]
+        return payload
     except (
         OSError,
         json.JSONDecodeError,

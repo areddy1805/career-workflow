@@ -90,3 +90,18 @@ def read_text_artifact(
         )[:max_characters]
     except OSError:
         return ""
+
+def read_json_artifact(run_id: str, relative_path: str) -> dict[str, Any]:
+    run_dir = _find_run(run_id)
+    if not run_dir:
+        return {}
+    candidate = (run_dir / relative_path).resolve()
+    try:
+        if candidate.exists() and candidate.is_file():
+            payload = json.loads(candidate.read_text(encoding="utf-8"))
+            if isinstance(payload, dict) and payload.get("schema_version") == 2 and "data" in payload:
+                return payload["data"]
+            return payload if isinstance(payload, dict) else {}
+    except Exception:
+        pass
+    return {}

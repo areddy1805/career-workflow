@@ -5,10 +5,12 @@ from career_ui.shell import shell
 from career_ui.layouts.page import page_header, section_header, metrics_grid, split_pane
 from career_ui.components.cards import panel_p, metric_card
 from career_ui.tables.data_table import DataTable
+from career_ui.utils.formatting import format_datetime
 from career_ui.widgets.stage_rail import stage_rail
 
 from career_ui.services.control_center import (
     calculate_duration,
+    latest_run,
     latest_terminal_run,
     launch_pipeline,
     pipeline_is_running,
@@ -22,6 +24,40 @@ def _run_projection(frame):
         return frame
     cols = [c for c in ("run_id", "status", "dry_run", "acquired", "selected", "submitted", "failed", "started_at") if c in frame.columns]
     return frame[cols]
+
+def _calculate_eta(current_run) -> str:
+    from control_center.run_inspector import read_json_artifact
+    from control_center.data import list_run_directories
+    
+    stages = current_run.get("stages", {})
+    running_stage = next((s for s, status in stages.items() if status == "RUNNING"), None)
+    if not running_stage:
+        return "—"
+        
+    durations = []
+    for run_dir in list_run_directories()[:10]:
+        timeline = read_json_artifact(run_dir.name, "timeline.json")
+        if timeline and isinstance(timeline, list):
+            for t in timeline:
+                if t.get("stage") == running_stage and t.get("status") == "SUCCESS":
+                    durations.append(t.get("duration_ms", 0))
+                    
+    if not durations:
+        return "Calculating..."
+        
+    avg_ms = sum(durations) / len(durations)
+    
+    # We should subtract the time already spent in the current stage
+    # But for simplicity and to avoid fake precision, just return the average duration
+    # or remaining duration.
+    # The requirement says:
+    # "remaining = average(stage historical durations)"
+    # "Never show fake precision"
+    
+    avg_seconds = avg_ms / 1000
+    if avg_seconds < 60:
+        return "< 1 min"
+    return f"~{int(avg_seconds // 60)} min"
 
 @ui.page("/pipeline")
 def page():
@@ -41,19 +77,19 @@ def page():
         with split_pane():
             
             # Left Column (Logs and History)
-            with ui.column().classes("w-[65%] gap-6 min-w-0"):
+            with ui.column().classes("flex-[1.8] min-w-0 gap-6"):
                 
                 with panel_p("w-full flex flex-col"):
                     section_header("Live Output", "Active launcher log")
                     log_box = ui.html("").classes("w-full h-[500px] bg-[#0b1017] border border-[#1d2938] rounded p-4 overflow-y-auto font-mono text-[13px] text-[#9dacbf] leading-relaxed")
                 
                 section_header("Run History", "Recent execution artifacts")
-                history_box = ui.column().classes("w-full h-80")
+                history_box = ui.column().classes("w-full h-80 min-w-0")
                 with history_box:
                     DataTable(_run_projection(run_history(20)), classes="h-full")
 
             # Right Column (Config and Telemetry)
-            with ui.column().classes("w-[35%] gap-6 min-w-0"):
+            with ui.column().classes("flex-[1] min-w-[320px] gap-6"):
                 
                 with panel_p("w-full flex flex-col gap-4"):
                     section_header("Run Configuration", "Safety-first execution controls")
@@ -110,20 +146,23 @@ def page():
                     metric_card("PID", state.get("pid") or "—")
                     metric_card("Mode", "LIVE" if state.get("live") else "DRY RUN")
                     metric_card("Elapsed", calculate_duration(state.get("started_at"), state.get("completed_at")))
+                    if running:
+                        metric_card("Stage ETA", _calculate_eta(latest_run()))
             
+            current_run = latest_run()
             with stage_box:
-                stage_rail(latest.get("stages") or {
+                stage_rail(current_run.get("stages") or {
                     "preflight": "PENDING",
                     "acquisition": "PENDING",
                     "classification": "PENDING",
                     "selection": "PENDING",
                     "application": "PENDING",
                     "reconciliation": "PENDING",
-                    "report": latest.get("status", "UNKNOWN"),
+                    "report": current_run.get("status", "UNKNOWN"),
                 })
                 
             content = read_pipeline_log() if running else "No active process. Historical output is available in Run Inspector."
-            log_box.set_content(f'<pre style="margin:0;white-space:pre-wrap">{html.escape(content)}</pre>')
+            log_box.content = f'<pre style="margin:0;white-space:pre-wrap">{html.escape(content)}</pre>'
 
         render_state()
         ui.timer(2.0, render_state)
