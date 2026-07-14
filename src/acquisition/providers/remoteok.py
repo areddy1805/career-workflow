@@ -50,9 +50,11 @@ class RemoteOKProvider(JobProvider):
 
     def capabilities(self) -> ProviderCapabilities:
         return ProviderCapabilities(
-            supports_auto_apply=False,
+            native_apply=False,
+            external_apply=True,
+            manual_only=False,
+            playwright_supported=False,
             authentication_required=False,
-            supports_login=False,
             supports_pagination=False,  # API returns all at once
             supports_location_filter=False,  # remote only
             supports_remote_filter=True,

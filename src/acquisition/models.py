@@ -61,15 +61,14 @@ class ProviderCapabilities:
     Rendered as a ✓/✗ matrix in the dashboard UI.
     Used by AcquisitionManager to route applications correctly.
     """
-    # Application capabilities
-    supports_auto_apply: bool = False
-    supports_easy_apply: bool = False
-    supports_resume_upload: bool = False
-    supports_questionnaire: bool = False
+    # Routing capabilities
+    native_apply: bool = False
+    external_apply: bool = False
+    manual_only: bool = False
+    playwright_supported: bool = False
 
     # Auth capabilities
     authentication_required: bool = False
-    supports_login: bool = False
 
     # Search capabilities
     supports_incremental: bool = False
@@ -88,12 +87,11 @@ class ProviderCapabilities:
 
     def to_dict(self) -> dict:
         return {
-            "supports_auto_apply": self.supports_auto_apply,
-            "supports_easy_apply": self.supports_easy_apply,
-            "supports_resume_upload": self.supports_resume_upload,
-            "supports_questionnaire": self.supports_questionnaire,
+            "native_apply": self.native_apply,
+            "external_apply": self.external_apply,
+            "manual_only": self.manual_only,
+            "playwright_supported": self.playwright_supported,
             "authentication_required": self.authentication_required,
-            "supports_login": self.supports_login,
             "supports_incremental": self.supports_incremental,
             "supports_pagination": self.supports_pagination,
             "supports_location_filter": self.supports_location_filter,
@@ -323,6 +321,14 @@ class ProviderRunStats:
     last_successful_search: str = ""
     last_failure: str = ""
     last_challenge: str = ""
+    
+    # Extended metrics
+    http_requests: int = 0
+    http_success: int = 0
+    parse_success: int = 0
+    jobs_returned: int = 0
+    jobs_parsed: int = 0
+    jobs_normalized: int = 0
 
     @property
     def success_pct(self) -> float:

@@ -24,7 +24,7 @@ class JobNormalizer:
     """
 
     @staticmethod
-    def normalized_to_job(nj: NormalizedJob, *, supports_auto_apply: bool = False) -> Job:
+    def normalized_to_job(nj: NormalizedJob, *, native_apply: bool = False) -> Job:
         """
         Map a NormalizedJob to the legacy Job model used by the pipeline.
 
@@ -32,7 +32,22 @@ class JobNormalizer:
         attributes via setattr — exactly as the existing acquisition code does.
         This ensures backward compatibility with the entire downstream pipeline.
         """
-        # Build the core Job
+        application_url = nj.application_url or ""
+        provider_url = nj.provider_url or ""
+
+        if not application_url and not provider_url:
+            raise ValueError(
+                f"NormalizedJob missing both application_url and provider_url "
+                f"for provider '{nj.provider}': {nj.provider_job_id}"
+            )
+
+        if nj.provider == "naukri" and not application_url:
+            raise ValueError(
+                f"Naukri job missing application_url: {nj.provider_job_id}"
+            )
+
+        apply_link = application_url or provider_url
+
         job = Job(
             job_id=str(nj.provider_job_id),
             title=nj.title,
@@ -41,7 +56,7 @@ class JobNormalizer:
             experience=nj.experience,
             salary=nj.salary,
             posted_date=nj.posted_date,
-            apply_link=nj.application_url,
+            apply_link=apply_link,
             description=nj.description,
             tags=list(nj.skills or []),
         )
@@ -65,9 +80,10 @@ class JobNormalizer:
         setattr(job, "also_seen_on", nj.provenance.also_seen_on)
 
         # Application routing — the key flag read by run_application_batch
-        # Non-Naukri providers (supports_auto_apply=False) automatically
-        # route to External Apply queue without any pipeline changes.
-        setattr(job, "is_external_apply", not supports_auto_apply)
+        # Non-Naukri providers (native_apply=False) automatically
+        # fail the external apply check down the line.
+        setattr(job, "native_apply", native_apply)
+        setattr(job, "is_external_apply", not native_apply)
 
         # Queue enrichment fields
         setattr(job, "original_job_url", nj.provider_url)
@@ -90,13 +106,29 @@ class JobNormalizer:
         """
         Convert a list of NormalizedJobs to Jobs.
 
-        capabilities_map: {provider_name: supports_auto_apply}
+        capabilities_map: {provider_name: native_apply}
         """
         result = []
         for nj in normalized_jobs:
+            required_fields = [
+                ("provider", nj.provider),
+                ("provider_job_id", nj.provider_job_id),
+                ("provider_name", nj.provider_name),
+                ("provider_url", nj.provider_url),
+                ("application_url", nj.application_url),
+                ("company", nj.company),
+                ("title", nj.title),
+            ]
+            for field_name, field_value in required_fields:
+                if not field_value:
+                    raise ValueError(
+                        f"NormalizedJob missing required field '{field_name}' "
+                        f"for provider '{nj.provider}': {nj.provider_job_id}"
+                    )
+
             supports_auto = capabilities_map.get(nj.provider, False)
             try:
-                job = JobNormalizer.normalized_to_job(nj, supports_auto_apply=supports_auto)
+                job = JobNormalizer.normalized_to_job(nj, native_apply=supports_auto)
                 result.append(job)
             except Exception as exc:
                 logger.warning(

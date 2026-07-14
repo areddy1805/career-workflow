@@ -1,14 +1,14 @@
 import html
 from nicegui import ui
 
-from career_ui.shell import shell
-from career_ui.layouts.page import page_header, section_header, metrics_grid, split_pane
-from career_ui.components.cards import panel_p, metric_card
-from career_ui.tables.data_table import DataTable
-from career_ui.utils.formatting import format_datetime
-from career_ui.widgets.stage_rail import stage_rail
+from career_ui_legacy.shell import shell
+from career_ui_legacy.layouts.page import page_header, section_header, metrics_grid, split_pane
+from career_ui_legacy.components.cards import panel_p, metric_card
+from career_ui_legacy.tables.data_table import DataTable
+from career_ui_legacy.utils.formatting import format_datetime
+from career_ui_legacy.widgets.stage_rail import stage_rail
 
-from career_ui.services.control_center import (
+from career_ui_legacy.services.control_center import (
     calculate_duration,
     latest_run,
     latest_terminal_run,

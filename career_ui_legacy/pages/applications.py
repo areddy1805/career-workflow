@@ -1,11 +1,11 @@
 from nicegui import ui
 
-from career_ui.layouts.page import section_header, metrics_grid
-from career_ui.components.cards import metric_card, panel_p
-from career_ui.tables.data_table import DataTable
-from career_ui.widgets.work_queue import work_queue_layout
+from career_ui_legacy.layouts.page import section_header, metrics_grid
+from career_ui_legacy.components.cards import metric_card, panel_p
+from career_ui_legacy.tables.data_table import DataTable
+from career_ui_legacy.widgets.work_queue import work_queue_layout
 
-from career_ui.services.control_center import (
+from career_ui_legacy.services.control_center import (
     application_summary,
     read_applications,
     run_reconciliation,
@@ -37,7 +37,7 @@ def page():
                 section_header("Ledger", "Immutable application log")
                 frame = read_applications()
                 if frame.empty:
-                    from career_ui.components.feedback import empty_state
+                    from career_ui_legacy.components.feedback import empty_state
                     empty_state("No applications in ledger")
                 else:
                     display = [c for c in ("job_id", "title", "company", "score", "priority", "subtrack", "status", "lifecycle_stage", "applied_at") if c in frame.columns]

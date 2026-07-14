@@ -1,7 +1,7 @@
 from __future__ import annotations
 from nicegui import ui
-from career_ui.theme import apply_theme
-from career_ui.components.badges import status_badge
+from career_ui_legacy.theme import apply_theme
+from career_ui_legacy.components.badges import status_badge
 
 NAV = [
     (
@@ -55,8 +55,8 @@ def command_palette():
                                 ui.label(label).classes('text-[var(--text)] text-sm font-medium')
                 else:
                     ui.html('<div class="text-[10px] uppercase font-bold text-[var(--muted)] ml-2 mb-2 tracking-wider">Jobs & Applications</div>')
-                    from career_ui.services.control_center import read_applications
-                    from career_ui.components.job_drawer import show_job_drawer
+                    from career_ui_legacy.services.control_center import read_applications
+                    from career_ui_legacy.components.job_drawer import show_job_drawer
                     try:
                         df = read_applications()
                         if not df.empty:

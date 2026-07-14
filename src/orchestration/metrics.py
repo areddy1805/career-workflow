@@ -5,11 +5,18 @@ from typing import Callable, Any
 
 @dataclass
 class PipelineRunMetrics:
-    # High-level counts
     discovered: int = 0
     acquired: int = 0
+    normalized: int = 0
+    filtered: int = 0
     qualified: int = 0
+    scored: int = 0
+    selected: int = 0
     applied: int = 0
+    queued: int = 0
+    skipped: int = 0
+    rejected: int = 0
+    failed: int = 0
 
     # Detailed skip/rejection reasons
     skipped_reasons: dict[str, int] = field(default_factory=dict)

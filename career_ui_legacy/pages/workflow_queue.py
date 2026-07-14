@@ -1,13 +1,13 @@
 import pandas as pd
 from nicegui import ui
 
-from career_ui.layouts.page import section_header
-from career_ui.components.cards import panel_p, metric_card
-from career_ui.tables.data_table import DataTable
-from career_ui.widgets.work_queue import work_queue_layout
-from career_ui.components.job_drawer import show_job_drawer
+from career_ui_legacy.layouts.page import section_header
+from career_ui_legacy.components.cards import panel_p, metric_card
+from career_ui_legacy.tables.data_table import DataTable
+from career_ui_legacy.widgets.work_queue import work_queue_layout
+from career_ui_legacy.components.job_drawer import show_job_drawer
 
-from career_ui.services.control_center import (
+from career_ui_legacy.services.control_center import (
     WORKFLOW_STATUSES,
     get_queue_analytics,
     get_workflow_queue,
@@ -42,7 +42,7 @@ def page() -> None:
                 items = wq.list(sort_by="updated_at", sort_dir="desc")
                 with table_host:
                     if not items:
-                        from career_ui.components.feedback import empty_state
+                        from career_ui_legacy.components.feedback import empty_state
                         empty_state("No queue items", "Queue is currently empty.")
                         return
                     display_cols = ["job_id", "title", "company", "workflow_status", "priority", "retry_count", "updated_at"]

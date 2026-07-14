@@ -1,13 +1,13 @@
 import html
 from nicegui import ui
 
-from career_ui.shell import shell
-from career_ui.layouts.page import page_header, section_header
-from career_ui.components.cards import panel_p
-from career_ui.components.badges import status_badge
-from career_ui.tables.data_table import DataTable
-from career_ui.services.control_center import read_applications
-from career_ui.components.job_drawer import show_job_drawer
+from career_ui_legacy.shell import shell
+from career_ui_legacy.layouts.page import page_header, section_header
+from career_ui_legacy.components.cards import panel_p
+from career_ui_legacy.components.badges import status_badge
+from career_ui_legacy.tables.data_table import DataTable
+from career_ui_legacy.services.control_center import read_applications
+from career_ui_legacy.components.job_drawer import show_job_drawer
 
 @ui.page("/jobs")
 def page():
@@ -18,7 +18,7 @@ def page():
 
         frame = read_applications()
         if frame.empty:
-            from career_ui.components.feedback import empty_state
+            from career_ui_legacy.components.feedback import empty_state
             empty_state("No job records available", "Run acquisition or import jobs first.", classes="mt-10")
             return
 

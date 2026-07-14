@@ -1,7 +1,7 @@
 from nicegui import ui
 
-from career_ui.config import APP_TITLE, HOST, PORT
-from career_ui.pages import (
+from career_ui_legacy.config import APP_TITLE, HOST, PORT
+from career_ui_legacy.pages import (
     analytics,  # noqa: F401
     applications,  # noqa: F401
     dashboard,  # noqa: F401

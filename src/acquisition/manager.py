@@ -66,7 +66,7 @@ class AcquisitionManager:
         Jobs are the legacy Job objects expected by the downstream pipeline.
         """
         providers = self._registry.enabled_providers()
-        caps_map = self._registry.supports_auto_apply_map()
+        caps_map = self._registry.native_apply_map()
 
         if not providers:
             logger.warning("No providers enabled — acquisition returning 0 jobs")
@@ -95,6 +95,9 @@ class AcquisitionManager:
             provider_jobs: list[NormalizedJob] = []
             t0 = time.perf_counter()
 
+            if hasattr(provider, "reset_metrics"):
+                provider.reset_metrics()
+
             for plan in applicable_plans:
                 stats.searches_executed += 1
                 try:
@@ -117,6 +120,17 @@ class AcquisitionManager:
 
             stats.latency_ms = (time.perf_counter() - t0) * 1000
             stats.unique_jobs = len(provider_jobs)  # before cross-provider dedup
+
+            if hasattr(provider, "get_metrics"):
+                pm = provider.get_metrics()
+                stats.http_requests = pm.get("http_requests", 0)
+                stats.http_success = pm.get("http_success", 0)
+                stats.parse_success = pm.get("parse_success", 0)
+                stats.jobs_parsed = pm.get("jobs_parsed", 0)
+                stats.jobs_normalized = pm.get("jobs_normalized", 0)
+                # jobs_returned is already accumulated per-plan in the loop,
+                # but we can sync it with provider metrics if preferred.
+
             provider_stats.append(stats)
             all_normalized.extend(provider_jobs)
 
@@ -256,7 +270,12 @@ class AcquisitionManager:
                     "last_challenge": stat.last_challenge,
                     "searches_executed": stat.searches_executed,
                     "jobs_returned": stat.jobs_returned,
-                    "unique_jobs": stat.unique_jobs
+                    "unique_jobs": stat.unique_jobs,
+                    "http_requests": stat.http_requests,
+                    "http_success": stat.http_success,
+                    "parse_success": stat.parse_success,
+                    "jobs_parsed": stat.jobs_parsed,
+                    "jobs_normalized": stat.jobs_normalized,
                 }
                 
                 # Prepend new entry

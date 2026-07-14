@@ -50,9 +50,11 @@ class WeWorkRemotelyProvider(JobProvider):
 
     def capabilities(self) -> ProviderCapabilities:
         return ProviderCapabilities(
-            supports_auto_apply=False,
+            native_apply=False,
+            external_apply=True,
+            manual_only=False,
+            playwright_supported=False,
             authentication_required=False,
-            supports_login=False,
             supports_pagination=False,
             supports_location_filter=False,
             supports_remote_filter=True,

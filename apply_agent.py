@@ -73,8 +73,6 @@ logger = logging.getLogger(__name__)
 # ----------------------------------------------------------------------------------
 
 
-
-
 # ----------------------------------------------------------------------------------
 # Terminal display helpers
 #
@@ -542,9 +540,11 @@ def fetch_all_jobs(
     # Generate queries from configuration
     planner = SearchPlanner()
     SEARCH_TRACKS = planner.generate_queries()
-    
+
     if not SEARCH_TRACKS:
-        raise ValueError("SearchPlanner generated 0 queries. Check config/user_profile.yaml")
+        raise ValueError(
+            "SearchPlanner generated 0 queries. Check config/user_profile.yaml"
+        )
 
     def _env_int_list(name: str, default: str) -> list[int]:
         raw = os.getenv(name, default)
@@ -670,13 +670,13 @@ def fetch_all_jobs(
                             "search_query",
                             query["keyword"],
                         )
-                        
+
                         setattr(
                             job,
                             "search_profile",
                             query.get("search_profile", "unknown"),
                         )
-                        
+
                         setattr(
                             job,
                             "matched_technology",
@@ -1068,6 +1068,7 @@ class ApplicationRunSummary:
     run_limit_reached: int
     failed: int
     manual_review: int
+    job_traces: list[dict] = field(default_factory=list)
 
 
 def execute_with_safe_retry(
@@ -1166,7 +1167,8 @@ def process_job_application(
     )
 
     if initial_outcome.status in {
-        ApplicationStatus.APPLIED,
+        ApplicationStatus.APPLIED_SUCCESSFULLY,
+        ApplicationStatus.APPLICATION_SUBMITTED,
         ApplicationStatus.ALREADY_APPLIED,
     }:
         return initial_outcome
@@ -1303,6 +1305,12 @@ def enrich_jobs_with_details(
             enriched_jobs.append(job)
             continue
 
+        provider = job.get("provider") or ""
+
+        if provider != "naukri":
+            enriched_jobs.append(job)
+            continue
+
         print(
             f"  [DETAIL {index}/{len(jobs)}] "
             f"{job.get('title')} @ "
@@ -1363,7 +1371,7 @@ def enrich_jobs_with_details(
 
 
 def run_application_batch(
-    jc,
+    registry,
     jobs: list,
     score_map: dict,
     questionnaire_resolver: QuestionnaireResolver | None,
@@ -1416,17 +1424,49 @@ def run_application_batch(
 
     total_candidates = len(jobs)
     rejected_jobs_list = rejected_jobs if rejected_jobs is not None else []
+    job_traces: list[dict] = []
+
     def _record_app_reject(job, code, reason):
         from datetime import datetime, timezone
-        rejected_jobs_list.append({
-            "job_id": str(getattr(job, "job_id", "")),
-            "title": str(getattr(job, "title", "Unknown")),
-            "company": str(getattr(job, "company", "Unknown")),
-            "stage": "Application",
-            "code": code,
-            "reason": str(reason),
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        })
+
+        rejected_jobs_list.append(
+            {
+                "job_id": str(getattr(job, "job_id", "")),
+                "title": str(getattr(job, "title", "Unknown")),
+                "company": str(getattr(job, "company", "Unknown")),
+                "stage": "Application",
+                "code": code,
+                "reason": str(reason),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+        )
+
+    def _persisted_to(status: str) -> str:
+        if status in {"applied", "already_applied"}:
+            return "application_ledger.db"
+        if status in {"external_apply", "manual_review"}:
+            return "workflow_queue.db"
+        if status == "policy_rejected":
+            return "decision_audit"
+        return ""
+
+    def _record_job_trace(job, routing: str, status: str, error: str = ""):
+        job_traces.append(
+            {
+                "job_id": str(getattr(job, "job_id", "")),
+                "provider": str(getattr(job, "provider", "")),
+                "classified": True,
+                "qualified": True,
+                "native_apply": bool(getattr(job, "native_apply", False)),
+                "routing": routing,
+                "persisted_to": _persisted_to(status),
+                "api_visible": status
+                in {"applied", "external_apply", "manual_review", "already_applied"},
+                "ui_visible": status
+                in {"applied", "external_apply", "manual_review", "already_applied"},
+                "error": error,
+            }
+        )
 
     manual_action_queue = ManualActionQueue(
         os.getenv(
@@ -1469,9 +1509,12 @@ def run_application_batch(
             )
 
             already_applied_count += 1
-            _record_app_reject(job, 'ALREADY_APPLIED', 'Previously applied in an earlier run.')
+            _record_app_reject(
+                job, "ALREADY_APPLIED", "Previously applied in an earlier run."
+            )
             if ledger is not None:
                 ledger.record(job, "already_applied", meta=meta)
+            _record_job_trace(job, "ALREADY_APPLIED", "already_applied")
             continue
 
         # ----------------------------------------------------------
@@ -1492,7 +1535,9 @@ def run_application_batch(
             )
 
             policy_rejected_count += 1
-            _record_app_reject(job, policy_evaluation.reason.value, policy_evaluation.detail)
+            _record_app_reject(
+                job, policy_evaluation.reason.value, policy_evaluation.detail
+            )
             if ledger is not None:
                 ledger.record(
                     job,
@@ -1500,6 +1545,7 @@ def run_application_batch(
                     meta=meta,
                     detail=policy_evaluation.reason.value,
                 )
+            _record_job_trace(job, "POLICY_REJECT", "policy_rejected")
             continue
 
         # ----------------------------------------------------------
@@ -1516,8 +1562,13 @@ def run_application_batch(
                 "Leaving %s queued candidate(s) for a later run.",
                 run_limit_reached_count,
             )
-            for remaining_job in jobs[index - 1:]:
-                _record_app_reject(remaining_job, 'APPLICATION_QUOTA', 'Per-run successful submission limit reached')
+            for remaining_job in jobs[index - 1 :]:
+                _record_app_reject(
+                    remaining_job,
+                    "APPLICATION_QUOTA",
+                    "Per-run successful submission limit reached",
+                )
+                _record_job_trace(remaining_job, "RUN_LIMIT", "run_limit_reached")
             break
 
         if effective_policy.dry_run:
@@ -1525,56 +1576,60 @@ def run_application_batch(
             dry_run_skipped_count += 1
             if ledger is not None:
                 ledger.record(job, "dry_run_suppressed", meta=meta)
+            _record_job_trace(job, "DRY_RUN", "dry_run_suppressed")
             continue
 
         # ----------------------------------------------------------
-        # External application check
+        # Application Routing Check
         # ----------------------------------------------------------
 
         try:
-            is_external = meta.get("is_external_apply")
+            provider_name = meta.get("provider") or getattr(job, "provider", None)
+            
+            if not provider_name:
+                raise ValueError(f"Job missing provider: job_id={job.job_id}")
+                
+            provider = registry.get_provider(provider_name)
+            if not provider:
+                raise ValueError(f"Provider '{provider_name}' not loaded in registry")
+                
+            capabilities = provider.capabilities()
+            
+            jc = None
+            if capabilities.native_apply:
+                jc = getattr(provider, "get_job_client", lambda: None)()
+                if not jc:
+                    raise ValueError(f"Provider {provider_name} claims native_apply but provides no JobClient")
 
-            if is_external is None:
-                is_external = jc.is_external_apply(job.job_id)
-
-            if is_external:
-                print_status_skipped_external()
-
-                skipped_external_count += 1
-                _record_app_reject(job, 'EXTERNAL_REJECTION', 'Job requires applying on external portal')
-                if ledger is not None:
-                    ledger.record(job, "external_apply", meta=meta)
-                job_id = str(job.job_id)
-
-                score_result = score_map.get(
-                    job_id,
-                    {},
-                )
-
-                manual_action_queue.enqueue_external_apply(
-                    job=job,
-                    score=int(
-                        score_result.get(
-                            "score",
-                            score_result.get(
-                                "ai_score",
-                                0,
-                            ),
-                        )
-                        or 0
-                    ),
-                    reason=str(
-                        score_result.get(
-                            "ai_detail",
-                            score_result.get(
-                                "ai_reason",
-                                "",
-                            ),
-                        )
-                        or ""
-                    ),
-                    run_id=run_id,
-                )
+            if not capabilities.native_apply:
+                if capabilities.playwright_supported:
+                    print_status_skipped_external()
+                    skipped_external_count += 1
+                    _record_app_reject(job, "QUEUED_FOR_PLAYWRIGHT", "Job requires Playwright automation")
+                    if ledger:
+                        ledger.record(job, "queued_for_playwright", meta=meta)
+                    _record_job_trace(job, "QUEUED_FOR_PLAYWRIGHT", "queued_for_playwright")
+                    
+                    score_result = score_map.get(str(job.job_id), {})
+                    manual_action_queue.enqueue_external_apply(
+                        job=job,
+                        score=int(score_result.get("score", score_result.get("ai_score", 0)) or 0),
+                        reason=str(score_result.get("ai_detail", score_result.get("ai_reason", "")) or ""),
+                        run_id=run_id,
+                    )
+                elif capabilities.manual_only:
+                    manual_review_count += 1
+                    _record_app_reject(job, "QUEUED_FOR_MANUAL_REVIEW", "Job flagged for manual review")
+                    if ledger:
+                        ledger.record(job, "queued_for_manual_review", meta=meta)
+                    _record_job_trace(job, "QUEUED_FOR_MANUAL_REVIEW", "queued_for_manual_review")
+                else:
+                    skipped_external_count += 1
+                    _record_app_reject(job, "PROVIDER_UNSUPPORTED", "Provider does not support automation")
+                    if ledger:
+                        ledger.record(job, "provider_unsupported", meta=meta)
+                    _record_job_trace(job, "PROVIDER_UNSUPPORTED", "provider_unsupported")
+                    
                 continue
 
         except Exception as exc:
@@ -1583,6 +1638,7 @@ def run_application_batch(
             failed_count += 1
             if ledger is not None:
                 ledger.record(job, "detail_check_failed", meta=meta, error=str(exc))
+            _record_job_trace(job, "FAILED", "failed", error=str(exc))
             continue
 
         # ----------------------------------------------------------
@@ -1617,17 +1673,18 @@ def run_application_batch(
 
                 applied_jobs_set.add(job.job_id)
 
-
-
                 already_applied_count += 1
-                _record_app_reject(job, 'ALREADY_APPLIED', 'Server reports job already applied')
+                _record_app_reject(
+                    job, "ALREADY_APPLIED", "Server reports job already applied"
+                )
 
                 if ledger is not None:
                     ledger.record(job, "already_applied", meta=meta)
 
+                _record_job_trace(job, "ALREADY_APPLIED", "already_applied")
                 continue
 
-            if outcome.status != ApplicationStatus.APPLIED:
+            if outcome.status not in {ApplicationStatus.APPLIED_SUCCESSFULLY, ApplicationStatus.APPLICATION_SUBMITTED}:
                 raise RuntimeError(
                     "Application did not produce a successful outcome: "
                     f"{outcome.status.value}. "
@@ -1638,8 +1695,6 @@ def run_application_batch(
 
             print_status_applied(applied_at)
 
-
-
             applied_jobs_set.add(job.job_id)
 
             applied_count += 1
@@ -1649,10 +1704,12 @@ def run_application_batch(
             if ledger is not None:
                 ledger.record(job, "applied", meta=meta)
 
+            _record_job_trace(job, "AUTO_APPLY", "applied")
+
         except ManualReviewRequired as exc:
             print_status_manual_review(exc)
             manual_review_count += 1
-            _record_app_reject(job, 'MANUAL_REVIEW', str(exc))
+            _record_app_reject(job, "MANUAL_REVIEW", str(exc))
             breaker.success()
 
             if ledger is not None:
@@ -1679,6 +1736,8 @@ def run_application_batch(
                 run_id=run_id,
             )
 
+            _record_job_trace(job, "MANUAL_REVIEW", "manual_review", error=str(exc))
+
         except Exception as exc:
             print_status_failed(exc)
 
@@ -1698,6 +1757,8 @@ def run_application_batch(
                     f"Application circuit breaker tripped after {breaker.consecutive_failures} consecutive failures: {breaker.reason}"
                 ) from exc
 
+            _record_job_trace(job, "FAILED", "failed", error=str(exc))
+
         finally:
             sleep_fn(3)
 
@@ -1712,6 +1773,7 @@ def run_application_batch(
         run_limit_reached=run_limit_reached_count,
         failed=failed_count,
         manual_review=manual_review_count,
+        job_traces=job_traces,
     )
 
 

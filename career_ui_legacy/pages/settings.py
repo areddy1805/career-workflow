@@ -1,11 +1,11 @@
 import pandas as pd
 from nicegui import ui
 
-from career_ui.shell import shell
-from career_ui.layouts.page import page_header, section_header
-from career_ui.components.cards import panel_p
-from career_ui.tables.data_table import DataTable
-from career_ui.services.control_center import (
+from career_ui_legacy.shell import shell
+from career_ui_legacy.layouts.page import page_header, section_header
+from career_ui_legacy.components.cards import panel_p
+from career_ui_legacy.tables.data_table import DataTable
+from career_ui_legacy.services.control_center import (
     MANUAL_JOBS_DB,
     ledger_path,
     manual_queue_path,

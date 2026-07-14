@@ -28,7 +28,10 @@ class RemotiveProvider(JobProvider):
 
     def capabilities(self) -> ProviderCapabilities:
         return ProviderCapabilities(
-            supports_auto_apply=False,
+            native_apply=False,
+            external_apply=True,
+            manual_only=False,
+            playwright_supported=False,
             supports_location_filter=False, # Remotive is remote-only
             supports_remote_filter=True,
             supports_pagination=False, # Returns all in one payload typically

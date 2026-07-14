@@ -2,13 +2,13 @@ import json
 import pandas as pd
 from nicegui import ui
 
-from career_ui.shell import shell
-from career_ui.layouts.page import page_header, section_header, split_pane
-from career_ui.components.cards import panel_p
-from career_ui.tables.data_table import DataTable
-from career_ui.services.control_center import available_runs, inspect_run
+from career_ui_legacy.shell import shell
+from career_ui_legacy.layouts.page import page_header, section_header, split_pane
+from career_ui_legacy.components.cards import panel_p
+from career_ui_legacy.tables.data_table import DataTable
+from career_ui_legacy.services.control_center import available_runs, inspect_run
 from control_center.run_inspector import read_json_artifact, read_text_artifact
-from career_ui.utils.formatting import format_datetime, format_duration
+from career_ui_legacy.utils.formatting import format_datetime, format_duration
 
 @ui.page("/runs")
 def page():
@@ -18,7 +18,7 @@ def page():
 
         runs = available_runs()
         if not runs:
-            from career_ui.components.feedback import empty_state
+            from career_ui_legacy.components.feedback import empty_state
             empty_state("No run artifacts available")
             return
 

@@ -12,7 +12,7 @@ def page_header(title: str, subtitle: str = "", kicker: str = "", status: str | 
                 ui.html(f'<div class="text-xs" style="color:var(--muted)">{escape(subtitle)}</div>')
 
         if status:
-            from career_ui.components.badges import status_badge
+            from career_ui_legacy.components.badges import status_badge
             status_badge(status)
 
 def section_header(title: str, subtitle: str = ""):

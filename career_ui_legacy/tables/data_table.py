@@ -17,7 +17,7 @@ class DataTable:
                 records = data
 
             if not records:
-                from career_ui.components.feedback import empty_state
+                from career_ui_legacy.components.feedback import empty_state
                 empty_state("No data available", "There are no records to display in this table.", icon="table_rows")
                 return
 

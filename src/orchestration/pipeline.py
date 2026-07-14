@@ -212,6 +212,16 @@ class CareerWorkflowPipeline:
         )
         tmp.replace(target)
 
+    def _write_text_artifact(self, filename: str, content: str) -> None:
+        self.run_dir.mkdir(parents=True, exist_ok=True)
+        target = self.run_dir / filename
+        tmp = target.with_suffix(target.suffix + ".tmp")
+        tmp.write_text(content, encoding="utf-8")
+        tmp.replace(target)
+        if filename not in self.context.generated_artifacts:
+            self.context.generated_artifacts.append(filename)
+        self._write_manifest()
+
     # ------------------------------------------------------------------
     # Stage execution
     # ------------------------------------------------------------------
@@ -454,6 +464,8 @@ class CareerWorkflowPipeline:
         registry.shutdown_all()
 
         self.context.acquired_jobs = jobs
+        self.context.metrics.acquired = len(jobs)
+        self.context.metrics.discovered = len(jobs)
 
         # Build a lightweight fetch_result-compatible object for downstream
         # stage_results usage (cooldown display, etc.)
@@ -594,6 +606,9 @@ class CareerWorkflowPipeline:
         final_jobs = enrich_application_metadata(final_jobs)
 
         self.context.classified_jobs = final_jobs
+        self.context.metrics.qualified = len(final_jobs)
+        self.context.metrics.scored = len(final_jobs)
+        self.context.metrics.normalized = len(self.context.acquired_jobs)
 
         self.context.score_map = {
             str(result["job_id"]): result for result in final_jobs
@@ -905,6 +920,7 @@ class CareerWorkflowPipeline:
                 )
 
         self.context.selected_jobs = selected_jobs
+        self.context.metrics.selected = len(selected_jobs)
 
         for j in selected_jobs:
             if sm_job := self.context.score_map.get(str(j.job_id)):
@@ -1030,8 +1046,11 @@ class CareerWorkflowPipeline:
             strategy=strategy_audit_payload(self.context.adaptive_strategy),
         )
 
+        from src.acquisition.registry import ProviderRegistry
+        registry = ProviderRegistry()
+
         summary = run_application_batch(
-            jc=self.context.job_client,
+            registry=registry,
             jobs=self.context.selected_jobs,
             score_map=self.context.score_map,
             questionnaire_resolver=(questionnaire_resolver),
@@ -1055,6 +1074,12 @@ class CareerWorkflowPipeline:
             failed=summary.failed,
         )
 
+        self.context.metrics.applied = summary.applied
+        self.context.metrics.failed = summary.failed
+        self.context.metrics.skipped = summary.skipped_local + summary.skipped_external + summary.policy_rejected + summary.dry_run_skipped + summary.run_limit_reached
+        self.context.metrics.queued = summary.skipped_external + summary.manual_review
+        self.context.metrics.rejected = summary.policy_rejected
+        
         attempted = (
             summary.applied
             + summary.failed
@@ -1085,6 +1110,9 @@ class CareerWorkflowPipeline:
                 ],
             },
         )
+
+        if summary.job_traces:
+            self._write_artifact("job_trace.json", summary.job_traces)
 
     # ------------------------------------------------------------------
     # Reconciliation
@@ -1417,12 +1445,18 @@ class CareerWorkflowPipeline:
         
         provider_quality = engine.generate_provider_quality()
         self._write_artifact("provider_quality.json", provider_quality)
-        
+
         # We will add duplicate_analysis.json later
+
+        # -----------------------------------------------------------------
+        # routing_validation.md — human-readable summary of every selected
+        # job and its terminal routing destination.
+        # -----------------------------------------------------------------
+        self._write_routing_validation_md(result)
 
     def _validate_artifacts(self, result: PipelineResult) -> None:
         diagnostics = []
-        
+
         # 1. acquired = classified + rejected (at classification phase)
         rejected_at_class = len([j for j in self.context.rejected_jobs if j.get("stage", "") not in ["Selection", "Application"]])
         if result.acquired != (result.classified + rejected_at_class):
@@ -1432,9 +1466,9 @@ class CareerWorkflowPipeline:
             )
 
         # 2. classified = selected + low_score + manual_review + other_classification_rejections
-        # Actually, selection rejections are captured in rejected_jobs with stage="Selection". 
+        # Actually, selection rejections are captured in rejected_jobs with stage="Selection".
         rejected_at_select = len([j for j in self.context.rejected_jobs if j.get("stage", "") == "Selection"])
-        # Wait, the prompt says low_score, manual_review... 
+        # Wait, the prompt says low_score, manual_review...
         # But simply put: classified = selected + rejected (at selection phase).
         if result.classified != (result.selected + rejected_at_select):
             diagnostics.append(
@@ -1448,7 +1482,7 @@ class CareerWorkflowPipeline:
             result.already_applied +
             result.skipped_external +
             result.policy_rejected +
-            result.failed + 
+            result.failed +
             result.manual_review +
             result.skipped_local +
             result.run_limit_reached +
@@ -1459,11 +1493,66 @@ class CareerWorkflowPipeline:
                 f"Mismatch at application: selected({result.selected}) != "
                 f"breakdown_total({selected_calc})"
             )
-            
+
         if diagnostics:
             print("[DIAGNOSTICS] Pipeline artifact validation issues found:")
             for d in diagnostics:
                 print(f"  - {d}")
+
+    def _write_routing_validation_md(self, result: PipelineResult) -> None:
+        """
+        Generate a human-readable routing validation markdown summarizing
+        every selected job and its terminal routing decision.
+        """
+        lines: list[str] = []
+        lines.append("# Routing Validation Report")
+        lines.append("")
+        lines.append(f"- **Run ID**: `{result.run_id}`")
+        lines.append(f"- **Status**: `{result.status}`")
+        lines.append(f"- **Selected**: {result.selected}")
+        lines.append(f"- **Submitted**: {result.submitted}")
+        lines.append(f"- **Already Applied**: {result.already_applied}")
+        lines.append(f"- **Skipped External**: {result.skipped_external}")
+        lines.append(f"- **Manual Review**: {result.manual_review}")
+        lines.append(f"- **Policy Rejected**: {result.policy_rejected}")
+        lines.append(f"- **Dry Run Skipped**: {result.dry_run_skipped}")
+        lines.append(f"- **Run Limit Reached**: {result.run_limit_reached}")
+        lines.append(f"- **Failed**: {result.failed}")
+        lines.append("")
+
+        summary = self.context.application_summary
+        traces = summary.job_traces if summary is not None else []
+        score_map = self.context.score_map or {}
+
+        if not traces:
+            lines.append("_No job traces captured. The application stage did not run or returned no traces._")
+            self._write_text_artifact("routing_validation.md", "\n".join(lines) + "\n")
+            return
+
+        lines.append("| Job ID | Provider | Routing | Persisted To | API Visible | UI Visible | Error |")
+        lines.append("|---|---|---|---|---|---|---|")
+
+        for trace in traces:
+            jid = trace.get("job_id", "")
+            provider = trace.get("provider", "")
+            routing = trace.get("routing", "")
+            persisted = trace.get("persisted_to", "")
+            api = "✓" if trace.get("api_visible") else "✗"
+            ui = "✓" if trace.get("ui_visible") else "✗"
+            error = (trace.get("error") or "").replace("|", "\\|")[:100]
+            lines.append(f"| `{jid}` | {provider} | {routing} | {persisted} | {api} | {ui} | {error} |")
+
+        lines.append("")
+        lines.append("## Routing Breakdown")
+        lines.append("")
+        breakdown: dict[str, int] = {}
+        for trace in traces:
+            r = trace.get("routing") or "UNKNOWN"
+            breakdown[r] = breakdown.get(r, 0) + 1
+        for routing, count in sorted(breakdown.items()):
+            lines.append(f"- **{routing}**: {count}")
+
+        self._write_text_artifact("routing_validation.md", "\n".join(lines) + "\n")
 
     def print_observability_report(self, result: PipelineResult) -> None:
         m = self.context.metrics

@@ -1,12 +1,12 @@
 from nicegui import ui
 
-from career_ui.layouts.page import section_header, metrics_grid
-from career_ui.components.cards import panel_p, metric_card
-from career_ui.tables.data_table import DataTable
-from career_ui.widgets.work_queue import work_queue_layout
-from career_ui.components.job_drawer import show_job_drawer
+from career_ui_legacy.layouts.page import section_header, metrics_grid
+from career_ui_legacy.components.cards import panel_p, metric_card
+from career_ui_legacy.tables.data_table import DataTable
+from career_ui_legacy.widgets.work_queue import work_queue_layout
+from career_ui_legacy.components.job_drawer import show_job_drawer
 
-from career_ui.services.control_center import (
+from career_ui_legacy.services.control_center import (
     MANUAL_JOB_SOURCES,
     add_manual_job,
     read_manual_jobs,
@@ -51,7 +51,7 @@ def page():
                                 metric_card("Remaining", max(0, len(frame) - applied), "open lifecycle")
 
                             if frame.empty:
-                                from career_ui.components.feedback import empty_state
+                                from career_ui_legacy.components.feedback import empty_state
                                 empty_state("No external-apply jobs detected")
                             else:
                                 display = [c for c in ("job_id", "title", "company", "score", "status", "run_id", "updated_at") if c in frame.columns]
@@ -91,7 +91,7 @@ def page():
                         frame = read_manual_jobs()
                         with manual_host:
                             if frame.empty:
-                                from career_ui.components.feedback import empty_state
+                                from career_ui_legacy.components.feedback import empty_state
                                 empty_state("Manual opportunity list is empty")
                             else:
                                 display = [c for c in ("id", "title", "company", "location", "source", "status", "priority", "updated_at") if c in frame.columns]

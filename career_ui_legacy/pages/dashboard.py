@@ -1,17 +1,17 @@
 from nicegui import ui
 from datetime import datetime, UTC
 
-from career_ui.shell import shell
-from career_ui.layouts.page import page_header, section_header, metrics_grid, split_pane
-from career_ui.components.cards import metric_card, panel, panel_p
-from career_ui.components.badges import status_badge
-from career_ui.components.feedback import callout
-from career_ui.tables.data_table import DataTable
-from career_ui.utils.formatting import format_datetime
-from career_ui.widgets.stage_rail import stage_rail
-from career_ui.widgets.funnel import funnel
+from career_ui_legacy.shell import shell
+from career_ui_legacy.layouts.page import page_header, section_header, metrics_grid, split_pane
+from career_ui_legacy.components.cards import metric_card, panel, panel_p
+from career_ui_legacy.components.badges import status_badge
+from career_ui_legacy.components.feedback import callout
+from career_ui_legacy.tables.data_table import DataTable
+from career_ui_legacy.utils.formatting import format_datetime
+from career_ui_legacy.widgets.stage_rail import stage_rail
+from career_ui_legacy.widgets.funnel import funnel
 
-from career_ui.services.control_center import (
+from career_ui_legacy.services.control_center import (
     application_summary,
     latest_run,
     pipeline_is_running,

@@ -3,10 +3,10 @@ import json
 import pandas as pd
 from nicegui import ui
 from typing import Callable
-from career_ui.layouts.page import section_header
-from career_ui.components.badges import status_badge
-from career_ui.components.cards import panel_p
-from career_ui.services.control_center import (
+from career_ui_legacy.layouts.page import section_header
+from career_ui_legacy.components.badges import status_badge
+from career_ui_legacy.components.cards import panel_p
+from career_ui_legacy.services.control_center import (
     update_external_action_status,
     update_manual_job_status,
     workflow_queue_transition,
@@ -140,7 +140,7 @@ def show_job_drawer(job_data: dict, on_change: Callable | None = None):
 
                 rej_reason = job_data.get('rejection_reason') or job_data.get('reject_reason')
                 if rej_reason and (pd.notna(rej_reason) if 'pd' in globals() else True):
-                    from career_ui.components.feedback import callout
+                    from career_ui_legacy.components.feedback import callout
                     callout("Rejected", str(rej_reason), type="error")
 
                 section_header("Raw Record")

@@ -55,16 +55,23 @@ class NaukriProvider(JobProvider):
         self._search_requests_attempted = 0
         self._pages_stopped_low_yield = 0
         self._stop_reasons: dict[str, int] = {}
+        self._metrics = {
+            "http_requests": 0,
+            "http_success": 0,
+            "parse_success": 0,
+            "jobs_returned": 0,
+            "jobs_parsed": 0,
+            "jobs_normalized": 0,
+        }
         self._initialized = True
 
     def capabilities(self) -> ProviderCapabilities:
         return ProviderCapabilities(
-            supports_auto_apply=True,
-            supports_easy_apply=True,
-            supports_resume_upload=True,
-            supports_questionnaire=True,
+            native_apply=True,
+            external_apply=False,
+            manual_only=False,
+            playwright_supported=False,
             authentication_required=True,
-            supports_login=True,
             supports_incremental=True,
             supports_pagination=True,
             supports_location_filter=True,
@@ -109,13 +116,19 @@ class NaukriProvider(JobProvider):
         """Convert a raw Naukri Job object to NormalizedJob."""
         job: Job = raw
         job_id = str(getattr(job, "job_id", "") or "")
+        apply_link = getattr(job, "apply_link", "") or ""
+
+        if not apply_link:
+            raise ValueError(
+                f"Naukri job missing apply_link: job_id={job_id}"
+            )
 
         return NormalizedJob(
             provider=self.PROVIDER_NAME,
             provider_job_id=job_id,
             provider_name="Naukri",
             provider_url=f"https://www.naukri.com/job-listings-{job_id}",
-            application_url=getattr(job, "apply_link", "") or f"https://www.naukri.com/job-listings-{job_id}",
+            application_url=apply_link,
             job_board="naukri",
             company=job.company,
             title=job.title,
@@ -210,6 +223,7 @@ class NaukriProvider(JobProvider):
         for page in range(1, PAGES + 1):
             try:
                 self._search_requests_attempted += 1
+                self._metrics["http_requests"] += 1
                 raw_jobs = jc.search_jobs(
                     keyword=query,
                     location=location,
@@ -218,9 +232,10 @@ class NaukriProvider(JobProvider):
                     page=page,
                     results_per_page=RESULTS_PER_PAGE,
                 )
+                self._metrics["http_success"] += 1
 
                 page_sig = tuple(
-                    str(getattr(j, "id", None) or getattr(j, "job_id", None) or "")
+                    str(j.get("id") or j.get("jobId") or "")
                     for j in raw_jobs
                 )
 
@@ -230,9 +245,17 @@ class NaukriProvider(JobProvider):
 
                 new_count = 0
                 for raw_job in raw_jobs:
+                    self._metrics["jobs_returned"] += 1
+                    try:
+                        job_obj = jc._parse_job(raw_job)
+                        self._metrics["jobs_parsed"] += 1
+                    except Exception as e:
+                        logger.error("Naukri parse error on job schema: %s", e)
+                        continue
+
                     job_id = str(
-                        getattr(raw_job, "id", None)
-                        or getattr(raw_job, "job_id", None)
+                        getattr(job_obj, "id", None)
+                        or getattr(job_obj, "job_id", None)
                         or ""
                     )
                     if job_id and job_id in seen_ids:
@@ -241,14 +264,23 @@ class NaukriProvider(JobProvider):
                         seen_ids.add(job_id)
 
                     # Tag search context onto raw job so normalize() can read it
-                    setattr(raw_job, "search_query", query)
-                    setattr(raw_job, "search_profile", plan.profile)
-                    setattr(raw_job, "matched_technology", plan.matched_technology)
-                    setattr(raw_job, "search_track", plan.track)
-                    setattr(raw_job, "acquisition_source", "live")
+                    setattr(job_obj, "search_query", query)
+                    setattr(job_obj, "search_profile", plan.profile)
+                    setattr(job_obj, "matched_technology", plan.matched_technology)
+                    setattr(job_obj, "search_track", plan.track)
+                    setattr(job_obj, "acquisition_source", "live")
 
-                    collected.append(self.normalize(raw_job))
-                    new_count += 1
+                    try:
+                        normalized = self.normalize(job_obj)
+                        collected.append(normalized)
+                        self._metrics["jobs_normalized"] += 1
+                        new_count += 1
+                    except Exception as e:
+                        logger.error("Naukri normalization error: %s", e)
+                        continue
+
+                if new_count > 0:
+                    self._metrics["parse_success"] += 1
 
                 if not raw_jobs or len(raw_jobs) < RESULTS_PER_PAGE:
                     self._stop_reasons["short_page"] = self._stop_reasons.get("short_page", 0) + 1
@@ -274,7 +306,7 @@ class NaukriProvider(JobProvider):
                 break
 
             except Exception as exc:
-                logger.warning("Naukri search error: query=%s exp=%d p=%d -> %s", query, experience, page, exc)
+                logger.exception("Naukri search error: query=%s exp=%d p=%d -> %s", query, experience, page, exc)
                 time.sleep(3)
 
         return collected
@@ -293,6 +325,19 @@ class NaukriProvider(JobProvider):
     def get_job_client(self):
         """Expose job client for the pipeline's classify/apply stages."""
         return self._job_client
+
+    def reset_metrics(self) -> None:
+        self._metrics = {
+            "http_requests": 0,
+            "http_success": 0,
+            "parse_success": 0,
+            "jobs_returned": 0,
+            "jobs_parsed": 0,
+            "jobs_normalized": 0,
+        }
+
+    def get_metrics(self) -> dict:
+        return self._metrics.copy()
 
     def get_fetch_result_metadata(self) -> dict:
         """Return metadata compatible with the original JobFetchResult for the pipeline."""

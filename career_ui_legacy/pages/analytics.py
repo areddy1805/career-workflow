@@ -1,13 +1,13 @@
 import pandas as pd
 from nicegui import ui
 
-from career_ui.shell import shell
-from career_ui.layouts.page import page_header, section_header, metrics_grid
-from career_ui.components.cards import panel_p, metric_card
-from career_ui.tables.data_table import DataTable
-from career_ui.charts.echarts import Chart
+from career_ui_legacy.shell import shell
+from career_ui_legacy.layouts.page import page_header, section_header, metrics_grid
+from career_ui_legacy.components.cards import panel_p, metric_card
+from career_ui_legacy.tables.data_table import DataTable
+from career_ui_legacy.charts.echarts import Chart
 
-from career_ui.services.control_center import (
+from career_ui_legacy.services.control_center import (
     application_summary,
     average_time_to_first_response_hours,
     lifecycle_distribution,
@@ -70,7 +70,7 @@ def page():
                         "series": [{"type": "bar", "data": vals, "itemStyle": {"color": "var(--primary)", "borderRadius": [4, 4, 0, 0]}}]
                     }, classes="w-full h-full min-h-[300px]")
                 else:
-                    from career_ui.components.feedback import empty_state
+                    from career_ui_legacy.components.feedback import empty_state
                     empty_state("No data")
 
             with panel_p("w-full min-w-0 overflow-hidden flex flex-col"):
@@ -86,10 +86,10 @@ def page():
                             "series": [{"type": "line", "smooth": True, "data": v.astype(int).tolist(), "lineStyle": {"color": "var(--primary)", "width": 3}, "areaStyle": {"color": "rgba(115, 104, 244, 0.1)"}, "symbolSize": 0}]
                         }, classes="w-full h-full min-h-[300px]")
                     else:
-                        from career_ui.components.feedback import empty_state
+                        from career_ui_legacy.components.feedback import empty_state
                         empty_state("No velocity data")
                 else:
-                    from career_ui.components.feedback import empty_state
+                    from career_ui_legacy.components.feedback import empty_state
                     empty_state("No velocity data")
 
         with ui.element("div").classes("grid grid-cols-2 gap-6 w-full h-[450px]"):

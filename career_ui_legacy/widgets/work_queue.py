@@ -1,7 +1,7 @@
 from nicegui import ui
-from career_ui.shell import shell
-from career_ui.layouts.page import page_header
-from career_ui.components.cards import panel_p
+from career_ui_legacy.shell import shell
+from career_ui_legacy.layouts.page import page_header
+from career_ui_legacy.components.cards import panel_p
 
 def work_queue_layout(active_route: str, content_builder):
     shell(active_route)

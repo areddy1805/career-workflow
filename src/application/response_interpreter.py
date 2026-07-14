@@ -69,7 +69,7 @@ def interpret_application_response(
 
     if status_code in SUCCESS_CODES:
         return ApplicationOutcome(
-            status=ApplicationStatus.APPLIED,
+            status=ApplicationStatus.APPLIED_SUCCESSFULLY,
             job_id=job_id,
             response=response,
             reasoning="Application API reported successful completion.",
@@ -82,7 +82,7 @@ def interpret_application_response(
         and chatbot_response.get("dataCommitted") is True
     ):
         return ApplicationOutcome(
-            status=ApplicationStatus.APPLIED,
+            status=ApplicationStatus.APPLIED_SUCCESSFULLY,
             job_id=job_id,
             response=response,
             reasoning=(

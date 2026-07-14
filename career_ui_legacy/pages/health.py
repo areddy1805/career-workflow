@@ -1,12 +1,12 @@
 from html import escape
 from nicegui import ui
 
-from career_ui.shell import shell
-from career_ui.layouts.page import page_header, section_header, metrics_grid
-from career_ui.components.cards import metric_card, panel_p
-from career_ui.components.badges import status_badge
-from career_ui.components.feedback import callout
-from career_ui.services.control_center import collect_health_checks, health_summary
+from career_ui_legacy.shell import shell
+from career_ui_legacy.layouts.page import page_header, section_header, metrics_grid
+from career_ui_legacy.components.cards import metric_card, panel_p
+from career_ui_legacy.components.badges import status_badge
+from career_ui_legacy.components.feedback import callout
+from career_ui_legacy.services.control_center import collect_health_checks, health_summary
 
 def _status(check: dict) -> str:
     return str(check.get("status", "UNKNOWN")).upper()

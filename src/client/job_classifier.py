@@ -551,6 +551,8 @@ class JobFilterPipeline2:
                     "search_query": (job.get("search_query") or ""),
                     "search_profile": (job.get("search_profile") or "unknown"),
                     "matched_technology": (job.get("matched_technology") or ""),
+                    "provider": (job.get("provider") or ""),
+                    "native_apply": job.get("native_apply"),
                     "decision_history": [{
                         "stage": "Acquisition",
                         "decision": "ACQUIRED",

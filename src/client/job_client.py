@@ -139,6 +139,11 @@ class NaukriJobClient:
             ),
             "N/A",
         )
+        jd_url = raw.get("jdURL")
+        if not jd_url:
+            raise ValueError(
+                f"Naukri job missing jdURL: jobId={raw.get('jobId') or raw.get('id')}"
+            )
         return Job(
             job_id=str(raw.get("jobId") or raw.get("id") or ""),
             title=raw.get("title") or raw.get("jobTitle") or "N/A",
@@ -149,8 +154,7 @@ class NaukriJobClient:
             posted_date=raw.get("footerPlaceholderLabel")
             or raw.get("postedDate")
             or "N/A",
-            apply_link=raw.get("jdURL")
-            or f"https://www.naukri.com/job-listings-{raw.get('jobId', '')}",
+            apply_link=jd_url,
             description=raw.get("jobDescription") or "",
             tags=(
                 [t.strip() for t in raw.get("tagsAndSkills", "").split(",")]
@@ -232,7 +236,7 @@ class NaukriJobClient:
     def _search_headers(self) -> dict:
         # Builds headers for the search endpoint. Uses non-auth base headers
         # and adds the appid, gid, and nkparam fields required by the search API.
-        headers = self._client._build_headers(auth=False)
+        headers = self._client._build_headers(auth=True)
         headers.update(
             {
                 "authority": "www.naukri.com",
@@ -650,7 +654,7 @@ class NaukriJobClient:
         experience: int = 2,
         results_per_page: int = 20,
         lat_long: str = "",
-    ) -> list[Job]:
+    ) -> list[dict]:
 
         url = JOB_SEARCH_URL
         seo_key = self._build_seo_key(keyword, location, page)
@@ -672,11 +676,38 @@ class NaukriJobClient:
 
         res = self._session.get(url, headers=self._search_headers(), params=params)
 
-        # print("\nSEARCH DEBUG")
-        # print("STATUS:", res.status_code)
-        # print("URL:", res.url)
-        # print("CONTENT-TYPE:", res.headers.get("content-type"))
-        # print("RESPONSE:", res.text[:2000])
+        print("\n" + "="*80)
+        print("NAUKRI HTTP DIAGNOSTICS")
+        print("="*80)
+        print(f"URL: {url}")
+        print(f"HTTP Method: GET")
+        
+        print("Complete Query Parameters:")
+        for k, v in params.items():
+            print(f"  {k}: {v}")
+            
+        print(f"Authorization Header Present: {'Authorization' in self._search_headers() or 'authorization' in self._search_headers()}")
+        print(f"Content-Type: {res.headers.get('Content-Type', res.headers.get('content-type', 'N/A'))}")
+        print(f"HTTP Status: {res.status_code}")
+        
+        try:
+            print(f"Response Length: {len(res.content)}")
+        except Exception:
+            print(f"Response Length: {len(res.text)}")
+        
+        try:
+            payload = res.json()
+            print("Top-level JSON Keys:", list(payload.keys()))
+            for k, v in payload.items():
+                if isinstance(v, list):
+                    print(f"Array key '{k}' length: {len(v)}")
+        except Exception:
+            print("JSON Parsing Failed. Raw Body:")
+            print(res.text)
+            
+        print("\nFirst 3000 characters of the response:")
+        print(res.text[:3000])
+        print("="*80 + "\n")
 
         if res.status_code == 403:
             raise NaukriAuthError("403 Forbidden — nkparam token likely expired")
@@ -709,7 +740,7 @@ class NaukriJobClient:
             logger.debug("No jobs returned for keyword=%r page=%d", keyword, page)
             return []
 
-        return [self._parse_job(j) for j in raw_jobs]
+        return raw_jobs
 
     def respond_to_chatbot(
         self,

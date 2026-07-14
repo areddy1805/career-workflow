@@ -204,10 +204,10 @@ class ProviderRegistry:
         """Map of provider_name → ProviderCapabilities for all loaded providers."""
         return dict(self._capabilities_map)
 
-    def supports_auto_apply_map(self) -> dict[str, bool]:
-        """Quick map of {provider_name: supports_auto_apply}."""
+    def native_apply_map(self) -> dict[str, bool]:
+        """Quick map of {provider_name: native_apply}."""
         return {
-            name: caps.supports_auto_apply
+            name: caps.native_apply
             for name, caps in self._capabilities_map.items()
         }
 
@@ -231,7 +231,7 @@ class ProviderRegistry:
                 "capabilities": caps.to_dict() if caps else {},
                 "health": health.to_dict() if health else None,
                 "authentication_required": cfg.get("authentication_required", False),
-                "supports_auto_apply": cfg.get("supports_auto_apply", False),
+                "native_apply": cfg.get("native_apply", False),
             })
         return sorted(result, key=lambda x: (not x["loaded"], x["name"]))
 
