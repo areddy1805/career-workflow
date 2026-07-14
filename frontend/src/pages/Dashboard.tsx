@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { fetchDashboard } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
-import { Activity, AlertTriangle, PlayCircle, CheckCircle2 } from 'lucide-react';
+import { Activity, PlayCircle, CheckCircle2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { RelativeTime } from '@/components/RelativeTime';
 

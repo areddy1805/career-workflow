@@ -299,6 +299,7 @@ def read_applications() -> pd.DataFrame:
                 subtrack,
                 source,
                 status,
+                workflow_status,
                 first_seen_at,
                 last_updated_at,
                 applied_at,
@@ -556,3 +557,70 @@ def calculate_duration(
         return f"{minutes}m {seconds}s"
 
     return f"{seconds}s"
+
+def system_health() -> dict[str, Any]:
+    import shutil
+    from control_center.runtime_status import get_scheduler_runtime, get_pipeline_runtime
+    
+    sched = get_scheduler_runtime()
+    pipe = get_pipeline_runtime()
+    
+    total, used, free = shutil.disk_usage("/")
+    disk_pct = round((used / total) * 100, 1) if total > 0 else 0
+    
+    status = "HEALTHY"
+    if disk_pct > 90 or sched.get("status") == "STALE":
+        status = "WARNING"
+        
+    return {
+        "status": status,
+        "scheduler_running": sched.get("status") == "RUNNING",
+        "pipeline_running": pipe.get("status") == "RUNNING",
+        "disk_usage_pct": disk_pct
+    }
+
+def top_companies() -> list[dict[str, Any]]:
+    applications = read_applications()
+    if applications.empty:
+        return []
+    
+    counts = applications["company"].value_counts().head(5)
+    return [{"name": str(k), "count": int(v)} for k, v in counts.items()]
+
+def upcoming_executions() -> list[dict[str, Any]]:
+    # Simple placeholder or read from scheduler state if possible
+    # For now, return empty or mocked data to satisfy the UI
+    return []
+
+def get_job_cache_dict() -> dict[str, dict[str, Any]]:
+    cache = {}
+    search_cache_path = REPO_ROOT / "data" / "job_search_cache.json"
+    score_cache_path = REPO_ROOT / "data" / "score_cache.json"
+    
+    if search_cache_path.exists():
+        try:
+            with open(search_cache_path, 'r', encoding='utf-8') as f:
+                search_data = json.load(f)
+                jobs = search_data.get("jobs", [])
+                for entry in jobs:
+                    job = entry.get("job", {})
+                    jid = str(job.get("job_id"))
+                    if jid:
+                        cache[jid] = job
+        except Exception:
+            pass
+            
+    if score_cache_path.exists():
+        try:
+            with open(score_cache_path, 'r', encoding='utf-8') as f:
+                score_data = json.load(f)
+                for jid, sinfo in score_data.items():
+                    jid = str(jid)
+                    if jid not in cache:
+                        cache[jid] = {}
+                    cache[jid]["ai_score"] = sinfo.get("score")
+                    cache[jid]["ai_reason"] = sinfo.get("reason")
+        except Exception:
+            pass
+            
+    return cache

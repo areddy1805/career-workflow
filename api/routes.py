@@ -18,7 +18,8 @@ from control_center.data import (
     read_run_result,
     system_health,
     upcoming_executions,
-    top_companies
+    top_companies,
+    get_job_cache_dict
 )
 from control_center.runtime_status import (
     get_scheduler_runtime,
@@ -93,8 +94,16 @@ def get_job_details(job_id: str) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail="Job not found")
         
     events_df = read_application_events(job_id)
+    cache_dict = get_job_cache_dict()
+    enriched_job = df_to_dict(job_df)[0]
+    
+    if job_id in cache_dict:
+        for k, v in cache_dict[job_id].items():
+            if k not in enriched_job or not enriched_job[k]:
+                enriched_job[k] = v
+                
     return {
-        "overview": df_to_dict(job_df)[0],
+        "overview": enriched_job,
         "events": df_to_dict(events_df)
     }
 
@@ -178,40 +187,52 @@ def api_pipeline_launch(req: PipelineLaunchRequest) -> dict[str, str]:
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-# --- Manual Queue ---
+# --- Queues Overhaul ---
 
-@router.get("/queues/manual")
-def api_get_manual_queue() -> dict[str, Any]:
-    auto_detected = []
-    run_id = latest_terminal_run()
-    if run_id:
-        manual = read_json_artifact(run_id, "manual_review.json") or []
-        external = read_json_artifact(run_id, "external_apply.json") or []
-        raw_auto = manual + external
-        
-        states = get_review_states()
-        for job in raw_auto:
-            jid = job.get("job_id")
-            state = states.get(jid)
-            if state:
-                job["review_status"] = state.get("status")
-                job["review_note"] = state.get("note")
-            else:
-                job["review_status"] = "PENDING"
-                job["review_note"] = ""
-                
-        # Filter out dismissed jobs
-        auto_detected = [j for j in raw_auto if j.get("review_status") != "DISMISSED"]
-        
-    manual_sourced = df_to_dict(read_manual_jobs())
-    return {
-        "auto_detected": auto_detected,
-        "manual_sourced": manual_sourced
-    }
+def _enrich_queue_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    cache = get_job_cache_dict()
+    for item in items:
+        jid = item.get("job_id")
+        if jid in cache:
+            for k, v in cache[jid].items():
+                if k not in item or not item[k]:
+                    item[k] = v
+    return items
+
+@router.get("/queues/manual-review")
+def api_get_manual_review_queue() -> dict[str, Any]:
+    wq = get_workflow_queue()
+    items = wq.list(sort_by="updated_at", sort_dir="desc")
+    filtered = [i for i in items if i.get("source") == "manual_review" and i.get("workflow_status") in ("PENDING", "IN_PROGRESS", "READY")]
+    return {"items": _enrich_queue_items(filtered)}
+
+@router.get("/queues/external-apply")
+def api_get_external_apply_queue() -> dict[str, Any]:
+    wq = get_workflow_queue()
+    items = wq.list(sort_by="updated_at", sort_dir="desc")
+    filtered = [i for i in items if i.get("source") == "external_apply" and i.get("workflow_status") in ("PENDING", "IN_PROGRESS", "READY", "APPLYING")]
+    return {"items": _enrich_queue_items(filtered)}
+
+@router.get("/queues/other-action")
+def api_get_other_action_queue() -> dict[str, Any]:
+    wq = get_workflow_queue()
+    items = wq.list(sort_by="updated_at", sort_dir="desc")
+    filtered = [i for i in items if i.get("source") not in ("manual_review", "external_apply") and i.get("workflow_status") in ("PENDING", "IN_PROGRESS", "READY")]
+    
+    # Also include manually sourced jobs if needed, or they can just be fetched elsewhere.
+    return {"items": _enrich_queue_items(filtered)}
+
+@router.post("/queues/{job_id}/transition")
+def api_queue_transition(job_id: str, req: WorkflowTransitionRequest) -> dict[str, str]:
+    success = workflow_queue_transition(job_id, req.to_status, note=req.note or "")
+    if not success:
+        raise HTTPException(status_code=400, detail="Failed to transition job")
+    return {"status": "Transitioned"}
 
 @router.post("/queues/manual")
 def api_add_manual_job(req: ManualJobRequest) -> dict[str, str]:
     try:
+        from control_center.manual_jobs import add_manual_job
         add_manual_job(
             title=req.title,
             company=req.company,
@@ -224,57 +245,6 @@ def api_add_manual_job(req: ManualJobRequest) -> dict[str, str]:
         return {"status": "Job added"}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
-
-@router.post("/queues/manual/{job_id}/transition")
-def api_manual_transition(job_id: str, req: WorkflowTransitionRequest) -> dict[str, str]:
-    if req.to_status.upper() == "DISMISSED":
-        dismiss_job(job_id, req.note or "")
-    elif req.to_status.upper() == "REVIEWED":
-        mark_reviewed(job_id, req.note or "")
-    else:
-        raise HTTPException(status_code=400, detail="Invalid status for auto-detected queue")
-    return {"status": "Transitioned"}
-
-# --- Review Queue ---
-
-@router.get("/queues/review")
-def api_get_review_queue() -> list[dict[str, Any]]:
-    run_id = latest_terminal_run()
-    if not run_id:
-        return []
-    jobs = read_json_artifact(run_id, "selected_jobs.json") or []
-    
-    states = get_review_states()
-    for job in jobs:
-        jid = job.get("job_id")
-        state = states.get(jid)
-        if state:
-            job["review_status"] = state.get("status")
-        else:
-            job["review_status"] = "PENDING"
-            
-    return [j for j in jobs if j.get("review_status") != "DISMISSED"]
-
-# --- Workflow Queue ---
-
-@router.get("/queues/workflow")
-def api_get_workflow_queue() -> dict[str, Any]:
-    wq = get_workflow_queue()
-    analytics = get_queue_analytics(wq)
-    funnel = analytics.conversion_funnel()
-    items = wq.list(sort_by="updated_at", sort_dir="desc")
-    
-    return {
-        "funnel": funnel,
-        "items": items
-    }
-
-@router.post("/queues/workflow/{job_id}/transition")
-def api_workflow_transition(job_id: str, req: WorkflowTransitionRequest) -> dict[str, str]:
-    success = workflow_queue_transition(job_id, req.to_status, note=req.note or "")
-    if not success:
-        raise HTTPException(status_code=400, detail="Failed to transition job")
-    return {"status": "Transitioned"}
 
 # --- Search Intelligence ---
 
