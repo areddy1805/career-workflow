@@ -6,6 +6,38 @@ The format follows a project-oriented changelog rather than individual commit hi
 
 ---
 
+# [2.7.0]
+
+## Overview
+Version 2.7.0 replaces the legacy NiceGUI control plane with a polished, enterprise-grade React operations console. It introduces the configuration-driven Search Profile Engine for highly extensible, taxonomy-based querying. In addition, the update brings full artifact traceability, actionable queue management, and comprehensive REST API expansion to support the new frontend telemetry.
+
+---
+
+## Added
+
+### Enterprise React Operations Console
+- Modern, responsive React + Vite frontend replacing NiceGUI.
+- **Search Intelligence Dashboard**: Real-time visibility into generated search queries, locations, matching technologies, and active profiles.
+- **Actionable Workflows**: Triage manual review and external application queues natively (Mark Reviewed, Dismiss, Open Posting).
+- **Dashboard Telemetry**: Live system health (disk, scheduler, pipeline locks), top target companies, pipeline funnel, and upcoming executions.
+
+### Search Profile Engine
+- Configuration-driven architecture (`config/user_profile.yaml`) replacing hardcoded strings.
+- YAML taxonomies for roles (`search_profiles/`) and technologies (`technology_profiles/`).
+- Extensible logic to scale from a single query matrix to hundreds of targeted combinations.
+
+### Artifact Traceability & Explainability
+- Complete provenance injected into job objects (`search_profile`, `matched_technology`).
+- Explicit `rejection_reason` tracking for all jobs evaluated by the system.
+- Artifacts directly explain the "Why" behind selection and rejection decisions.
+
+### Backend Infrastructure
+- Extensible REST API in FastAPI bridging the control center to the React frontend.
+- Persistent `review_state.json` ledger for queue actions and dismissals.
+- Hardened `json.loads` recovery logic across the scheduler, `recovery.py`, and `job_search_cache.py`.
+
+---
+
 # [2.0.0]
 
 ## Overview
