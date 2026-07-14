@@ -134,6 +134,22 @@ Review Analytics
 | Runtime | Process state, lock management, recovery, watchdog and heartbeat | ✅ |
 | Observability | Stage metrics, rejection analytics, runtime artifacts and execution reports | ✅ |
 
+### Provider Lifecycle Matrix
+
+| Lifecycle    | Provider         | Auto Apply | Status                   |
+| ------------ | ---------------- | ---------: | ------------------------ |
+| Production   | Naukri           |          ✅ | Ready                    |
+| Production   | RemoteOK         |          ❌ | Ready                    |
+| Production   | We Work Remotely |          ❌ | Ready                    |
+| Production   | Remotive         |          ❌ | Ready                    |
+| Production   | Arbeitnow        |          ❌ | Ready                    |
+| Production   | Hacker News      |          ❌ | Ready                    |
+| Beta         | Company Careers  |          ❌ | Mock / Under Development |
+| Experimental | Google Jobs      |          ❌ | Anti-bot                 |
+| Experimental | Wellfound        |          ❌ | Anti-bot                 |
+| Experimental | Instahyre        |          ❌ | Anti-bot                 |
+| Experimental | Foundit          |          ❌ | Anti-bot                 |
+
 ---
 
 ## Operations Control Plane

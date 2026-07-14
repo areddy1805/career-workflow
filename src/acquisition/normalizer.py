@@ -47,6 +47,7 @@ class JobNormalizer:
         )
 
         # Acquisition provenance — carried as dynamic attributes (same as before)
+        job.provenance = nj.provenance.to_dict()
         setattr(job, "acquisition_source", "live")
         setattr(job, "search_track", nj.provenance.track or "TIER_B")
         setattr(job, "search_query", nj.provenance.generated_query)

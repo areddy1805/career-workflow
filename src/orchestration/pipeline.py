@@ -468,6 +468,13 @@ class CareerWorkflowPipeline:
 
         self.context.fetch_result = fetch_result
 
+        # Save the pure acquired jobs for Replay Mode (Phase 10)
+        # We must serialize them before classification mutates them.
+        raw_dump = [j.__dict__ for j in jobs if hasattr(j, "__dict__")]
+        if not raw_dump:
+            raw_dump = list(jobs)
+        self._write_artifact("acquired_jobs_raw.json", raw_dump)
+
         print_acquisition_summary(
             jobs=jobs,
             fetch_result=fetch_result,
@@ -488,9 +495,9 @@ class CareerWorkflowPipeline:
             "total_unique_jobs": summary_dict.get("total_unique_jobs", len(jobs)),
             "total_jobs_returned": summary_dict.get("total_jobs_returned", len(jobs)),
             "cross_provider_duplicates": summary_dict.get("cross_provider_duplicates", 0),
-            "coverage_pct": summary_dict.get("coverage_pct", 100.0),
             "duplicates_pct": summary_dict.get("duplicates_pct", 0.0),
             "provider_contribution_pct": summary_dict.get("provider_contribution_pct", {}),
+            "planner_stats": summary_dict.get("planner_stats", {}),
         }
 
         self._write_artifact(
@@ -1345,6 +1352,73 @@ class CareerWorkflowPipeline:
                         "application_time": row.get("timestamp")
                     })
         self._write_artifact("applied_jobs.json", applied)
+
+        # -----------------------------------------------------------------
+        # V3.2 Intelligence Artifacts
+        # -----------------------------------------------------------------
+        
+        # 1. Decision Audit
+        # We must output the full lifecycle for every acquired job (selected and rejected)
+        decision_audit = []
+        
+        for job_obj in self.context.acquired_jobs:
+            if hasattr(job_obj, "__dict__"):
+                j = job_obj.__dict__
+            else:
+                j = job_obj
+            
+            decision_audit.append({
+                "job_id": j.get("job_id"),
+                "title": j.get("title"),
+                "company": j.get("company"),
+                "provenance": j.get("provenance", {}),
+                "decision_history": j.get("decision_history", []),
+                "rejection_record": j.get("rejection_record", None)
+            })
+            
+        self._write_artifact("decision_audit.json", decision_audit)
+
+        # 2. Pipeline Funnel
+        # Mathematical reconciliation of pipeline stages
+        m = self.context.metrics
+        funnel = {
+            "funnel": {
+                "acquired": result.acquired,
+                "rejections": m.skipped_reasons,
+                "classified": result.classified,
+                "selected": result.selected,
+                "applications": {
+                    "submitted": result.submitted,
+                    "manual_review": result.manual_review,
+                    "external_apply": result.skipped_external,
+                    "auto_apply": result.submitted,
+                    "already_applied": result.already_applied,
+                    "policy_rejected": result.policy_rejected,
+                    "failed": result.failed
+                }
+            }
+        }
+        self._write_artifact("pipeline_funnel.json", funnel)
+
+        # 3. Analytics Engine Artifacts
+        from src.orchestration.analytics import AnalyticsEngine
+        engine = AnalyticsEngine(
+            run_id=self.context.run_id,
+            acquired_jobs=self.context.acquired_jobs,
+            rejected_jobs=self.context.rejected_jobs,
+            ledger=self.context.ledger
+        )
+        
+        query_analytics = engine.generate_query_analytics()
+        self._write_artifact("query_analytics.json", query_analytics)
+        
+        profile_analytics = engine.generate_profile_analytics()
+        self._write_artifact("search_profile_quality.json", profile_analytics)
+        
+        provider_quality = engine.generate_provider_quality()
+        self._write_artifact("provider_quality.json", provider_quality)
+        
+        # We will add duplicate_analysis.json later
 
     def _validate_artifacts(self, result: PipelineResult) -> None:
         diagnostics = []

@@ -33,12 +33,10 @@ def test_provider_yaml_required_keys(yaml_path: Path):
 
 @pytest.mark.parametrize("yaml_path", _all_provider_yamls(), ids=lambda p: p.stem)
 def test_provider_priority_valid(yaml_path: Path):
-    from src.acquisition.models import ProviderPriority
     with open(yaml_path, encoding="utf-8") as f:
         data = yaml.safe_load(f) or {}
-    priority = data.get("priority", "normal")
-    valid = {e.value for e in ProviderPriority}
-    assert priority in valid, f"{yaml_path.name}: priority={priority!r} not in {valid}"
+    priority = data.get("priority", 50)
+    assert isinstance(priority, int), f"{yaml_path.name}: priority={priority!r} must be an integer"
 
 
 def test_provider_groups_yaml_loads():

@@ -371,27 +371,27 @@ class JobFilterPipeline2:
     # =========================================================
 
     def record_decision(self, job: dict, stage: str, code: str, reason: str):
+        decision_record = {
+            "stage": stage,
+            "decision": "REJECTED",
+            "rule": code,
+            "reason": reason,
+            "confidence": 1.0,
+            "timestamp": __import__('datetime').datetime.now(__import__('datetime').timezone.utc).isoformat()
+        }
+        
         job["rejection_stage"] = stage
         job["rejection_code"] = code
         job["rejection_reason"] = reason
 
         decisions = job.setdefault("decisions", [])
-        decisions.append(
-            {
-                "stage": stage,
-                "code": code,
-                "reason": reason,
-            }
-        )
+        decisions.append(decision_record)
 
         decision_history = job.setdefault("decision_history", [])
-        decision_history.append(
-            {
-                "stage": stage,
-                "code": code,
-                "reason": reason,
-            }
-        )
+        decision_history.append(decision_record)
+        
+        # New: save a specific rejection record
+        job["rejection_record"] = decision_record
 
         if not job.get("_rejection_recorded"):
             self.rejected_jobs.append(job)
@@ -551,7 +551,14 @@ class JobFilterPipeline2:
                     "search_query": (job.get("search_query") or ""),
                     "search_profile": (job.get("search_profile") or "unknown"),
                     "matched_technology": (job.get("matched_technology") or ""),
-                    "decision_history": [{"stage": "Acquisition"}],
+                    "decision_history": [{
+                        "stage": "Acquisition",
+                        "decision": "ACQUIRED",
+                        "rule": "Discovery",
+                        "reason": "Found by provider",
+                        "confidence": 1.0,
+                        "timestamp": __import__('datetime').datetime.now(__import__('datetime').timezone.utc).isoformat()
+                    }],
                     "rejection_reason": "",
                 }
             )

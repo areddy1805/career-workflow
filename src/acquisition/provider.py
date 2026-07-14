@@ -86,6 +86,7 @@ class JobProvider(ABC):
 
     PROVIDER_NAME: str = ""
     PROVIDER_TYPE: ProviderType = ProviderType.JOB_BOARD
+    LIFECYCLE_STATE: str = "production"
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)

@@ -134,15 +134,22 @@ class CrossProviderDeduplicator:
 
     def deduplicate(
         self, jobs: list[NormalizedJob]
-    ) -> tuple[list[NormalizedJob], int]:
+    ) -> tuple[list[NormalizedJob], int, dict[str, int]]:
         """
-        Returns (deduplicated_jobs, duplicates_removed_count).
+        Returns (deduplicated_jobs, duplicates_removed_count, dedup_analysis).
 
         Processes jobs in order — first encountered wins on core fields,
         but metadata from all duplicates is merged in.
         """
         unique: list[NormalizedJob] = []
         duplicates_removed = 0
+        
+        analysis = {
+            "cross_provider": 0,
+            "planner_overlap": 0,
+            "pagination": 0,
+            "within_provider": 0
+        }
 
         # Index structures for O(1) lookups on the common cases
         by_application_url: dict[str, int] = {}    # url -> index in unique
@@ -155,8 +162,21 @@ class CrossProviderDeduplicator:
             )
 
             if winner_idx is not None:
+                winner = unique[winner_idx]
+                
+                # Analyze duplicate type
+                if job.provider != winner.provider:
+                    analysis["cross_provider"] += 1
+                else:
+                    if job.provenance.generated_query == winner.provenance.generated_query:
+                        analysis["pagination"] += 1
+                    else:
+                        analysis["planner_overlap"] += 1
+                        
+                analysis["within_provider"] = analysis["pagination"] + analysis["planner_overlap"]
+
                 # Merge this job's metadata into the winner
-                unique[winner_idx] = _merge_jobs(unique[winner_idx], job)
+                unique[winner_idx] = _merge_jobs(winner, job)
                 duplicates_removed += 1
                 logger.debug(
                     "Deduped: %s @ %s (provider=%s) -> winner provider=%s",
@@ -179,10 +199,10 @@ class CrossProviderDeduplicator:
                     by_fingerprint[fp] = idx
 
         logger.info(
-            "Deduplication: %d in → %d unique, %d removed",
+            "Deduplication: %d in -> %d unique, %d removed",
             len(jobs), len(unique), duplicates_removed,
         )
-        return unique, duplicates_removed
+        return unique, duplicates_removed, analysis
 
     def _find_duplicate(
         self,

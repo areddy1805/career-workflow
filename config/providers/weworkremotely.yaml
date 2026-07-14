@@ -1,35 +1,30 @@
-# We Work Remotely — Remote jobs via RSS feed.
-enabled: false
-priority: high
-backend: rss
-
 authentication_required: false
-supports_auto_apply: false
-supports_easy_apply: false
-supports_resume_upload: false
-supports_questionnaire: false
-supports_login: false
-supports_incremental: false
-supports_pagination: false
-supports_location_filter: false
-supports_remote_filter: true
-supports_salary_filter: false
-supports_experience_filter: false
-supports_company_filter: false
-rate_limited: false
+backend: rss
 captcha_risk: false
-
-search_delay: 0.5
+enabled: true
 max_pages: 1
 max_results: 100
-user_agent: "Mozilla/5.0 (compatible; CareerWorkflow/3.1)"
+priority: 80
+rate_limit:
+  requests_per_minute: 20
+rate_limited: false
+retry_policy:
+  backoff_seconds: 2
+  max_retries: 2
+search_delay: 0.5
+supports_auto_apply: false
+supports_company_filter: false
+supports_easy_apply: false
+supports_experience_filter: false
+supports_incremental: false
+supports_location_filter: false
+supports_login: false
+supports_pagination: false
+supports_questionnaire: false
+supports_remote_filter: true
+supports_resume_upload: false
+supports_salary_filter: false
 timeouts:
   connect: 10
   read: 30
-
-rate_limit:
-  requests_per_minute: 20
-
-retry_policy:
-  max_retries: 2
-  backoff_seconds: 2
+user_agent: Mozilla/5.0 (compatible; CareerWorkflow/3.1)

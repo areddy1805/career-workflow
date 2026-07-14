@@ -25,6 +25,15 @@ class ResumeUpdateResult:
 
 
 @dataclass
+class DecisionRecord:
+    stage: str
+    decision: str
+    rule: str = ""
+    reason: str = ""
+    confidence: float = 1.0
+    timestamp: str = field(default_factory=lambda: __import__('datetime').datetime.now(__import__('datetime').timezone.utc).isoformat())
+
+@dataclass
 class Job:
     job_id: str
     title: str
@@ -36,7 +45,9 @@ class Job:
     apply_link: str
     description: str = ""
     tags: list = field(default_factory=list)
-    decision_history: list = field(default_factory=list)
+    decision_history: list[DecisionRecord] = field(default_factory=list)
+    rejection_record: DecisionRecord | None = None
+    provenance: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass

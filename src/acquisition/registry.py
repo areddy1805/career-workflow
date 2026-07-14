@@ -20,7 +20,6 @@ from src.acquisition.models import (
     ProviderCapabilities,
     ProviderHealth,
     ProviderHealthStatus,
-    ProviderPriority,
 )
 from src.acquisition.provider import JobProvider, _ProviderRegistry
 
@@ -30,7 +29,6 @@ _PROVIDERS_CONFIG_DIR = Path("config/providers")
 _GROUPS_CONFIG_PATH = Path("config/provider_groups.yaml")
 _USER_PROFILE_PATH = Path("config/user_profile.yaml")
 
-# All provider modules — importing them triggers self-registration
 _PROVIDER_MODULES = [
     "src.acquisition.providers.naukri",
     "src.acquisition.providers.remoteok",
@@ -39,6 +37,10 @@ _PROVIDER_MODULES = [
     "src.acquisition.providers.wellfound",
     "src.acquisition.providers.instahyre",
     "src.acquisition.providers.foundit",
+    "src.acquisition.providers.remotive",
+    "src.acquisition.providers.arbeitnow",
+    "src.acquisition.providers.hackernews",
+    "src.acquisition.providers.company_careers",
 ]
 
 
@@ -126,11 +128,10 @@ class ProviderRegistry:
             except Exception as exc:
                 logger.error("Failed to initialize provider '%s': %s", name, exc)
 
-        # Sort by priority
+        # Sort by priority (higher integer = higher priority, so sort descending)
         self._loaded_providers.sort(
-            key=lambda p: ProviderPriority(
-                p._cfg("priority", "normal")
-            ).to_int()
+            key=lambda p: int(p._cfg("priority", 50)),
+            reverse=True
         )
 
         logger.info(
@@ -217,14 +218,16 @@ class ProviderRegistry:
         for name in set(list(self._provider_configs.keys()) + all_registered):
             cfg = self._provider_configs.get(name, {})
             loaded = self.get_provider(name)
+            provider_cls = _ProviderRegistry._registry.get(name)
             caps = self._capabilities_map.get(name)
             health = self._health_cache.get(name)
             result.append({
                 "name": name,
                 "enabled": cfg.get("enabled", False),
-                "priority": cfg.get("priority", "normal"),
+                "priority": int(cfg.get("priority", 50)),
                 "loaded": loaded is not None,
                 "provider_type": getattr(loaded, "PROVIDER_TYPE", {}).value if loaded else "unknown",
+                "lifecycle_state": getattr(loaded, "LIFECYCLE_STATE", getattr(provider_cls, "LIFECYCLE_STATE", "production")) if loaded or provider_cls else "production",
                 "capabilities": caps.to_dict() if caps else {},
                 "health": health.to_dict() if health else None,
                 "authentication_required": cfg.get("authentication_required", False),

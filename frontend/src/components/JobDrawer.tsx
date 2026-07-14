@@ -44,21 +44,16 @@ export function JobDrawer({ jobId, open, onOpenChange, onTransitioned }: JobDraw
     const ov = data?.overview;
     if (!ov) return null;
 
-    const url = ov.application_url || ov.url || ov.job_url || ov.apply_link;
-    const providerUrl = ov.original_job_url || ov.provider_url;
+    const url = ov.application_url || ov.apply_link || ov.url || ov.job_url || ov.original_job_url || ov.provider_url;
 
     if (url) {
       if (url.startsWith('http')) return url;
       if (url.startsWith('job-listings-') || url.startsWith('/job-listings-')) {
         return `https://www.naukri.com/${url.replace(/^\//, '')}`;
       }
-      return `https://www.naukri.com/job-listings-${url}`;
     }
 
-    if (ov.provider === 'naukri' || !ov.provider) {
-       return `https://www.naukri.com/job-listings-${ov.job_id}`;
-    }
-    return providerUrl || null;
+    return url || null;
   };
 
   const jobUrl = getJobUrl();
@@ -119,6 +114,27 @@ export function JobDrawer({ jobId, open, onOpenChange, onTransitioned }: JobDraw
               <div className="bg-secondary/30 p-4 rounded-lg border border-secondary">
                 <h4 className="font-semibold mb-2 flex items-center text-primary"><Search className="w-4 h-4 mr-2" /> AI Analysis</h4>
                 <p className="text-sm leading-relaxed">{data.overview.ai_reason || data.overview.reason}</p>
+              </div>
+            )}
+
+            {/* Provenance & Deduplication */}
+            {data.overview?.provenance && (
+              <div className="bg-muted/30 p-4 rounded-lg border">
+                <h4 className="font-semibold mb-2 border-b pb-1">Acquisition Provenance</h4>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div><span className="font-medium text-muted-foreground">Generated Query:</span> {data.overview.provenance.generated_query || '-'}</div>
+                  <div><span className="font-medium text-muted-foreground">Search Profile:</span> {data.overview.provenance.search_profile || '-'}</div>
+                  <div><span className="font-medium text-muted-foreground">Matched Tech:</span> {data.overview.provenance.matched_technology || '-'}</div>
+                  <div><span className="font-medium text-muted-foreground">Original Source:</span> {data.overview.provenance.provider || '-'}</div>
+                </div>
+                {data.overview.provenance.also_seen_on && data.overview.provenance.also_seen_on.length > 0 && (
+                  <div className="mt-3 pt-2 border-t text-xs">
+                    <span className="font-medium text-muted-foreground">Also discovered on: </span>
+                    <span className="uppercase tracking-wide text-primary">
+                      {data.overview.provenance.also_seen_on.join(', ')}
+                    </span>
+                  </div>
+                )}
               </div>
             )}
 

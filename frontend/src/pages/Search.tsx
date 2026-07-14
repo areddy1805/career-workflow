@@ -34,7 +34,7 @@ export default function Search() {
 
   const {
     active_profiles = [], locations = [], total_queries = 0,
-    queries = [], technology_profiles = {}, provider_query_counts = {},
+    queries = [], technology_profiles = {},
   } = data || {};
 
   const providers = providerData?.providers || [];

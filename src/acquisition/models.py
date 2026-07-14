@@ -29,6 +29,15 @@ class ProviderType(str, Enum):
     API        = "api"
 
 
+class ProviderLifecycleState(str, Enum):
+    """Lifecycle state of a provider."""
+    PRODUCTION = "production"
+    BETA = "beta"
+    EXPERIMENTAL = "experimental"
+    DISABLED = "disabled"
+    DEPRECATED = "deprecated"
+
+
 class ProviderHealthStatus(str, Enum):
     """Operational status of a provider at query time."""
     HEALTHY        = "healthy"
@@ -38,17 +47,6 @@ class ProviderHealthStatus(str, Enum):
     DISABLED       = "disabled"
     MAINTENANCE    = "maintenance"
     UNAVAILABLE    = "unavailable"
-
-
-class ProviderPriority(str, Enum):
-    """Human-readable priority for config YAMLs. Manager maps to int."""
-    CRITICAL = "critical"
-    HIGH     = "high"
-    NORMAL   = "normal"
-    LOW      = "low"
-
-    def to_int(self) -> int:
-        return {"critical": 0, "high": 1, "normal": 2, "low": 3}[self.value]
 
 
 # ---------------------------------------------------------------------------
@@ -118,6 +116,7 @@ class ProviderHealth:
     """Runtime health snapshot for one provider."""
     provider: str
     status: ProviderHealthStatus
+    lifecycle_state: str = ProviderLifecycleState.PRODUCTION.value
     checked_at: str = field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
     )
@@ -147,6 +146,7 @@ class ProviderHealth:
         return {
             "provider": self.provider,
             "status": self.status.value,
+            "lifecycle_state": self.lifecycle_state,
             "checked_at": self.checked_at,
             "latency_ms": round(self.latency_ms, 1),
             "error": self.error,
@@ -198,7 +198,7 @@ class SearchPlan:
     provider_overrides: dict[str, Any] = field(default_factory=dict) # per-provider config overrides
 
     # Ranking
-    priority: ProviderPriority = ProviderPriority.NORMAL
+    priority: int = 50
     weight: float = 1.0
 
     # Search context (for provenance)
@@ -311,6 +311,7 @@ class ProviderRunStats:
     """Stats collected for one provider during a single acquisition run."""
     provider: str
     provider_type: str = ProviderType.JOB_BOARD.value
+    lifecycle_state: str = ProviderLifecycleState.PRODUCTION.value
     searches_executed: int = 0
     jobs_returned: int = 0
     unique_jobs: int = 0
@@ -348,6 +349,7 @@ class ProviderRunStats:
         return {
             "provider": self.provider,
             "provider_type": self.provider_type,
+            "lifecycle_state": self.lifecycle_state,
             "searches_executed": self.searches_executed,
             "jobs_returned": self.jobs_returned,
             "unique_jobs": self.unique_jobs,
@@ -373,15 +375,9 @@ class AcquisitionSummary:
     total_unique_jobs: int = 0
     total_jobs_returned: int = 0
     new_jobs: int = 0                  # not seen in cache from previous runs
+    planner_stats: dict[str, Any] = field(default_factory=dict)
 
-    @property
-    def coverage_pct(self) -> float:
-        """% of providers that returned at least one job."""
-        active = [s for s in self.provider_stats if s.searches_executed > 0]
-        if not active:
-            return 0.0
-        successful = [s for s in active if s.unique_jobs > 0]
-        return round(len(successful) / len(active) * 100, 1)
+
 
     @property
     def duplicates_pct(self) -> float:
@@ -398,7 +394,7 @@ class AcquisitionSummary:
         return round(self.new_jobs / total * 100, 1)
 
     def provider_contribution_pct(self, provider: str) -> float:
-        total = self.total_unique_jobs
+        total = self.total_jobs_returned
         if not total:
             return 0.0
         for s in self.provider_stats:
@@ -417,8 +413,8 @@ class AcquisitionSummary:
             "total_unique_jobs": self.total_unique_jobs,
             "total_jobs_returned": self.total_jobs_returned,
             "new_jobs": self.new_jobs,
-            "coverage_pct": self.coverage_pct,
             "duplicates_pct": self.duplicates_pct,
             "new_jobs_pct": self.new_jobs_pct,
             "provider_contribution_pct": contrib,
+            "planner_stats": self.planner_stats,
         }

@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { fetchDashboard } from '@/lib/api';
+import { fetchDashboard, fetchAcquisitionSummary } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import { Activity, PlayCircle, CheckCircle2 } from 'lucide-react';
@@ -10,6 +10,16 @@ export default function Dashboard() {
   const { data: dashboard, isLoading } = useQuery({
     queryKey: ['dashboard'],
     queryFn: fetchDashboard,
+  });
+
+  const { data: acqSummary } = useQuery({
+    queryKey: ['acquisitionSummary'],
+    queryFn: fetchAcquisitionSummary,
+  });
+
+  const { data: providers } = useQuery({
+    queryKey: ['providers'],
+    queryFn: () => fetch('/api/providers').then(r => r.json()).then(r => r.providers || r.data || r)
   });
 
   if (isLoading) {
@@ -94,6 +104,44 @@ export default function Dashboard() {
           </Card>
         </div>
 
+        {/* Today's Acquisition */}
+        <Card className="shadow-none border-border/50 bg-card/50">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <Activity className="w-4 h-4 text-primary" />
+              Today's Acquisition
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4 mb-4">
+              <div className="flex flex-col"><span className="text-[10px] text-muted-foreground uppercase tracking-wider">Total Jobs</span><span className="text-xl font-semibold">{acqSummary?.data?.total_unique_jobs || 0}</span></div>
+              <div className="flex flex-col"><span className="text-[10px] text-muted-foreground uppercase tracking-wider">New Jobs</span><span className="text-xl font-semibold text-primary">{acqSummary?.data?.new_jobs || 0}</span></div>
+              <div className="flex flex-col"><span className="text-[10px] text-muted-foreground uppercase tracking-wider">Duplicates</span><span className="text-xl font-semibold text-orange-500">{acqSummary?.data?.cross_provider_duplicates || 0}</span></div>
+              <div className="flex flex-col"><span className="text-[10px] text-muted-foreground uppercase tracking-wider">Manual Review</span><span className="text-xl font-semibold">{latest_run?.manual_review || 0}</span></div>
+              <div className="flex flex-col"><span className="text-[10px] text-muted-foreground uppercase tracking-wider">External Apply</span><span className="text-xl font-semibold">{latest_run?.skipped_external || 0}</span></div>
+              <div className="flex flex-col"><span className="text-[10px] text-muted-foreground uppercase tracking-wider">Auto Applied</span><span className="text-xl font-semibold text-green-500">{latest_run?.submitted || 0}</span></div>
+              <div className="flex flex-col"><span className="text-[10px] text-muted-foreground uppercase tracking-wider">Already Applied</span><span className="text-xl font-semibold">{latest_run?.already_applied || 0}</span></div>
+              <div className="flex flex-col"><span className="text-[10px] text-muted-foreground uppercase tracking-wider">Rejected</span><span className="text-xl font-semibold text-red-500">{latest_run?.failed || 0}</span></div>
+            </div>
+            
+            <div className="pt-3 border-t border-border/50">
+              <h4 className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">Provider Contribution</h4>
+              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2">
+                {acqSummary?.data?.providers?.filter((p: any) => p.searches_executed > 0).map((p: any) => (
+                  <div key={p.provider} className="flex justify-between items-center bg-secondary/20 px-2 py-1.5 rounded-sm border border-border/30">
+                    <div className="flex items-center gap-1.5 overflow-hidden">
+                      {p.lifecycle_state === 'beta' && <span className="w-1.5 h-1.5 rounded-full bg-orange-400 shrink-0" title="Beta" />}
+                      <span className="text-xs font-medium truncate capitalize">{p.provider.replace('_', ' ')}</span>
+                    </div>
+                    <span className="text-xs font-semibold ml-2 shrink-0">{p.unique_jobs}</span>
+                  </div>
+                ))}
+                {!acqSummary?.data?.providers?.length && <span className="text-xs text-muted-foreground">No acquisition data found.</span>}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Funnel Chart */}
           <Card className="col-span-2 shadow-none border-border/50">
@@ -142,6 +190,20 @@ export default function Dashboard() {
               <div className="flex justify-between items-center text-xs border-t pt-3">
                 <span className="text-muted-foreground">Disk Usage</span>
                 <span>{system_health?.disk_usage_pct}%</span>
+              </div>
+              <div className="flex justify-between items-center text-xs border-t pt-3 mt-3">
+                <span className="text-muted-foreground font-medium">Provider Status</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 mt-2">
+                {['production', 'experimental'].map(state => {
+                  const count = providers?.filter((p: any) => (p.lifecycle_state || 'production') === state).length || 0;
+                  return (
+                    <div key={state} className="bg-secondary/20 p-2 rounded border flex flex-col justify-center items-center">
+                      <span className="text-[10px] text-muted-foreground uppercase">{state}</span>
+                      <span className="font-semibold">{count}</span>
+                    </div>
+                  );
+                })}
               </div>
             </CardContent>
           </Card>

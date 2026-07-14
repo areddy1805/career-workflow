@@ -237,10 +237,7 @@ def print_job_header(
 
     print(
         f"  {Fore.WHITE}"
-        f"URL     :"
-        f"{Style.RESET_ALL}  "
-        f"{Fore.BLUE}"
-        f"https://www.naukri.com/job-listings-{job.job_id}"
+        f"URL     :  {getattr(job, 'apply_link', '') or getattr(job, 'original_job_url', '') or 'No URL provided'}"
         f"{Style.RESET_ALL}"
     )
 

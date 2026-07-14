@@ -122,12 +122,36 @@ class AcquisitionManager:
 
         # Cross-provider deduplication
         total_before_dedup = len(all_normalized)
-        unique_normalized, cross_duplicates = self._deduplicator.deduplicate(all_normalized)
+        unique_normalized, cross_duplicates, dedup_analysis = self._deduplicator.deduplicate(all_normalized)
 
         logger.info(
-            "Acquisition complete: %d total → %d unique (%d cross-provider duplicates)",
+            "Acquisition complete: %d total -> %d unique (%d cross-provider duplicates)",
             total_before_dedup, len(unique_normalized), cross_duplicates,
         )
+        
+        if self._artifact_dir:
+            try:
+                self._artifact_dir.mkdir(parents=True, exist_ok=True)
+                path = self._artifact_dir / "duplicate_analysis.json"
+                tmp = path.with_suffix(".tmp")
+                import json
+                tmp.write_text(
+                    json.dumps(dedup_analysis, indent=2, ensure_ascii=False),
+                    encoding="utf-8",
+                )
+                tmp.replace(path)
+            except Exception as e:
+                logger.warning("Failed to write duplicate_analysis.json: %s", e)
+
+        # Compute planner stats
+        planner_stats = {
+            "generated_queries": len(plans),
+            "providers_active": len(providers),
+            "queries_per_provider": {
+                p.PROVIDER_NAME: len(self._filter_plans(plans, p.PROVIDER_NAME))
+                for p in providers
+            }
+        }
 
         # Build summary
         summary = AcquisitionSummary(
@@ -135,6 +159,7 @@ class AcquisitionManager:
             cross_provider_duplicates=cross_duplicates,
             total_unique_jobs=len(unique_normalized),
             total_jobs_returned=total_before_dedup,
+            planner_stats=planner_stats,
         )
 
         # Write observability artifact
@@ -154,11 +179,37 @@ class AcquisitionManager:
 
         If a plan has target_providers = [] it applies to all.
         If it lists specific providers, only those get the plan.
+        
+        Dynamically deduplicates plans based on provider capabilities to prevent
+        Cartesian explosion. For example, if a provider doesn't support 'experience',
+        we collapse all plans that only differ by experience into a single plan.
         """
-        return [
+        # First filter to valid plans for this provider
+        valid = [
             p for p in plans
             if not p.target_providers or provider_name in p.target_providers
         ]
+        
+        provider = self._registry.get_provider(provider_name)
+        if not provider:
+            return valid
+            
+        caps = provider.capabilities()
+        deduped = []
+        seen = set()
+        
+        for p in valid:
+            # If the provider ignores a dimension, force its value to a constant in the dedup key
+            # so that plans differing ONLY in that dimension are collapsed.
+            exp_key = p.experience if caps.supports_experience_filter else 0
+            loc_key = p.location if caps.supports_location_filter else ""
+            
+            key = (p.generated_query, loc_key, exp_key)
+            if key not in seen:
+                seen.add(key)
+                deduped.append(p)
+                
+        return deduped
 
     def _write_provider_summary(self, summary: AcquisitionSummary, run_id: str) -> None:
         """Write provider_summary.json to the artifact directory."""
@@ -180,3 +231,43 @@ class AcquisitionManager:
             logger.debug("Wrote provider_summary.json to %s", path)
         except Exception as exc:
             logger.warning("Failed to write provider_summary.json: %s", exc)
+
+        # Update rolling health history
+        try:
+            history_path = Path("data/provider_health_history.json")
+            history = {}
+            if history_path.exists():
+                with open(history_path, "r", encoding="utf-8") as f:
+                    history = json.load(f)
+
+            for stat in summary.provider_stats:
+                provider = stat.provider
+                if provider not in history:
+                    history[provider] = []
+                
+                entry = {
+                    "run_id": run_id,
+                    "date": datetime.now(timezone.utc).isoformat(),
+                    "success_pct": stat.success_pct,
+                    "failure_pct": stat.failure_pct,
+                    "latency_ms": round(stat.latency_ms, 1),
+                    "last_successful_search": stat.last_successful_search,
+                    "last_failure": stat.last_failure,
+                    "last_challenge": stat.last_challenge,
+                    "searches_executed": stat.searches_executed,
+                    "jobs_returned": stat.jobs_returned,
+                    "unique_jobs": stat.unique_jobs
+                }
+                
+                # Prepend new entry
+                history[provider].insert(0, entry)
+                # Keep last 20 executions
+                history[provider] = history[provider][:20]
+
+            tmp_hist = history_path.with_suffix(".tmp")
+            with open(tmp_hist, "w", encoding="utf-8") as f:
+                json.dump(history, f, indent=2)
+            tmp_hist.replace(history_path)
+            logger.debug("Updated provider health history in %s", history_path)
+        except Exception as exc:
+            logger.warning("Failed to update provider health history: %s", exc)

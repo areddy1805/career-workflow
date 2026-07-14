@@ -8,7 +8,7 @@ import {
 import { cn, formatSalary } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { JobDrawer } from '@/components/JobDrawer';
-import { ExternalLink, Search, Clock, ListChecks, CheckCircle, Copy, Globe, Building2 } from 'lucide-react';
+import { ExternalLink, Search, Clock, ListChecks, CheckCircle, Copy, Globe } from 'lucide-react';
 
 // Provider badge color map
 const PROVIDER_COLORS: Record<string, string> = {
@@ -19,6 +19,10 @@ const PROVIDER_COLORS: Record<string, string> = {
   wellfound:     'bg-orange-500/10 text-orange-400 border-orange-500/20',
   instahyre:     'bg-rose-500/10 text-rose-400 border-rose-500/20',
   foundit:       'bg-yellow-500/10 text-yellow-400 border-yellow-500/20',
+  remotive:      'bg-indigo-500/10 text-indigo-400 border-indigo-500/20',
+  arbeitnow:     'bg-teal-500/10 text-teal-400 border-teal-500/20',
+  hackernews:    'bg-orange-500/10 text-orange-400 border-orange-500/20',
+  company_careers:'bg-slate-500/10 text-slate-400 border-slate-500/20',
 };
 
 export default function Queues() {

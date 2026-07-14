@@ -67,7 +67,7 @@ def _make_temp_config(providers: dict[str, dict], groups: dict | None = None) ->
 def test_registry_loads_enabled_provider():
     """Registry loads providers that have enabled:true and a registered class."""
     providers_dir, tmp = _make_temp_config({
-        "_test_dummy": {"enabled": True, "priority": "normal"}
+        "_test_dummy": {"enabled": True, "priority": 50}
     })
 
     from src.acquisition.registry import ProviderRegistry
@@ -110,8 +110,8 @@ def test_registry_priority_sort():
         def shutdown(self): pass
 
     providers_dir, tmp = _make_temp_config({
-        "_test_low":  {"enabled": True, "priority": "low"},
-        "_test_crit": {"enabled": True, "priority": "critical"},
+        "_test_low":  {"enabled": True, "priority": 20},
+        "_test_crit": {"enabled": True, "priority": 100},
     })
     from src.acquisition.registry import ProviderRegistry
     registry = ProviderRegistry(config_dir=providers_dir, groups_config=tmp / "missing.yaml", user_profile=tmp / "missing.yaml")

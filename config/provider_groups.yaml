@@ -1,32 +1,15 @@
-# Provider Groups — organize providers into logical acquisition tiers.
-# Reference in config/user_profile.yaml via:
-#   enabled_provider_groups:
-#     - India
-#     - Global
-
 groups:
-  # Indian job boards — best for India-based opportunities
-  India:
-    - naukri
-    - foundit
-    - instahyre
-
-  # Global remote-first boards
+  Company:
+  - company_careers
+  Experimental:
+  - google_jobs
+  - wellfound
   Global:
-    - remoteok
-    - weworkremotely
-    - wellfound
-
-  # Aggregators — broad coverage but no direct apply
-  Aggregator:
-    - google_jobs
-
-  # All providers at once
-  All:
-    - naukri
-    - foundit
-    - instahyre
-    - remoteok
-    - weworkremotely
-    - wellfound
-    - google_jobs
+  - remoteok
+  - weworkremotely
+  - remotive
+  - arbeitnow
+  India:
+  - naukri
+  - foundit
+  - instahyre

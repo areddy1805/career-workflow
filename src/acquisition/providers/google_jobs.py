@@ -38,6 +38,7 @@ class GoogleJobsProvider(JobProvider):
 
     PROVIDER_NAME = "google_jobs"
     PROVIDER_TYPE = ProviderType.AGGREGATOR
+    LIFECYCLE_STATE = "experimental"
 
     def initialize(self, config: dict[str, Any]) -> None:
         self._config = config

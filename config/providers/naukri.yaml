@@ -1,35 +1,30 @@
-# Naukri.com — Primary Indian job board. Auto-apply enabled.
-enabled: true
-priority: critical
-backend: native
-
 authentication_required: true
-supports_auto_apply: true
-supports_easy_apply: true
-supports_resume_upload: true
-supports_questionnaire: true
-supports_login: true
-supports_incremental: true
-supports_pagination: true
-supports_location_filter: true
-supports_remote_filter: false
-supports_salary_filter: true
-supports_experience_filter: true
-supports_company_filter: false
-rate_limited: false
+backend: native
 captcha_risk: true
-
-search_delay: 1.2
+enabled: true
 max_pages: 3
 max_results: 200
-user_agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+priority: 100
+rate_limit:
+  requests_per_minute: 30
+rate_limited: false
+retry_policy:
+  backoff_seconds: 3
+  max_retries: 2
+search_delay: 1.2
+supports_auto_apply: true
+supports_company_filter: false
+supports_easy_apply: true
+supports_experience_filter: true
+supports_incremental: true
+supports_location_filter: true
+supports_login: true
+supports_pagination: true
+supports_questionnaire: true
+supports_remote_filter: false
+supports_resume_upload: true
+supports_salary_filter: true
 timeouts:
   connect: 10
   read: 30
-
-rate_limit:
-  requests_per_minute: 30
-
-retry_policy:
-  max_retries: 2
-  backoff_seconds: 3
+user_agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36

@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 class FounditProvider(JobProvider):
     PROVIDER_NAME = "foundit"
     PROVIDER_TYPE = ProviderType.JOB_BOARD
+    LIFECYCLE_STATE = "experimental"
 
     def initialize(self, config: dict[str, Any]) -> None:
         self._config = config

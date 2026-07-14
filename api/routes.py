@@ -351,10 +351,10 @@ def api_get_provider_groups() -> dict[str, Any]:
 def _find_latest_artifact(filename: str):
     """Find the most recent artifact file by scanning run directories."""
     from pathlib import Path
-    runs_dir = Path("data/runs")
+    runs_dir = Path("artifacts/runs")
     if not runs_dir.exists():
         # Also check flat data directory
-        flat = Path("data") / filename
+        flat = Path("artifacts") / filename
         return flat if flat.exists() else None
     candidates = sorted(
         runs_dir.glob(f"*/{filename}"),
@@ -362,3 +362,24 @@ def _find_latest_artifact(filename: str):
         reverse=True,
     )
     return candidates[0] if candidates else None
+
+@router.get("/intelligence/{artifact_name}")
+def api_get_intelligence_artifact(artifact_name: str) -> dict[str, Any]:
+    import json
+    allowed = {
+        "pipeline_funnel", "query_analytics", "search_profile_quality", 
+        "provider_quality", "duplicate_analysis", "decision_audit"
+    }
+    if artifact_name not in allowed:
+        raise HTTPException(status_code=400, detail="Invalid artifact name")
+        
+    path = _find_latest_artifact(f"{artifact_name}.json")
+    if not path:
+        return {"data": None, "message": f"No {artifact_name} found. Run pipeline first."}
+        
+    try:
+        with open(path, encoding="utf-8") as f:
+            return {"data": json.load(f)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+

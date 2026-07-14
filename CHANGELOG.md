@@ -6,6 +6,28 @@ The format follows a project-oriented changelog rather than individual commit hi
 
 ---
 
+# [3.1.1] - Multi-Source Acquisition Platform
+
+## Overview
+Version 3.1 transforms the acquisition layer into a provider-based platform capable of discovering jobs from multiple sources while preserving the downstream classification and application pipelines. It introduces a modular registry, dynamic provider lifecycles, and a cross-provider deduplication engine.
+
+---
+
+## Added
+
+### Provider Platform Architecture
+- **Provider Registry**: A modular plugin system for auto-discovering and registering job sources (`JobProvider`).
+- **Normalized Job Model**: An abstraction layer mapping diverse source formats into a canonical schema.
+- **Provider Lifecycle Management**: Explicit categorization into `Production`, `Beta`, and `Experimental` states (e.g., Naukri, RemoteOK, Remotive).
+- **Cross-Provider Deduplication**: Deterministic resolution of duplicate jobs across sources using priority-based merging of metadata, tags, and application links.
+
+### Analytics & Health Tracking
+- **Provider Health History**: Rolling telemetry persisted in `provider_health_history.json` tracking latency, success rates, and challenge encounters.
+- **Dashboard Enhancements**: A new "Today's Acquisition" widget providing detailed breakdown of yield, duplicates, and pipeline state by provider.
+- **Acquisition Summary**: Detailed runtime statistics included in `provider_summary.json` per execution run.
+
+---
+
 # [2.7.0]
 
 ## Overview

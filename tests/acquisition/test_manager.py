@@ -4,7 +4,7 @@ from __future__ import annotations
 import pytest
 from unittest.mock import MagicMock, patch
 from src.acquisition.models import (
-    NormalizedJob, JobProvenance, SearchPlan, ProviderPriority,
+    NormalizedJob, JobProvenance, SearchPlan,
     ProviderCapabilities, ProviderHealthStatus, ProviderHealth, ProviderType,
 )
 from src.acquisition.manager import AcquisitionManager
@@ -29,7 +29,7 @@ def _plan(query: str = "python", provider: str | None = None) -> SearchPlan:
         generated_query=query,
         location="Pune",
         target_providers=[provider] if provider else [],
-        priority=ProviderPriority.NORMAL,
+        priority=50,
     )
 
 

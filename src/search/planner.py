@@ -172,7 +172,20 @@ class SearchPlanner:
         - target_providers / provider_filters (empty = all enabled)
         - priority, weight for resource allocation
         """
-        from src.acquisition.models import SearchPlan, ProviderPriority
+        from src.acquisition.models import SearchPlan
+        from src.acquisition.registry import ProviderRegistry
+
+        registry = ProviderRegistry()
+        include_exp = self.user_profile.get("include_experimental", False)
+        allowed_providers = []
+        for p_info in registry.provider_info():
+            if p_info["enabled"]:
+                state = p_info.get("lifecycle_state", "production")
+                if state in ("disabled", "deprecated"):
+                    continue
+                if state == "experimental" and not include_exp:
+                    continue
+                allowed_providers.append(p_info["name"])
 
         active_profiles = self.user_profile.get("active_profiles", [])
         locations = self.user_profile.get("preferred_locations", ["Pune"])
@@ -194,18 +207,18 @@ class SearchPlanner:
             weight = profile.get("weight", 1.0)
             work_mode = profile.get("work_mode", "")
 
-            # Map weight → priority enum
+            # Map weight → priority integer
             if weight >= 1.2:
-                priority = ProviderPriority.CRITICAL
+                priority = 100
                 track = "TIER_S"
             elif weight >= 1.1:
-                priority = ProviderPriority.HIGH
+                priority = 80
                 track = "TIER_A"
             elif weight >= 1.0:
-                priority = ProviderPriority.NORMAL
+                priority = 50
                 track = "TIER_B"
             else:
-                priority = ProviderPriority.LOW
+                priority = 20
                 track = "TIER_C"
 
             # Expand technology profiles
@@ -250,6 +263,7 @@ class SearchPlanner:
                                 track=track,
                                 matched_technology="role_only",
                                 technology_group="",
+                                target_providers=list(allowed_providers),
                             ))
 
                         # Role + technology plans
@@ -271,9 +285,10 @@ class SearchPlanner:
                                     track=track,
                                     matched_technology=tech_kw,
                                     technology_group=tech_group,
+                                    target_providers=list(allowed_providers),
                                 ))
 
             plans.extend(profile_plans[:max_queries])
 
-        plans.sort(key=lambda p: (p.priority.to_int(), p.generated_query))
+        plans.sort(key=lambda p: (p.priority, p.generated_query), reverse=True)
         return plans

@@ -1,39 +1,30 @@
-# Google Jobs Aggregator — largest global job index.
-# backend: playwright (default) | serpapi | manual
-enabled: false
-priority: high
-backend: playwright
-
-# Set to 'serpapi' and provide SERPAPI_KEY env var to use SerpAPI
-# backend: serpapi
-
 authentication_required: false
-supports_auto_apply: false
-supports_easy_apply: false
-supports_resume_upload: false
-supports_questionnaire: false
-supports_login: false
-supports_incremental: false
-supports_pagination: true
-supports_location_filter: true
-supports_remote_filter: true
-supports_salary_filter: false
-supports_experience_filter: false
-supports_company_filter: false
-rate_limited: true
+backend: playwright
 captcha_risk: true
-
-search_delay: 3.0
+enabled: false
 max_pages: 2
 max_results: 50
-user_agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+priority: 80
+rate_limit:
+  requests_per_minute: 5
+rate_limited: true
+retry_policy:
+  backoff_seconds: 10
+  max_retries: 1
+search_delay: 3.0
+supports_auto_apply: false
+supports_company_filter: false
+supports_easy_apply: false
+supports_experience_filter: false
+supports_incremental: false
+supports_location_filter: true
+supports_login: false
+supports_pagination: true
+supports_questionnaire: false
+supports_remote_filter: true
+supports_resume_upload: false
+supports_salary_filter: false
 timeouts:
   connect: 15
   read: 45
-
-rate_limit:
-  requests_per_minute: 5
-
-retry_policy:
-  max_retries: 1
-  backoff_seconds: 10
+user_agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36
