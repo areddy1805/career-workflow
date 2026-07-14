@@ -7,49 +7,15 @@ from dotenv import load_dotenv
 
 from src.client.job_client import NaukriJobClient
 from src.client.naukri_client import NaukriLoginClient
+from src.search.planner import SearchPlanner
 
 load_dotenv(".env")
 
 
-SEARCHES = [
-    {
-        "keyword": "AI Engineer",
-        "location": "Pune",
-    },
-    {
-        "keyword": "Generative AI Engineer",
-        "location": "Pune",
-    },
-    {
-        "keyword": "GenAI Engineer",
-        "location": "Pune",
-    },
-    {
-        "keyword": "LLM Engineer",
-        "location": "Pune",
-    },
-    {
-        "keyword": "RAG Engineer",
-        "location": "Pune",
-    },
-    {
-        "keyword": "Applied AI Engineer",
-        "location": "Pune",
-    },
-    {
-        "keyword": "AI Application Engineer",
-        "location": "Pune",
-    },
-    {
-        "keyword": "AI Full Stack Developer",
-        "location": "Pune",
-    },
-    {
-        "keyword": "Senior Full Stack Developer Angular Node",
-        "location": "Pune",
-    },
-]
-
+planner = SearchPlanner()
+SEARCHES = planner.generate_queries()
+if not SEARCHES:
+    raise ValueError("SearchPlanner generated 0 queries.")
 
 EXPERIENCE_LEVELS = [4, 5, 6, 7]
 
