@@ -253,11 +253,112 @@ def api_get_search_intelligence() -> dict[str, Any]:
     from src.search.planner import SearchPlanner
     planner = SearchPlanner()
     queries = planner.generate_queries()
-    
+
+    # Technology profile breakdown for Search Intelligence UI
+    tech_profiles: dict[str, list[str]] = {}
+    for q in queries:
+        tech_group = q.get("technology_group", q.get("matched_technology", "")) or "general"
+        if tech_group not in tech_profiles:
+            tech_profiles[tech_group] = []
+        if q.get("keyword") not in tech_profiles[tech_group]:
+            tech_profiles[tech_group].append(q.get("keyword", ""))
+
+    # Provider-level query distribution (which providers each plan targets)
+    provider_query_counts: dict[str, int] = {}
+    try:
+        plans = planner.generate_plans()
+        for plan in plans:
+            targets = plan.target_providers or ["all"]
+            for t in targets:
+                provider_query_counts[t] = provider_query_counts.get(t, 0) + 1
+    except Exception:
+        pass
+
     return {
         "active_profiles": planner.user_profile.get("active_profiles", []),
         "locations": planner.user_profile.get("preferred_locations", []),
+        "country": planner.user_profile.get("country", ""),
+        "remote_policy": planner.user_profile.get("remote_policy", ""),
         "total_queries": len(queries),
-        "queries": queries
+        "queries": queries,
+        "technology_profiles": tech_profiles,
+        "provider_query_counts": provider_query_counts,
     }
 
+
+# --- Provider Platform ---
+
+@router.get("/providers")
+def api_list_providers() -> dict[str, Any]:
+    """List all configured providers with their status, capabilities, and health."""
+    try:
+        from src.acquisition.registry import ProviderRegistry
+        registry = ProviderRegistry()
+        providers = registry.provider_info()
+        return {"providers": providers, "total": len(providers)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/providers/{name}")
+def api_get_provider(name: str) -> dict[str, Any]:
+    """Get details for a single provider."""
+    try:
+        from src.acquisition.registry import ProviderRegistry
+        registry = ProviderRegistry()
+        infos = registry.provider_info()
+        for info in infos:
+            if info.get("name") == name:
+                return info
+        raise HTTPException(status_code=404, detail=f"Provider '{name}' not found")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/acquisition/summary")
+def api_get_acquisition_summary() -> dict[str, Any]:
+    """Return the latest provider_summary.json from the most recent run."""
+    import json
+    from pathlib import Path
+    summary_path = _find_latest_artifact("provider_summary.json")
+    if summary_path is None:
+        return {"data": None, "message": "No acquisition summary found. Run the pipeline first."}
+    try:
+        with open(summary_path, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/provider-groups")
+def api_get_provider_groups() -> dict[str, Any]:
+    """Return provider group definitions from config/provider_groups.yaml."""
+    import yaml
+    from pathlib import Path
+    groups_path = Path("config/provider_groups.yaml")
+    if not groups_path.exists():
+        return {"groups": {}}
+    try:
+        with open(groups_path, encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+        return {"groups": data.get("groups", {})}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+def _find_latest_artifact(filename: str):
+    """Find the most recent artifact file by scanning run directories."""
+    from pathlib import Path
+    runs_dir = Path("data/runs")
+    if not runs_dir.exists():
+        # Also check flat data directory
+        flat = Path("data") / filename
+        return flat if flat.exists() else None
+    candidates = sorted(
+        runs_dir.glob(f"*/{filename}"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    return candidates[0] if candidates else None

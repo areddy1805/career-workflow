@@ -401,60 +401,70 @@ class CareerWorkflowPipeline:
     # ------------------------------------------------------------------
 
     def acquire(self) -> None:
-        username = os.environ["NAUKRI_USERNAME"]
+        # ------------------------------------------------------------------
+        # Provider-based acquisition (v3.1)
+        # ------------------------------------------------------------------
+        # AcquisitionManager orchestrates all enabled providers.
+        # For Phase 0 (Naukri only), this is functionally identical to the
+        # previous direct Naukri implementation. Adding providers requires
+        # only a new class + YAML — no changes here.
+        # ------------------------------------------------------------------
+        from src.acquisition.manager import AcquisitionManager
+        from src.acquisition.registry import ProviderRegistry
+        from src.search.planner import SearchPlanner
 
-        password = os.environ["NAUKRI_PASSWORD"]
-
-        login_client = NaukriLoginClient(
-            username,
-            password,
+        registry = ProviderRegistry()
+        manager = AcquisitionManager(
+            registry=registry,
+            artifact_dir=self.context.artifact_dir if hasattr(self.context, "artifact_dir") else None,
         )
 
-        login_client.login()
+        # Generate SearchPlans from the existing SearchPlanner
+        planner = SearchPlanner()
+        plans = planner.generate_plans()
 
-        job_client = NaukriJobClient(
-            login_client,
+        jobs, acq_summary = manager.acquire(
+            plans=plans,
+            run_id=self.context.run_id,
         )
 
-        job_cache = JobSearchCache(
-            path=os.getenv(
-                "JOB_SEARCH_CACHE_PATH",
-                "data/job_search_cache.json",
-            ),
-            ttl_days=int(
-                os.getenv(
-                    "JOB_SEARCH_CACHE_TTL_DAYS",
-                    "3",
-                )
-            ),
-        )
+        # ------------------------------------------------------------------
+        # Expose Naukri clients for reconcile() and apply() stages.
+        # These stages are unchanged — they still use NaukriJobClient.
+        # The NaukriProvider is the only provider that supports auto-apply;
+        # non-Naukri jobs route to External Apply queue automatically.
+        # ------------------------------------------------------------------
+        naukri_provider = registry.get_provider("naukri")
+        if naukri_provider is not None:
+            self.context.login_client = naukri_provider.get_login_client()
+            self.context.job_client = naukri_provider.get_job_client()
+            fetch_meta = naukri_provider.get_fetch_result_metadata()
+        else:
+            self.context.login_client = None
+            self.context.job_client = None
+            fetch_meta = {
+                "challenge_encountered": False,
+                "cooldown_suppressed": False,
+                "search_requests_attempted": 0,
+                "pages_stopped_low_yield": 0,
+                "stop_reasons": {},
+            }
 
-        search_cooldown = SearchChallengeCooldown(
-            path=os.getenv(
-                "SEARCH_CHALLENGE_STATE_PATH",
-                "data/search_challenge_state.json",
-            ),
-            cooldown_minutes=int(
-                os.getenv(
-                    "SEARCH_CHALLENGE_COOLDOWN_MINUTES",
-                    "60",
-                )
-            ),
-        )
-
-        jobs, fetch_result = acquire_jobs(
-            jc=job_client,
-            cache=job_cache,
-            cooldown=search_cooldown,
-            mode=self.context.acquisition_mode,
-            force_live=self.context.force_live,
-        )
-
-        self.context.login_client = login_client
-
-        self.context.job_client = job_client
+        # Shutdown providers after acquisition
+        registry.shutdown_all()
 
         self.context.acquired_jobs = jobs
+
+        # Build a lightweight fetch_result-compatible object for downstream
+        # stage_results usage (cooldown display, etc.)
+        class _FetchResult:
+            pass
+        fetch_result = _FetchResult()
+        fetch_result.challenge_encountered = fetch_meta.get("challenge_encountered", False)
+        fetch_result.search_skipped_due_to_cooldown = fetch_meta.get("search_skipped_due_to_cooldown", False)
+        fetch_result.search_requests_attempted = fetch_meta.get("search_requests_attempted", 0)
+        fetch_result.pages_stopped_low_yield = fetch_meta.get("pages_stopped_low_yield", 0)
+        fetch_result.stop_reasons = fetch_meta.get("stop_reasons", {})
 
         self.context.fetch_result = fetch_result
 
@@ -463,14 +473,24 @@ class CareerWorkflowPipeline:
             fetch_result=fetch_result,
         )
 
+        summary_dict = acq_summary.to_dict()
+
         self.context.stage_results["acquisition"] = {
             "jobs": len(jobs),
-            "challenge_encountered": (fetch_result.challenge_encountered),
-            "cooldown_suppressed": (fetch_result.search_skipped_due_to_cooldown),
+            "challenge_encountered": fetch_result.challenge_encountered,
+            "cooldown_suppressed": fetch_result.search_skipped_due_to_cooldown,
             "mode": self.context.acquisition_mode,
             "search_requests_attempted": fetch_result.search_requests_attempted,
             "pages_stopped_low_yield": fetch_result.pages_stopped_low_yield,
             "stop_reasons": fetch_result.stop_reasons,
+            # Provider platform fields
+            "providers": summary_dict.get("providers", []),
+            "total_unique_jobs": summary_dict.get("total_unique_jobs", len(jobs)),
+            "total_jobs_returned": summary_dict.get("total_jobs_returned", len(jobs)),
+            "cross_provider_duplicates": summary_dict.get("cross_provider_duplicates", 0),
+            "coverage_pct": summary_dict.get("coverage_pct", 100.0),
+            "duplicates_pct": summary_dict.get("duplicates_pct", 0.0),
+            "provider_contribution_pct": summary_dict.get("provider_contribution_pct", {}),
         }
 
         self._write_artifact(

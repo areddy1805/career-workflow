@@ -1,0 +1,35 @@
+# RemoteOK — Remote-only jobs via public JSON API.
+enabled: false
+priority: high
+backend: api
+
+authentication_required: false
+supports_auto_apply: false
+supports_easy_apply: false
+supports_resume_upload: false
+supports_questionnaire: false
+supports_login: false
+supports_incremental: false
+supports_pagination: false
+supports_location_filter: false
+supports_remote_filter: true
+supports_salary_filter: false
+supports_experience_filter: false
+supports_company_filter: false
+rate_limited: true
+captcha_risk: false
+
+search_delay: 2.0
+max_pages: 1
+max_results: 100
+user_agent: "Mozilla/5.0 (compatible; CareerWorkflow/3.1)"
+timeouts:
+  connect: 10
+  read: 30
+
+rate_limit:
+  requests_per_minute: 10
+
+retry_policy:
+  max_retries: 1
+  backoff_seconds: 5

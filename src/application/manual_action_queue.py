@@ -183,22 +183,29 @@ class ManualActionQueue:
             or ""
         )
 
+        # Prefer application_url from the provider layer (set by JobNormalizer)
         url = str(
-            self._value(
-                job,
-                "url",
-                "",
-            )
-            or self._value(
-                job,
-                "job_url",
-                "",
-            )
+            self._value(job, "application_url", "")
+            or self._value(job, "url", "")
+            or self._value(job, "job_url", "")
             or ""
         )
 
+        provider = str(self._value(job, "provider", "") or "naukri")
+        original_job_url = str(
+            self._value(job, "original_job_url", "")
+            or self._value(job, "provider_url", "")
+            or ""
+        )
+        apply_source = str(self._value(job, "apply_source", "") or self._value(job, "provider_name", "") or "")
+        provider_job_id = str(self._value(job, "provider_job_id", "") or job_id or "")
+
         if not url:
-            url = "https://www.naukri.com/" f"job-listings-{job_id}"
+            # Fallback: Naukri URL for legacy jobs without application_url
+            if provider == "naukri" or not provider:
+                url = f"https://www.naukri.com/job-listings-{job_id}"
+            else:
+                url = original_job_url or ""
 
         for row in rows:
             if str(row.get("job_id")) != job_id:
@@ -214,6 +221,10 @@ class ManualActionQueue:
                 "reason": reason,
                 "source": source,
                 "run_id": run_id,
+                "provider": provider,
+                "original_job_url": original_job_url,
+                "apply_source": apply_source,
+                "provider_job_id": provider_job_id,
             }
 
             for key, value in repair_values.items():
@@ -249,6 +260,11 @@ class ManualActionQueue:
                 "created_at": now,
                 "updated_at": now,
                 "applied_at": None,
+                # Provider platform fields (v3.1)
+                "provider": provider,
+                "original_job_url": original_job_url,
+                "apply_source": apply_source,
+                "provider_job_id": provider_job_id,
             }
         )
 

@@ -1,0 +1,35 @@
+# Wellfound (formerly AngelList Talent) — Startup and tech jobs.
+enabled: false
+priority: normal
+backend: graphql
+
+authentication_required: false
+supports_auto_apply: false
+supports_easy_apply: false
+supports_resume_upload: false
+supports_questionnaire: false
+supports_login: false
+supports_incremental: false
+supports_pagination: true
+supports_location_filter: true
+supports_remote_filter: true
+supports_salary_filter: false
+supports_experience_filter: false
+supports_company_filter: false
+rate_limited: true
+captcha_risk: false
+
+search_delay: 2.0
+max_pages: 3
+max_results: 50
+user_agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+timeouts:
+  connect: 10
+  read: 30
+
+rate_limit:
+  requests_per_minute: 15
+
+retry_policy:
+  max_retries: 2
+  backoff_seconds: 5

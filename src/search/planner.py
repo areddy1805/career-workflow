@@ -156,3 +156,124 @@ class SearchPlanner:
         # Sort for deterministic output
         result.sort(key=lambda x: x["keyword"])
         return result
+
+
+    def generate_plans(self) -> "list":
+        """
+        Generate SearchPlan objects for the provider-based acquisition layer.
+
+        Alongside the existing generate_queries() method (which remains unchanged
+        for backward compatibility), this method returns richer SearchPlan objects
+        understood by AcquisitionManager.
+
+        SearchPlan carries the full context needed by any provider:
+        - location, country, experience, work_mode, remote_policy
+        - technology_group for provenance tracking
+        - target_providers / provider_filters (empty = all enabled)
+        - priority, weight for resource allocation
+        """
+        from src.acquisition.models import SearchPlan, ProviderPriority
+
+        active_profiles = self.user_profile.get("active_profiles", [])
+        locations = self.user_profile.get("preferred_locations", ["Pune"])
+        country = self.user_profile.get("country", "IN")
+        default_experience_levels = self.user_profile.get("experience_levels", [2, 4, 6])
+        remote_policy = self.user_profile.get("remote_policy", "")
+
+        max_queries = self.planner_config.get("max_queries_per_profile", 10)
+
+        plans: list[SearchPlan] = []
+        seen: set[tuple] = set()
+
+        for profile_name in active_profiles:
+            profile = self.search_profiles.get(profile_name)
+            if not profile:
+                continue
+
+            titles = profile.get("titles", [])
+            weight = profile.get("weight", 1.0)
+            work_mode = profile.get("work_mode", "")
+
+            # Map weight → priority enum
+            if weight >= 1.2:
+                priority = ProviderPriority.CRITICAL
+                track = "TIER_S"
+            elif weight >= 1.1:
+                priority = ProviderPriority.HIGH
+                track = "TIER_A"
+            elif weight >= 1.0:
+                priority = ProviderPriority.NORMAL
+                track = "TIER_B"
+            else:
+                priority = ProviderPriority.LOW
+                track = "TIER_C"
+
+            # Expand technology profiles
+            tech_keywords: list[tuple[str, str]] = []  # (keyword, tech_group_name)
+            for tech_ref in profile.get("preferred_technologies", []):
+                if tech_ref in self.technology_profiles:
+                    for kw in self.technology_profiles[tech_ref].get("keywords", []):
+                        tech_keywords.append((kw, tech_ref))
+                else:
+                    tech_keywords.append((tech_ref, tech_ref))
+
+            # Expand negative keywords
+            negative_keywords = []
+            for neg_ref in profile.get("negative_groups", []):
+                if neg_ref in self.negative_profiles:
+                    negative_keywords.extend(self.negative_profiles[neg_ref].get("keywords", []))
+
+            neg_suffix = " ".join(f"-{neg}" for neg in negative_keywords)
+            if neg_suffix:
+                neg_suffix = f" {neg_suffix}"
+
+            profile_plans = []
+
+            for location in locations:
+                for title in titles:
+                    for exp in default_experience_levels:
+                        # Role-only plan
+                        query = f"{title}{neg_suffix}"
+                        key = (query, location, exp, profile_name, "role_only")
+                        if key not in seen:
+                            seen.add(key)
+                            profile_plans.append(SearchPlan(
+                                profile=profile_name,
+                                generated_query=query,
+                                location=location,
+                                country=country,
+                                experience=exp,
+                                work_mode=work_mode,
+                                remote_policy=remote_policy,
+                                priority=priority,
+                                weight=weight,
+                                track=track,
+                                matched_technology="role_only",
+                                technology_group="",
+                            ))
+
+                        # Role + technology plans
+                        for tech_kw, tech_group in tech_keywords[:max_queries]:
+                            query = f"{title} {tech_kw}{neg_suffix}"
+                            key = (query, location, exp, profile_name, tech_group)
+                            if key not in seen:
+                                seen.add(key)
+                                profile_plans.append(SearchPlan(
+                                    profile=profile_name,
+                                    generated_query=query,
+                                    location=location,
+                                    country=country,
+                                    experience=exp,
+                                    work_mode=work_mode,
+                                    remote_policy=remote_policy,
+                                    priority=priority,
+                                    weight=weight,
+                                    track=track,
+                                    matched_technology=tech_kw,
+                                    technology_group=tech_group,
+                                ))
+
+            plans.extend(profile_plans[:max_queries])
+
+        plans.sort(key=lambda p: (p.priority.to_int(), p.generated_query))
+        return plans

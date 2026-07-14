@@ -41,13 +41,24 @@ export function JobDrawer({ jobId, open, onOpenChange, onTransitioned }: JobDraw
   };
 
   const getJobUrl = () => {
-    const url = data?.overview?.apply_link || data?.overview?.url || data?.overview?.source_url;
-    if (!url) return null;
-    if (url.startsWith('http')) return url;
-    if (url.startsWith('job-listings-') || url.startsWith('/job-listings-')) {
-      return `https://www.naukri.com/${url.replace(/^\//, '')}`;
+    const ov = data?.overview;
+    if (!ov) return null;
+
+    const url = ov.application_url || ov.url || ov.job_url || ov.apply_link;
+    const providerUrl = ov.original_job_url || ov.provider_url;
+
+    if (url) {
+      if (url.startsWith('http')) return url;
+      if (url.startsWith('job-listings-') || url.startsWith('/job-listings-')) {
+        return `https://www.naukri.com/${url.replace(/^\//, '')}`;
+      }
+      return `https://www.naukri.com/job-listings-${url}`;
     }
-    return `https://www.naukri.com/job-listings-${url}`;
+
+    if (ov.provider === 'naukri' || !ov.provider) {
+       return `https://www.naukri.com/job-listings-${ov.job_id}`;
+    }
+    return providerUrl || null;
   };
 
   const jobUrl = getJobUrl();
@@ -96,7 +107,12 @@ export function JobDrawer({ jobId, open, onOpenChange, onTransitioned }: JobDraw
               <div><span className="font-semibold text-muted-foreground">Experience:</span> {data.overview?.experience || 'N/A'}</div>
               <div><span className="font-semibold text-muted-foreground">Salary:</span> {data.overview?.salary ? formatSalary(data.overview.salary) : 'N/A'}</div>
               <div><span className="font-semibold text-muted-foreground">AI Score:</span> {data.overview?.ai_score || data.overview?.score || 'N/A'}</div>
-              <div><span className="font-semibold text-muted-foreground">Source:</span> {data.overview?.source || 'N/A'}</div>
+              <div>
+                <span className="font-semibold text-muted-foreground">Source:</span>{' '}
+                <span className="uppercase tracking-wide">
+                  {data.overview?.provider ? data.overview.provider.replace('_', ' ') : (data.overview?.source || 'N/A')}
+                </span>
+              </div>
             </div>
 
             {(data.overview?.ai_reason || data.overview?.reason) && (
