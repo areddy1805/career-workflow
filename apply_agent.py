@@ -1393,6 +1393,7 @@ def run_application_batch(
     metrics: PipelineRunMetrics | None = None,
     rejected_jobs: list | None = None,
     explorer = None,
+    exec_context = None,
 ) -> ApplicationRunSummary:
     """
     Execute the application workflow for a batch of filtered jobs.
@@ -1451,10 +1452,6 @@ def run_application_batch(
             "timestamp": datetime.now(timezone.utc).isoformat()
         })
         if explorer:
-            # We convert obj to dict if necessary, but here job is a dict? No, wait. 
-            # In run_application_batch, job is often a dict because it comes from selected_jobs.
-            # But the attribute access `getattr(job, "job_id", "")` suggests it might be an object? 
-            # `jobs` is self.context.selected_jobs which are dicts. So `job` is a dict.
             job_dict = job if isinstance(job, dict) else job.__dict__
             explorer.record_rejection(job_dict, reason=str(reason), code=code)
 
@@ -1464,6 +1461,14 @@ def run_application_batch(
             "data/manual_action_queue.json",
         )
     )
+
+    if explorer:
+        explorer.start_stage("Application", jobs)
+        
+    if exec_context:
+        exec_context.start_stage("Application", jobs)
+
+    print(f"\n--- Starting application batch ({len(jobs)} jobs) ---")
 
     for index, job in enumerate(
         jobs,
@@ -1502,6 +1507,11 @@ def run_application_batch(
             _record_app_reject(job, 'ALREADY_APPLIED', 'Previously applied in an earlier run.')
             if ledger is not None:
                 ledger.record(job, "already_applied", meta=meta)
+            
+            if explorer:
+                explorer.record_rejection(job, stage="Application", code="ALREADY_APPLIED", reason="Job is in ledger applied_job_ids")
+            if exec_context:
+                exec_context.reject(job, reason="Job is in ledger applied_job_ids", code="ALREADY_APPLIED")
             continue
 
         # ----------------------------------------------------------
@@ -1548,11 +1558,20 @@ def run_application_batch(
             )
             for remaining_job in jobs[index - 1:]:
                 _record_app_reject(remaining_job, 'APPLICATION_QUOTA', 'Per-run successful submission limit reached')
+                if exec_context:
+                    exec_context.reject(remaining_job, 'Per-run successful submission limit reached', 'APPLICATION_QUOTA')
             break
 
         if effective_policy.dry_run:
             logger.info("Dry-run: application suppressed for job_id=%s", job.job_id)
+            print(
+                f"  [{index}/{len(jobs)}] Skipping dry-run: {job.title} @ {job.company}"
+            )
             dry_run_skipped_count += 1
+            if explorer:
+                explorer.record_rejection(job, stage="Application", code="DRY_RUN", reason="Dry run mode is enabled")
+            if exec_context:
+                exec_context.skip(job, reason="Dry run mode is enabled", code="DRY_RUN")
             if ledger is not None:
                 ledger.record(job, "dry_run_suppressed", meta=meta)
             continue
@@ -1589,6 +1608,8 @@ def run_application_batch(
                     unsupported_count += 1
 
                 _record_app_reject(job, route_result.strategy.name, route_result.reasoning)
+                if exec_context:
+                    exec_context.route(job, strategy=route_result.strategy.name, reason=route_result.reasoning)
                 if ledger is not None:
                     ledger.record(job, route_result.strategy.name.lower(), meta=meta)
                 
@@ -1607,6 +1628,8 @@ def run_application_batch(
             print_status_failed(exc)
 
             failed_count += 1
+            if exec_context:
+                exec_context.fail(job, str(exc))
             if ledger is not None:
                 ledger.record(job, "detail_check_failed", meta=meta, error=str(exc))
             continue
@@ -1643,10 +1666,10 @@ def run_application_batch(
 
                 applied_jobs_set.add(job.job_id)
 
-
-
                 already_applied_count += 1
                 _record_app_reject(job, 'ALREADY_APPLIED', 'Server reports job already applied')
+                if exec_context:
+                    exec_context.reject(job, reason="Server reports job already applied", code="ALREADY_APPLIED")
 
                 if ledger is not None:
                     ledger.record(job, "already_applied", meta=meta)
@@ -1664,8 +1687,6 @@ def run_application_batch(
 
             print_status_applied(applied_at)
 
-
-
             applied_jobs_set.add(job.job_id)
 
             applied_count += 1
@@ -1680,6 +1701,9 @@ def run_application_batch(
                     "decision": "Applied",
                     "cause": "Successfully processed application"
                 })
+            
+            if exec_context:
+                exec_context.apply(job, outcome="Applied", explanation={"cause": "Successfully processed application"})
 
             if ledger is not None:
                 ledger.record(job, "applied", meta=meta)
@@ -1688,6 +1712,8 @@ def run_application_batch(
             print_status_manual_review(exc)
             manual_review_count += 1
             _record_app_reject(job, 'MANUAL_REVIEW', str(exc))
+            if exec_context:
+                exec_context.route(job, strategy="MANUAL_REVIEW", reason=str(exc))
             breaker.success()
 
             if ledger is not None:
@@ -1735,6 +1761,12 @@ def run_application_batch(
 
         finally:
             sleep_fn(3)
+
+    if explorer:
+        explorer.finish_stage([])
+        
+    if exec_context:
+        exec_context.finish_stage()
 
     return ApplicationRunSummary(
         total_candidates=total_candidates,
@@ -2111,7 +2143,7 @@ def run_application_cycle(
                 "dry_run_skipped": 0,
                 "run_limit_reached": 0,
                 "failed": 0,
-                "manual_review": run_summary.manual_review,
+                "manual_review": 0,
             },
         }
 

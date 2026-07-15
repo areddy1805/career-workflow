@@ -88,6 +88,9 @@ class CareerWorkflowPipeline:
         )
 
         self.run_dir = self.artifacts_root / self.context.run_id
+        
+        from src.orchestration.execution_context import PipelineExecutionContext
+        self.exec_context = PipelineExecutionContext(self.context.run_id, self.run_dir)
 
         self.stage_statuses = {stage: StageStatus.PENDING for stage in PIPELINE_STAGES}
 
@@ -103,6 +106,7 @@ class CareerWorkflowPipeline:
             with open("config/search_strategy.yaml", "r") as f:
                 s_dict = yaml.safe_load(f)
             self.explorer.set_config_fingerprint(CANDIDATE_PROFILE, s_dict)
+            self.exec_context.set_config_fingerprint(CANDIDATE_PROFILE, s_dict)
         except Exception:
             pass
 
@@ -119,7 +123,7 @@ class CareerWorkflowPipeline:
     def initialize_run(self) -> None:
         self.run_dir.mkdir(
             parents=True,
-            exist_ok=False,
+            exist_ok=True,
         )
 
         self._persist_state()
@@ -473,6 +477,12 @@ class CareerWorkflowPipeline:
 
         self.context.fetch_result = fetch_result
 
+        self.exec_context.start_stage("Acquisition", [])
+        for job in jobs:
+            self.exec_context.acquire(job)
+            self.exec_context.complete(job)
+        self.exec_context.finish_stage()
+
         print_acquisition_summary(
             jobs=jobs,
             fetch_result=fetch_result,
@@ -503,8 +513,9 @@ class CareerWorkflowPipeline:
 
         jobs = self.context.acquired_jobs
         self.explorer.start_stage("Classification", jobs)
+        self.exec_context.start_stage("Classification", jobs)
 
-        classifier = JobFilterPipeline2(metrics=self.context.metrics, explorer=self.explorer)
+        classifier = JobFilterPipeline2(metrics=self.context.metrics, explorer=self.explorer, exec_context=self.exec_context)
 
         jobs = classifier.normalize_jobs(jobs)
         jobs = classifier.dedup(jobs)
@@ -550,6 +561,7 @@ class CareerWorkflowPipeline:
                     "BUDGET_EXCEEDED",
                     "Job fell below summary rank cutoff for detail fetching",
                 )
+                self.exec_context.reject(j, "Job fell below summary rank cutoff for detail fetching", "BUDGET_EXCEEDED")
 
         candidates_before_suppression = len(candidates)
 
@@ -600,6 +612,11 @@ class CareerWorkflowPipeline:
         final_jobs = enrich_application_metadata(final_jobs)
 
         self.context.classified_jobs = final_jobs
+        
+        for job in final_jobs:
+            self.exec_context.complete(job)
+            
+        self.exec_context.finish_stage()
         
         # Finish classification stage
         self.explorer.finish_stage(final_jobs)
@@ -751,6 +768,7 @@ class CareerWorkflowPipeline:
         ledger = self.context.ledger
         
         self.explorer.start_stage("Selection", self.context.classified_jobs)
+        self.exec_context.start_stage("Selection", self.context.classified_jobs)
 
         self.context.applied_job_ids = ledger.applied_job_ids()
 
@@ -843,6 +861,7 @@ class CareerWorkflowPipeline:
             job = self.context.score_map.get(str(decision["job_id"]))
             if job:
                 self.explorer.record_rejection(job, reason=str(reasons), code="SELECTION_INELIGIBLE")
+                self.exec_context.reject(job, reason=str(reasons), code="SELECTION_INELIGIBLE")
 
         if rejection_summary:
             print("HARD-GATE REJECTION SUMMARY:")
@@ -892,6 +911,8 @@ class CareerWorkflowPipeline:
                         "timestamp": datetime.now(timezone.utc).isoformat(),
                     }
                 )
+                self.explorer.record_rejection(j, code="DIVERSITY_POLICY", reason="Failed diversity constraints")
+                self.exec_context.reject(j, "Failed diversity constraints", "DIVERSITY_POLICY")
 
         attempt_budget = effective_limit(
             strategy.max_applications_per_run,
@@ -935,6 +956,8 @@ class CareerWorkflowPipeline:
                         "timestamp": datetime.now(timezone.utc).isoformat(),
                     }
                 )
+                self.explorer.record_rejection(j, code="ATTEMPT_BUDGET", reason="Exceeded attempt budget / strategy limits")
+                self.exec_context.reject(j, "Exceeded attempt budget / strategy limits", "ATTEMPT_BUDGET")
 
         self.context.selected_jobs = selected_jobs
 
@@ -950,10 +973,10 @@ class CareerWorkflowPipeline:
         strategy_payload = strategy_audit_payload(strategy)
 
         
-        self.explorer.finish_stage(selected_candidates)
+        self.explorer.finish_stage(selected_jobs)
         
         # Explainability for selected jobs
-        for job in selected_candidates:
+        for job in selected_jobs:
             self.explorer.record_selection(
                 job,
                 explanation={
@@ -961,11 +984,15 @@ class CareerWorkflowPipeline:
                     "decision": "Selected",
                     "cause": "Eligible and within selection bounds",
                     "evidence": {
-                        "ai_score": job.get("score"),
+                        "ai_score": getattr(job, "score", job.get("score") if hasattr(job, "get") else None),
                         "budget": self.context.max_applications
                     }
                 }
             )
+            self.exec_context.select(job, {"cause": "Eligible and within selection bounds"})
+            self.exec_context.complete(job)
+            
+        self.exec_context.finish_stage()
             
         self.context.stage_results["selection"] = {
             "classified": len(self.context.classified_jobs),
@@ -1103,6 +1130,7 @@ class CareerWorkflowPipeline:
             metrics=self.context.metrics,
             rejected_jobs=self.context.rejected_jobs,
             explorer=self.explorer,
+            exec_context=self.exec_context,
         )
 
         self.context.application_summary = summary

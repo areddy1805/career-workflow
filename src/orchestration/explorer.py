@@ -120,14 +120,22 @@ class PipelineExplorer:
         
         if explanation is None:
             explanation = {"reason": reason, "code": code}
-        job["explanation"] = explanation
+        
+        if isinstance(job, dict):
+            job["explanation"] = explanation
+        else:
+            job.explanation = explanation
+            
         self._record_trace(job, self.current_stage["name"], "REJECTED", explanation)
 
     def record_selection(self, job: dict, explanation: dict = None):
         if self.current_stage:
             self._record_trace(job, self.current_stage["name"], "SELECTED", explanation)
             if explanation:
-                job["explanation"] = explanation
+                if isinstance(job, dict):
+                    job["explanation"] = explanation
+                else:
+                    job.explanation = explanation
 
     def record_application(self, job: dict, outcome: str, explanation: dict = None):
         if self.current_stage:
@@ -165,9 +173,9 @@ class PipelineExplorer:
             if len(examples[code]) < 3:
                 job = r["job"]
                 examples[code].append({
-                    "pipeline_job_id": job.get("pipeline_job_id"),
-                    "title": job.get("title"),
-                    "company": job.get("company"),
+                    "pipeline_job_id": getattr(job, "pipeline_job_id", job.get("pipeline_job_id") if hasattr(job, "get") else None),
+                    "title": getattr(job, "title", job.get("title") if hasattr(job, "get") else None),
+                    "company": getattr(job, "company", job.get("company") if hasattr(job, "get") else None),
                     "reason": r["reason"]
                 })
                 
@@ -185,7 +193,7 @@ class PipelineExplorer:
             "top_reasons": sorted_reasons,
             "examples": examples,
             "top_entering": self.current_stage["top_entering"],
-            "top_leaving": [{"id": j.get("pipeline_job_id"), "title": j.get("title"), "company": j.get("company")} for j in output_jobs[:5]]
+            "top_leaving": [{"id": getattr(j, "pipeline_job_id", j.get("pipeline_job_id") if hasattr(j, "get") else None), "title": getattr(j, "title", j.get("title") if hasattr(j, "get") else None), "company": getattr(j, "company", j.get("company") if hasattr(j, "get") else None)} for j in output_jobs[:5]]
         })
         
         self.current_stage = None

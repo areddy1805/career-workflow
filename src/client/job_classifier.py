@@ -344,9 +344,11 @@ class JobFilterPipeline2:
         batch_size: int = 5,
         metrics: PipelineRunMetrics | None = None,
         explorer = None,
+        exec_context = None,
     ):
         self.metrics = metrics
         self.explorer = explorer
+        self.exec_context = exec_context
         self.api_key = api_key or os.getenv("OMLX_API_KEY")
 
         if not self.api_key:
