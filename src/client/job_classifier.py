@@ -343,11 +343,9 @@ class JobFilterPipeline2:
         ai_score_limit: int = 300,
         batch_size: int = 5,
         metrics: PipelineRunMetrics | None = None,
-        explorer = None,
         exec_context = None,
     ):
         self.metrics = metrics
-        self.explorer = explorer
         self.exec_context = exec_context
         self.api_key = api_key or os.getenv("OMLX_API_KEY")
 
@@ -380,8 +378,8 @@ class JobFilterPipeline2:
         job_copy["rejection_code"] = code
         job_copy["rejection_reason"] = reason
         
-        if self.explorer:
-            self.explorer.record_rejection(job, reason=reason, code=code)
+        if self.exec_context:
+            self.exec_context.reject(job, reason=reason, code=code)
             
         self.rejected_jobs.append(job_copy)
         

@@ -96,17 +96,22 @@ class CareerWorkflowPipeline:
 
         self.status = PipelineStatus.RUNNING
 
-        from src.orchestration.explorer import PipelineExplorer
-        self.explorer = PipelineExplorer(self.context.run_id)
+        from src.orchestration.projections import MetricsProjection, ExplorerProjection, JobTraceProjection
+        self.metrics_proj = MetricsProjection()
+        self.explorer_proj = ExplorerProjection(fingerprint={})
+        self.trace_proj = JobTraceProjection()
         
+        self.exec_context.bus.subscribe(self.metrics_proj)
+        self.exec_context.bus.subscribe(self.explorer_proj)
+        self.exec_context.bus.subscribe(self.trace_proj)
         # Load config hashes for fingerprinting
         from src.config.search_strategy import load_search_strategy
         import yaml
         try:
             with open("config/search_strategy.yaml", "r") as f:
                 s_dict = yaml.safe_load(f)
-            self.explorer.set_config_fingerprint(CANDIDATE_PROFILE, s_dict)
             self.exec_context.set_config_fingerprint(CANDIDATE_PROFILE, s_dict)
+            self.explorer_proj.fingerprint = s_dict
         except Exception:
             pass
 
@@ -512,10 +517,9 @@ class CareerWorkflowPipeline:
             raise RuntimeError("Job client unavailable")
 
         jobs = self.context.acquired_jobs
-        self.explorer.start_stage("Classification", jobs)
         self.exec_context.start_stage("Classification", jobs)
 
-        classifier = JobFilterPipeline2(metrics=self.context.metrics, explorer=self.explorer, exec_context=self.exec_context)
+        classifier = JobFilterPipeline2(metrics=self.context.metrics, exec_context=self.exec_context)
 
         jobs = classifier.normalize_jobs(jobs)
         jobs = classifier.dedup(jobs)
@@ -617,9 +621,6 @@ class CareerWorkflowPipeline:
             self.exec_context.complete(job)
             
         self.exec_context.finish_stage()
-        
-        # Finish classification stage
-        self.explorer.finish_stage(final_jobs)
 
         self.context.score_map = {
             str(result["job_id"]): result for result in final_jobs
@@ -767,7 +768,6 @@ class CareerWorkflowPipeline:
     def select(self) -> None:
         ledger = self.context.ledger
         
-        self.explorer.start_stage("Selection", self.context.classified_jobs)
         self.exec_context.start_stage("Selection", self.context.classified_jobs)
 
         self.context.applied_job_ids = ledger.applied_job_ids()
@@ -860,7 +860,6 @@ class CareerWorkflowPipeline:
             
             job = self.context.score_map.get(str(decision["job_id"]))
             if job:
-                self.explorer.record_rejection(job, reason=str(reasons), code="SELECTION_INELIGIBLE")
                 self.exec_context.reject(job, reason=str(reasons), code="SELECTION_INELIGIBLE")
 
         if rejection_summary:
@@ -911,7 +910,6 @@ class CareerWorkflowPipeline:
                         "timestamp": datetime.now(timezone.utc).isoformat(),
                     }
                 )
-                self.explorer.record_rejection(j, code="DIVERSITY_POLICY", reason="Failed diversity constraints")
                 self.exec_context.reject(j, "Failed diversity constraints", "DIVERSITY_POLICY")
 
         attempt_budget = effective_limit(
@@ -956,7 +954,6 @@ class CareerWorkflowPipeline:
                         "timestamp": datetime.now(timezone.utc).isoformat(),
                     }
                 )
-                self.explorer.record_rejection(j, code="ATTEMPT_BUDGET", reason="Exceeded attempt budget / strategy limits")
                 self.exec_context.reject(j, "Exceeded attempt budget / strategy limits", "ATTEMPT_BUDGET")
 
         self.context.selected_jobs = selected_jobs
@@ -972,23 +969,8 @@ class CareerWorkflowPipeline:
 
         strategy_payload = strategy_audit_payload(strategy)
 
-        
-        self.explorer.finish_stage(selected_jobs)
-        
         # Explainability for selected jobs
         for job in selected_jobs:
-            self.explorer.record_selection(
-                job,
-                explanation={
-                    "stage": "Selection",
-                    "decision": "Selected",
-                    "cause": "Eligible and within selection bounds",
-                    "evidence": {
-                        "ai_score": getattr(job, "score", job.get("score") if hasattr(job, "get") else None),
-                        "budget": self.context.max_applications
-                    }
-                }
-            )
             self.exec_context.select(job, {"cause": "Eligible and within selection bounds"})
             self.exec_context.complete(job)
             
@@ -1055,7 +1037,7 @@ class CareerWorkflowPipeline:
         )
 
     def apply(self) -> None:
-        self.explorer.start_stage("Application", self.context.selected_jobs)
+        # Removed explorer.start_stage
         
         if not self.context.selected_jobs:
             self.context.stage_results["application"] = {
@@ -1081,7 +1063,7 @@ class CareerWorkflowPipeline:
                 self.context.stage_results["application"],
             )
             
-            self.explorer.finish_stage([])
+            # Removed explorer.finish_stage
 
             return
 
@@ -1129,7 +1111,7 @@ class CareerWorkflowPipeline:
             run_id=self.context.run_id,
             metrics=self.context.metrics,
             rejected_jobs=self.context.rejected_jobs,
-            explorer=self.explorer,
+            # Removed explorer
             exec_context=self.exec_context,
         )
 
@@ -1167,7 +1149,7 @@ class CareerWorkflowPipeline:
             "manual_review": summary.manual_review,
         }
         
-        self.explorer.finish_stage(summary.applied_jobs if hasattr(summary, "applied_jobs") else [])
+        # Removed explorer.finish_stage
 
         self._write_artifact(
             "application.json",
@@ -1326,60 +1308,10 @@ class CareerWorkflowPipeline:
                 result.to_dict(),
             )
             
-            # EXPORT OBSERVABILITY ARTIFACTS
-            self._write_artifact(
-                "pipeline_explorer.json",
-                self.explorer.export_explorer()
-            )
-            self._write_artifact(
-                "job_trace.json",
-                self.explorer.export_traces()
-            )
+            # Removed EXPORT OBSERVABILITY ARTIFACTS for explorer
 
             self._generate_dedicated_artifacts(result)
             self._validate_artifacts(result)
-
-            # PARITY VALIDATION
-            import json
-            from src.orchestration.metrics_projection import MetricsProjection
-            event_log_path = self.run_dir / "event_log.json"
-            projection = MetricsProjection()
-            if event_log_path.exists():
-                with open(event_log_path, "r") as f:
-                    for line in f:
-                        if line.strip():
-                            projection.process_event(json.loads(line))
-            
-            projected_counts = projection.build_report()
-            legacy_counts = {
-                "acquired": result.acquired,
-                "selected": result.selected,
-                "attempted": result.attempted,
-                "submitted": result.submitted,
-                "already_applied": result.already_applied,
-                "skipped_local": result.skipped_local,
-                "native_applied": result.native_applied,
-                "ats_queue": result.ats_queue,
-                "generic_queue": result.generic_queue,
-                "manual_queue": result.manual_queue,
-                "unsupported": result.unsupported,
-                "policy_rejected": result.policy_rejected,
-                "dry_run_skipped": result.dry_run_skipped,
-                "run_limit_reached": result.run_limit_reached,
-                "failed": result.failed,
-                "manual_review": result.manual_review,
-            }
-
-            match = legacy_counts == projected_counts
-            validation = {
-                "legacy": legacy_counts,
-                "projection": projected_counts,
-                "match": match
-            }
-            self._write_artifact("projection_validation.json", validation)
-
-            if not match:
-                raise RuntimeError(f"Projection Parity Failed: legacy={legacy_counts}, projection={projected_counts}")
 
             return result
         finally:
@@ -1414,59 +1346,22 @@ class CareerWorkflowPipeline:
             timezone.utc,
         )
 
-        summary = self.context.application_summary
-
-        counts = {
-            "attempted": 0,
-            "submitted": 0,
-            "already_applied": 0,
-            "skipped_local": 0,
-            "native_applied": 0,
-            "ats_queue": 0,
-            "generic_queue": 0,
-            "manual_queue": 0,
-            "unsupported": 0,
-            "policy_rejected": 0,
-            "dry_run_skipped": 0,
-            "run_limit_reached": 0,
-            "failed": 0,
-            "manual_review": 0,
-        }
-
-        if summary is not None:
-            counts.update(
-                {
-                    "attempted": (
-                        summary.applied
-                        + summary.failed
-                    ),
-                    "submitted": summary.applied,
-                    "already_applied": summary.already_applied,
-                    "skipped_local": summary.skipped_local,
-                    "native_applied": summary.native_applied,
-                    "ats_queue": summary.ats_queue,
-                    "generic_queue": summary.generic_queue,
-                    "manual_queue": summary.manual_queue,
-                    "unsupported": summary.unsupported,
-                    "policy_rejected": summary.policy_rejected,
-                    "dry_run_skipped": summary.dry_run_skipped,
-                    "run_limit_reached": summary.run_limit_reached,
-                    "failed": summary.failed,
-                    "manual_review": summary.manual_review,
-                }
-            )
+        self.explorer_proj.flush(self.run_dir)
+        self.trace_proj.flush(self.run_dir)
+                        
+        counts = self.metrics_proj.get_metrics()
 
         c_res = self.context.stage_results.get("classification", {})
         
         return PipelineResult(
             run_id=self.context.run_id,
             status=self.status.value,
-            acquired=len(self.context.acquired_jobs),
+            acquired=counts["acquired"],
             summary_ranked=c_res.get("prefiltered", 0),
             detailed=c_res.get("detail_candidates", 0),
             scored=c_res.get("classified", 0),
             ranked=c_res.get("classified", 0),
-            selected=len(self.context.selected_jobs),
+            selected=counts["selected"],
             attempted=counts["attempted"],
             submitted=counts["submitted"],
             already_applied=counts["already_applied"],
@@ -1479,12 +1374,12 @@ class CareerWorkflowPipeline:
             policy_rejected=counts["policy_rejected"],
             dry_run_skipped=counts["dry_run_skipped"],
             run_limit_reached=counts["run_limit_reached"],
-            failed=counts["failed"],
             manual_review=counts["manual_review"],
-            started_at=(self.context.started_at),
+            started_at=self.context.started_at,
             completed_at=completed_at,
             stage_results={
-                name: status.value for name, status in self.stage_statuses.items()
+                name: status.value
+                for name, status in self.stage_statuses.items()
             },
             errors=self.context.errors,
         )

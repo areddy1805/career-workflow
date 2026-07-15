@@ -1293,7 +1293,7 @@ def enrich_jobs_with_details(
     jc,
     jobs: list[dict],
     detail_cache: dict[str, dict],
-    explorer = None,
+    # Removed explorer
 ) -> list[dict]:
     """
     Fetch each candidate's detail payload once and enrich the normalized
@@ -1327,11 +1327,7 @@ def enrich_jobs_with_details(
             if detail is None:
                 detail = jc.get_job_details(job_id)
                 detail_cache[job_id] = detail
-                if explorer:
-                    explorer.record_cache_miss()
-            else:
-                if explorer:
-                    explorer.record_cache_hit()
+                pass
 
             full_description = _extract_job_detail_description(detail)
 
@@ -1392,7 +1388,7 @@ def run_application_batch(
     run_id: str = "",
     metrics: PipelineRunMetrics | None = None,
     rejected_jobs: list | None = None,
-    explorer = None,
+    # Removed explorer
     exec_context = None,
 ) -> ApplicationRunSummary:
     """
@@ -1451,9 +1447,6 @@ def run_application_batch(
             "reason": str(reason),
             "timestamp": datetime.now(timezone.utc).isoformat()
         })
-        if explorer:
-            job_dict = job if isinstance(job, dict) else job.__dict__
-            explorer.record_rejection(job_dict, reason=str(reason), code=code)
 
     manual_action_queue = ManualActionQueue(
         os.getenv(
@@ -1462,9 +1455,6 @@ def run_application_batch(
         )
     )
 
-    if explorer:
-        explorer.start_stage("Application", jobs)
-        
     if exec_context:
         exec_context.start_stage("Application", jobs)
 
@@ -1508,8 +1498,6 @@ def run_application_batch(
             if ledger is not None:
                 ledger.record(job, "already_applied", meta=meta)
             
-            if explorer:
-                explorer.record_rejection(job, stage="Application", code="ALREADY_APPLIED", reason="Job is in ledger applied_job_ids")
             if exec_context:
                 exec_context.reject(job, reason="Job is in ledger applied_job_ids", code="ALREADY_APPLIED")
             continue
@@ -1568,8 +1556,6 @@ def run_application_batch(
                 f"  [{index}/{len(jobs)}] Skipping dry-run: {job.title} @ {job.company}"
             )
             dry_run_skipped_count += 1
-            if explorer:
-                explorer.record_rejection(job, stage="Application", code="DRY_RUN", reason="Dry run mode is enabled")
             if exec_context:
                 exec_context.skip(job, reason="Dry run mode is enabled", code="DRY_RUN")
             if ledger is not None:
@@ -1694,14 +1680,6 @@ def run_application_batch(
             successful_submissions += 1
             breaker.success()
             
-            if explorer:
-                job_dict = job if isinstance(job, dict) else job.__dict__
-                explorer.record_application(job_dict, outcome="Applied", explanation={
-                    "stage": "Application",
-                    "decision": "Applied",
-                    "cause": "Successfully processed application"
-                })
-            
             if exec_context:
                 exec_context.apply(job, outcome="Applied", explanation={"cause": "Successfully processed application"})
 
@@ -1762,8 +1740,7 @@ def run_application_batch(
         finally:
             sleep_fn(3)
 
-    if explorer:
-        explorer.finish_stage([])
+    # Removed explorer.finish_stage
         
     if exec_context:
         exec_context.finish_stage()
