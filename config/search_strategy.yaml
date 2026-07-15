@@ -8,3 +8,7 @@ strategy:
   reject_non_engineering: true
   reject_walkins: true
   reject_duplicates: true
+  summary_scoring:
+    mandatory_weight: 3
+    skills_weight: 1
+    recency_weight: 2

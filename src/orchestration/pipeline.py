@@ -93,6 +93,19 @@ class CareerWorkflowPipeline:
 
         self.status = PipelineStatus.RUNNING
 
+        from src.orchestration.explorer import PipelineExplorer
+        self.explorer = PipelineExplorer(self.context.run_id)
+        
+        # Load config hashes for fingerprinting
+        from src.config.search_strategy import load_search_strategy
+        import yaml
+        try:
+            with open("config/search_strategy.yaml", "r") as f:
+                s_dict = yaml.safe_load(f)
+            self.explorer.set_config_fingerprint(CANDIDATE_PROFILE, s_dict)
+        except Exception:
+            pass
+
     @staticmethod
     def _generate_run_id() -> str:
         return datetime.now(
@@ -488,9 +501,11 @@ class CareerWorkflowPipeline:
         if self.context.job_client is None:
             raise RuntimeError("Job client unavailable")
 
-        classifier = JobFilterPipeline2(metrics=self.context.metrics)
-
         jobs = self.context.acquired_jobs
+        self.explorer.start_stage("Classification", jobs)
+
+        classifier = JobFilterPipeline2(metrics=self.context.metrics, explorer=self.explorer)
+
         jobs = classifier.normalize_jobs(jobs)
         jobs = classifier.dedup(jobs)
         jobs = classifier.hard_veto(jobs)
@@ -502,6 +517,20 @@ class CareerWorkflowPipeline:
         # SUMMARY RANKING
         # tag_presort now acts as our cheap heuristic summary ranker
         jobs = classifier.tag_presort(jobs)
+        
+        # FIXED-BUCKET SUMMARY SCORE DISTRIBUTION
+        summary_distribution = {}
+        for j in jobs:
+            score = j.get("summary_score", 0)
+            bin_start = (int(score) // 5) * 5
+            bin_end = bin_start + 5
+            bin_label = f"{bin_start}-{bin_end}"
+            summary_distribution[bin_label] = summary_distribution.get(bin_label, 0) + 1
+            
+        self._write_artifact(
+            "summary_distribution.json",
+            dict(sorted(summary_distribution.items(), key=lambda item: int(item[0].split("-")[0]))),
+        )
 
         strategy = load_search_strategy()
         
@@ -571,6 +600,9 @@ class CareerWorkflowPipeline:
         final_jobs = enrich_application_metadata(final_jobs)
 
         self.context.classified_jobs = final_jobs
+        
+        # Finish classification stage
+        self.explorer.finish_stage(final_jobs)
 
         self.context.score_map = {
             str(result["job_id"]): result for result in final_jobs
@@ -717,6 +749,8 @@ class CareerWorkflowPipeline:
 
     def select(self) -> None:
         ledger = self.context.ledger
+        
+        self.explorer.start_stage("Selection", self.context.classified_jobs)
 
         self.context.applied_job_ids = ledger.applied_job_ids()
 
@@ -794,17 +828,21 @@ class CareerWorkflowPipeline:
                 f"| {reasons}"
             )
 
-            self.context.rejected_jobs.append(
-                {
-                    "job_id": str(decision["job_id"]),
-                    "title": str(decision["title"]),
-                    "company": str(decision["company"]),
-                    "stage": "Selection / Eligibility",
-                    "code": "SELECTION_INELIGIBLE",
-                    "reason": str(reasons),
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                }
-            )
+            rejection_dict = {
+                "job_id": str(decision["job_id"]),
+                "title": str(decision["title"]),
+                "company": str(decision["company"]),
+                "stage": "Selection / Eligibility",
+                "code": "SELECTION_INELIGIBLE",
+                "reason": str(reasons),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+            
+            self.context.rejected_jobs.append(rejection_dict)
+            
+            job = self.context.score_map.get(str(decision["job_id"]))
+            if job:
+                self.explorer.record_rejection(job, reason=str(reasons), code="SELECTION_INELIGIBLE")
 
         if rejection_summary:
             print("HARD-GATE REJECTION SUMMARY:")
@@ -911,6 +949,24 @@ class CareerWorkflowPipeline:
 
         strategy_payload = strategy_audit_payload(strategy)
 
+        
+        self.explorer.finish_stage(selected_candidates)
+        
+        # Explainability for selected jobs
+        for job in selected_candidates:
+            self.explorer.record_selection(
+                job,
+                explanation={
+                    "stage": "Selection",
+                    "decision": "Selected",
+                    "cause": "Eligible and within selection bounds",
+                    "evidence": {
+                        "ai_score": job.get("score"),
+                        "budget": self.context.max_applications
+                    }
+                }
+            )
+            
         self.context.stage_results["selection"] = {
             "classified": len(self.context.classified_jobs),
             "ranked": len(ranked_jobs),
@@ -972,6 +1028,8 @@ class CareerWorkflowPipeline:
         )
 
     def apply(self) -> None:
+        self.explorer.start_stage("Application", self.context.selected_jobs)
+        
         if not self.context.selected_jobs:
             self.context.stage_results["application"] = {
                 "message": ("No selected jobs available"),
@@ -995,6 +1053,8 @@ class CareerWorkflowPipeline:
                 "application.json",
                 self.context.stage_results["application"],
             )
+            
+            self.explorer.finish_stage([])
 
             return
 
@@ -1042,6 +1102,7 @@ class CareerWorkflowPipeline:
             run_id=self.context.run_id,
             metrics=self.context.metrics,
             rejected_jobs=self.context.rejected_jobs,
+            explorer=self.explorer,
         )
 
         self.context.application_summary = summary
@@ -1077,6 +1138,8 @@ class CareerWorkflowPipeline:
             "failed": summary.failed,
             "manual_review": summary.manual_review,
         }
+        
+        self.explorer.finish_stage(summary.applied_jobs if hasattr(summary, "applied_jobs") else [])
 
         self._write_artifact(
             "application.json",
@@ -1233,6 +1296,16 @@ class CareerWorkflowPipeline:
             self._write_artifact(
                 "result.json",
                 result.to_dict(),
+            )
+            
+            # EXPORT OBSERVABILITY ARTIFACTS
+            self._write_artifact(
+                "pipeline_explorer.json",
+                self.explorer.export_explorer()
+            )
+            self._write_artifact(
+                "job_trace.json",
+                self.explorer.export_traces()
             )
 
             self._generate_dedicated_artifacts(result)

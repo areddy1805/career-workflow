@@ -1078,6 +1078,7 @@ class ApplicationRunSummary:
     run_limit_reached: int
     failed: int
     manual_review: int
+    applied_jobs: list = field(default_factory=list)
 
 
 def execute_with_safe_retry(
@@ -1292,6 +1293,7 @@ def enrich_jobs_with_details(
     jc,
     jobs: list[dict],
     detail_cache: dict[str, dict],
+    explorer = None,
 ) -> list[dict]:
     """
     Fetch each candidate's detail payload once and enrich the normalized
@@ -1325,6 +1327,11 @@ def enrich_jobs_with_details(
             if detail is None:
                 detail = jc.get_job_details(job_id)
                 detail_cache[job_id] = detail
+                if explorer:
+                    explorer.record_cache_miss()
+            else:
+                if explorer:
+                    explorer.record_cache_hit()
 
             full_description = _extract_job_detail_description(detail)
 
@@ -1385,6 +1392,7 @@ def run_application_batch(
     run_id: str = "",
     metrics: PipelineRunMetrics | None = None,
     rejected_jobs: list | None = None,
+    explorer = None,
 ) -> ApplicationRunSummary:
     """
     Execute the application workflow for a batch of filtered jobs.
@@ -1407,6 +1415,7 @@ def run_application_batch(
     )
 
     applied_count = 0
+    applied_jobs_list = []
     already_applied_count = 0
     skipped_local_count = 0
     native_applied_count = 0
@@ -1441,6 +1450,13 @@ def run_application_batch(
             "reason": str(reason),
             "timestamp": datetime.now(timezone.utc).isoformat()
         })
+        if explorer:
+            # We convert obj to dict if necessary, but here job is a dict? No, wait. 
+            # In run_application_batch, job is often a dict because it comes from selected_jobs.
+            # But the attribute access `getattr(job, "job_id", "")` suggests it might be an object? 
+            # `jobs` is self.context.selected_jobs which are dicts. So `job` is a dict.
+            job_dict = job if isinstance(job, dict) else job.__dict__
+            explorer.record_rejection(job_dict, reason=str(reason), code=code)
 
     manual_action_queue = ManualActionQueue(
         os.getenv(
@@ -1653,8 +1669,17 @@ def run_application_batch(
             applied_jobs_set.add(job.job_id)
 
             applied_count += 1
+            applied_jobs_list.append(job)
             successful_submissions += 1
             breaker.success()
+            
+            if explorer:
+                job_dict = job if isinstance(job, dict) else job.__dict__
+                explorer.record_application(job_dict, outcome="Applied", explanation={
+                    "stage": "Application",
+                    "decision": "Applied",
+                    "cause": "Successfully processed application"
+                })
 
             if ledger is not None:
                 ledger.record(job, "applied", meta=meta)
@@ -1726,6 +1751,7 @@ def run_application_batch(
         run_limit_reached=run_limit_reached_count,
         failed=failed_count,
         manual_review=manual_review_count,
+        applied_jobs=applied_jobs_list,
     )
 
 

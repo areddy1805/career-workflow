@@ -343,8 +343,10 @@ class JobFilterPipeline2:
         ai_score_limit: int = 300,
         batch_size: int = 5,
         metrics: PipelineRunMetrics | None = None,
+        explorer = None,
     ):
         self.metrics = metrics
+        self.explorer = explorer
         self.api_key = api_key or os.getenv("OMLX_API_KEY")
 
         if not self.api_key:
@@ -370,11 +372,17 @@ class JobFilterPipeline2:
     # STATE TRACKING
     # =========================================================
 
-    def record_decision(self, job: dict, stage: str, code: str, reason: str):
-        job["rejection_stage"] = stage
-        job["rejection_code"] = code
-        job["rejection_reason"] = reason
-
+    def record_decision(self, job: dict, stage: str, code: str, reason: str) -> None:
+        job_copy = job.copy()
+        job_copy["rejection_stage"] = stage
+        job_copy["rejection_code"] = code
+        job_copy["rejection_reason"] = reason
+        
+        if self.explorer:
+            self.explorer.record_rejection(job, reason=reason, code=code)
+            
+        self.rejected_jobs.append(job_copy)
+        
         decisions = job.setdefault("decisions", [])
         decisions.append(
             {
@@ -955,16 +963,37 @@ class JobFilterPipeline2:
 
     def tag_presort(self, jobs):
         my_stack = set(self.MY_STACK)
+        
+        from src.config.search_strategy import load_search_strategy
+        strategy = load_search_strategy()
+        weights = strategy.summary_scoring
 
-        def overlap(j):
+        for j in jobs:
             tags = set(j.get("tags", []))
             mandatory_hit = sum(1 for t in j.get("mandatory_tags", []) if t in my_stack)
             total_hit = len(tags & my_stack)
-            recency_bonus = max(0, 7 - j.get("days_old", 7))
-            # mandatory tags weighted 3x — they represent the job's core ask
-            return mandatory_hit * 3 + total_hit + recency_bonus
+            
+            days_old = j.get("days_old", 7)
+            # Recency bonus: max 7 points (0 days old = 7, 7 days old = 0)
+            recency_days = max(0, 7 - days_old)
+            
+            mandatory_score = mandatory_hit * weights.mandatory_weight
+            skills_score = total_hit * weights.skills_weight
+            recency_score = recency_days * weights.recency_weight
+            
+            total_score = mandatory_score + skills_score + recency_score
+            
+            j["summary_score"] = total_score
+            j["summary_breakdown"] = {
+                "mandatory_hits": mandatory_hit,
+                "mandatory_score": mandatory_score,
+                "skills_hits": total_hit,
+                "skills_score": skills_score,
+                "recency_days": days_old,
+                "recency_score": recency_score,
+            }
 
-        return sorted(jobs, key=overlap, reverse=True)
+        return sorted(jobs, key=lambda j: j["summary_score"], reverse=True)
 
     def _job_text(self, job):
         return " ".join(
