@@ -1339,6 +1339,48 @@ class CareerWorkflowPipeline:
             self._generate_dedicated_artifacts(result)
             self._validate_artifacts(result)
 
+            # PARITY VALIDATION
+            import json
+            from src.orchestration.metrics_projection import MetricsProjection
+            event_log_path = self.run_dir / "event_log.json"
+            projection = MetricsProjection()
+            if event_log_path.exists():
+                with open(event_log_path, "r") as f:
+                    for line in f:
+                        if line.strip():
+                            projection.process_event(json.loads(line))
+            
+            projected_counts = projection.build_report()
+            legacy_counts = {
+                "acquired": result.acquired,
+                "selected": result.selected,
+                "attempted": result.attempted,
+                "submitted": result.submitted,
+                "already_applied": result.already_applied,
+                "skipped_local": result.skipped_local,
+                "native_applied": result.native_applied,
+                "ats_queue": result.ats_queue,
+                "generic_queue": result.generic_queue,
+                "manual_queue": result.manual_queue,
+                "unsupported": result.unsupported,
+                "policy_rejected": result.policy_rejected,
+                "dry_run_skipped": result.dry_run_skipped,
+                "run_limit_reached": result.run_limit_reached,
+                "failed": result.failed,
+                "manual_review": result.manual_review,
+            }
+
+            match = legacy_counts == projected_counts
+            validation = {
+                "legacy": legacy_counts,
+                "projection": projected_counts,
+                "match": match
+            }
+            self._write_artifact("projection_validation.json", validation)
+
+            if not match:
+                raise RuntimeError(f"Projection Parity Failed: legacy={legacy_counts}, projection={projected_counts}")
+
             return result
         finally:
             if self.status == PipelineStatus.RUNNING:
