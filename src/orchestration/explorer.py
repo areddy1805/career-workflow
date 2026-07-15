@@ -32,23 +32,38 @@ class PipelineExplorer:
         self.fingerprint["config_hash"] = hash_dict(config_dict)
         self.fingerprint["strategy_hash"] = hash_dict(strategy_dict)
 
-    def init_job(self, job: dict):
+    def init_job(self, job: Any):
         """Assigns an immutable pipeline job ID and initializes trace."""
-        if "pipeline_job_id" not in job:
-            job["pipeline_job_id"] = str(uuid.uuid4())
+        is_dict = isinstance(job, dict)
+        
+        if is_dict:
+            if "pipeline_job_id" not in job:
+                job["pipeline_job_id"] = str(uuid.uuid4())
+            jid = job["pipeline_job_id"]
+            title = job.get("title", "")
+            company = job.get("company", "")
+            provider_id = job.get("job_id", "")
+        else:
+            if not hasattr(job, "pipeline_job_id"):
+                job.pipeline_job_id = str(uuid.uuid4())
+            jid = job.pipeline_job_id
+            title = getattr(job, "title", "")
+            company = getattr(job, "company", "")
+            provider_id = getattr(job, "job_id", "")
             
-        jid = job["pipeline_job_id"]
         if jid not in self.job_traces:
             self.job_traces[jid] = {
                 "pipeline_job_id": jid,
-                "title": job.get("title", ""),
-                "company": job.get("company", ""),
-                "provider_id": job.get("job_id", ""),
+                "title": title,
+                "company": company,
+                "provider_id": provider_id,
                 "timeline": []
             }
 
-    def _record_trace(self, job: dict, stage: str, event: str, details: dict = None):
-        jid = job.get("pipeline_job_id")
+    def _record_trace(self, job: Any, stage: str, event: str, details: dict = None):
+        is_dict = isinstance(job, dict)
+        jid = job.get("pipeline_job_id") if is_dict else getattr(job, "pipeline_job_id", None)
+        
         if not jid:
             return
         
@@ -60,13 +75,21 @@ class PipelineExplorer:
         })
         self.job_traces[jid]["final_state"] = event
 
-    def start_stage(self, stage_name: str, input_jobs: List[dict]):
+    def start_stage(self, stage_name: str, input_jobs: List[Any]):
         if self.current_stage:
             raise RuntimeError(f"Cannot start {stage_name}, {self.current_stage['name']} is still running")
             
         # Ensure all incoming jobs have IDs
         for j in input_jobs:
             self.init_job(j)
+            
+        top_entering = []
+        for j in input_jobs[:5]:
+            is_dict = isinstance(j, dict)
+            jid = j.get("pipeline_job_id") if is_dict else getattr(j, "pipeline_job_id", None)
+            title = j.get("title") if is_dict else getattr(j, "title", None)
+            company = j.get("company") if is_dict else getattr(j, "company", None)
+            top_entering.append({"id": jid, "title": title, "company": company})
             
         self.current_stage = {
             "name": stage_name,
@@ -75,7 +98,7 @@ class PipelineExplorer:
             "removed_jobs": [],
             "cache_hits": 0,
             "cache_misses": 0,
-            "top_entering": [{"id": j.get("pipeline_job_id"), "title": j.get("title"), "company": j.get("company")} for j in input_jobs[:5]]
+            "top_entering": top_entering
         }
 
     def record_cache_hit(self):
