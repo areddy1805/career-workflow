@@ -40,8 +40,10 @@ from src.application.eligibility import (
 )
 from src.application.ledger import ApplicationLedger
 from src.application.policy import ApplicationPolicy
+from src.config.search_strategy import load_search_strategy
 from src.client.job_classifier import JobFilterPipeline2
 from src.client.job_client import NaukriJobClient
+
 from src.client.naukri_client import NaukriLoginClient
 from src.llm.client import OMLXClient
 from src.llm.question_resolver import LLMQuestionResolver
@@ -496,20 +498,29 @@ class CareerWorkflowPipeline:
         jobs = classifier.desc_red_flag_check(jobs)
         jobs = classifier.title_filter(jobs)
         jobs = classifier.ai_relevance_gate(jobs)
+        
+        # SUMMARY RANKING
+        # tag_presort now acts as our cheap heuristic summary ranker
         jobs = classifier.tag_presort(jobs)
 
-        candidates = jobs[: classifier.ai_score_limit]
-        for j in jobs[classifier.ai_score_limit :]:
-            classifier.record_decision(
-                j,
-                "AI Score Limit",
-                "ATTEMPT_BUDGET",
-                "Job fell below score batch cutoff",
-            )
-
-        detail_fetch_budget = int(os.getenv("DETAIL_FETCH_BUDGET", "60"))
+        strategy = load_search_strategy()
+        
+        detail_fetch_budget = strategy.detail_fetch_budget
         if detail_fetch_budget < 1:
-            raise ValueError("DETAIL_FETCH_BUDGET must be at least 1")
+            detail_fetch_budget = 150 # Safe default
+            
+        # Adaptive Budgeting
+        if len(jobs) <= detail_fetch_budget:
+            candidates = jobs
+        else:
+            candidates = jobs[:detail_fetch_budget]
+            for j in jobs[detail_fetch_budget:]:
+                classifier.record_decision(
+                    j,
+                    "Detail Fetch Cutoff",
+                    "BUDGET_EXCEEDED",
+                    "Job fell below summary rank cutoff for detail fetching",
+                )
 
         candidates_before_suppression = len(candidates)
 
@@ -536,14 +547,7 @@ class CareerWorkflowPipeline:
         jobs = classifier.post_score_guard(jobs)
         jobs = classifier.rank(jobs)
 
-        final_jobs = jobs[: classifier.daily_apply_limit]
-        for j in jobs[classifier.daily_apply_limit :]:
-            classifier.record_decision(
-                j,
-                "Daily Apply Limit",
-                "ATTEMPT_BUDGET",
-                "Exceeded daily application limit",
-            )
+        final_jobs = jobs
 
         self.context.rejected_jobs.extend(classifier.rejected_jobs)
 
@@ -601,14 +605,31 @@ class CareerWorkflowPipeline:
         }
 
         self._write_artifact(
-            "classification.json",
+            "classification_summary.json",
             {
                 "summary": (self.context.stage_results["classification"]),
                 "rejection_summary": rejection_summary,
-                "jobs": final_jobs,
-                "rejected_jobs": self.context.rejected_jobs,
+                "jobs_count": len(final_jobs),
+                "rejected_count": len(self.context.rejected_jobs),
             },
         )
+        
+        self._write_artifact(
+            "rejection_histogram.json",
+            rejection_summary,
+        )
+        
+        ranking_dist = {}
+        location_hist = {}
+        for j in final_jobs:
+            score_bucket = (j.get("score") or 0) // 10 * 10
+            ranking_dist[score_bucket] = ranking_dist.get(score_bucket, 0) + 1
+            
+            loc = j.get("location_preference", "Unknown")
+            location_hist[loc] = location_hist.get(loc, 0) + 1
+            
+        self._write_artifact("ranking_distribution.json", ranking_dist)
+        self._write_artifact("location_histogram.json", location_hist)
 
     # ------------------------------------------------------------------
     # Selection
@@ -958,7 +979,11 @@ class CareerWorkflowPipeline:
                 "submitted": 0,
                 "already_applied": 0,
                 "skipped_local": 0,
-                "skipped_external": 0,
+                "native_applied": 0,
+                "ats_queue": 0,
+                "generic_queue": 0,
+                "manual_queue": 0,
+                "unsupported": 0,
                 "policy_rejected": 0,
                 "dry_run_skipped": 0,
                 "run_limit_reached": 0,
@@ -980,9 +1005,11 @@ class CareerWorkflowPipeline:
 
         self.context.questionnaire_resolver = questionnaire_resolver
 
+        strategy = load_search_strategy()
+        
         effective_run_limit = effective_limit(
             self.context.adaptive_strategy.max_applications_per_run,
-            self.context.max_applications,
+            self.context.max_applications if self.context.max_applications is not None else strategy.application_budget,
         )
 
         policy = ApplicationPolicy(
@@ -1039,7 +1066,11 @@ class CareerWorkflowPipeline:
             "submitted": summary.applied,
             "already_applied": (summary.already_applied),
             "skipped_local": (summary.skipped_local),
-            "skipped_external": (summary.skipped_external),
+            "native_applied": (summary.native_applied),
+            "ats_queue": (summary.ats_queue),
+            "generic_queue": (summary.generic_queue),
+            "manual_queue": (summary.manual_queue),
+            "unsupported": (summary.unsupported),
             "policy_rejected": (summary.policy_rejected),
             "dry_run_skipped": (summary.dry_run_skipped),
             "run_limit_reached": (summary.run_limit_reached),
@@ -1247,7 +1278,11 @@ class CareerWorkflowPipeline:
             "submitted": 0,
             "already_applied": 0,
             "skipped_local": 0,
-            "skipped_external": 0,
+            "native_applied": 0,
+            "ats_queue": 0,
+            "generic_queue": 0,
+            "manual_queue": 0,
+            "unsupported": 0,
             "policy_rejected": 0,
             "dry_run_skipped": 0,
             "run_limit_reached": 0,
@@ -1265,7 +1300,11 @@ class CareerWorkflowPipeline:
                     "submitted": summary.applied,
                     "already_applied": summary.already_applied,
                     "skipped_local": summary.skipped_local,
-                    "skipped_external": summary.skipped_external,
+                    "native_applied": summary.native_applied,
+                    "ats_queue": summary.ats_queue,
+                    "generic_queue": summary.generic_queue,
+                    "manual_queue": summary.manual_queue,
+                    "unsupported": summary.unsupported,
                     "policy_rejected": summary.policy_rejected,
                     "dry_run_skipped": summary.dry_run_skipped,
                     "run_limit_reached": summary.run_limit_reached,
@@ -1274,17 +1313,26 @@ class CareerWorkflowPipeline:
                 }
             )
 
+        c_res = self.context.stage_results.get("classification", {})
+        
         return PipelineResult(
             run_id=self.context.run_id,
             status=self.status.value,
             acquired=len(self.context.acquired_jobs),
-            classified=len(self.context.classified_jobs),
+            summary_ranked=c_res.get("prefiltered", 0),
+            detailed=c_res.get("detail_candidates", 0),
+            scored=c_res.get("classified", 0),
+            ranked=c_res.get("classified", 0),
             selected=len(self.context.selected_jobs),
             attempted=counts["attempted"],
             submitted=counts["submitted"],
             already_applied=counts["already_applied"],
             skipped_local=counts["skipped_local"],
-            skipped_external=counts["skipped_external"],
+            native_applied=counts["native_applied"],
+            ats_queue=counts["ats_queue"],
+            generic_queue=counts["generic_queue"],
+            manual_queue=counts["manual_queue"],
+            unsupported=counts["unsupported"],
             policy_rejected=counts["policy_rejected"],
             dry_run_skipped=counts["dry_run_skipped"],
             run_limit_reached=counts["run_limit_reached"],
@@ -1329,22 +1377,20 @@ class CareerWorkflowPipeline:
     def _validate_artifacts(self, result: PipelineResult) -> None:
         diagnostics = []
         
-        # 1. acquired = classified + rejected (at classification phase)
+        # 1. acquired = scored + rejected (at classification phase)
         rejected_at_class = len([j for j in self.context.rejected_jobs if j.get("stage", "") not in ["Selection", "Application"]])
-        if result.acquired != (result.classified + rejected_at_class):
+        if result.acquired != (result.scored + rejected_at_class):
             diagnostics.append(
                 f"Mismatch at classification: acquired({result.acquired}) != "
-                f"classified({result.classified}) + rejected({rejected_at_class})"
+                f"scored({result.scored}) + rejected({rejected_at_class})"
             )
 
-        # 2. classified = selected + low_score + manual_review + other_classification_rejections
+        # 2. scored = selected + low_score + manual_review + other_classification_rejections
         # Actually, selection rejections are captured in rejected_jobs with stage="Selection". 
         rejected_at_select = len([j for j in self.context.rejected_jobs if j.get("stage", "") == "Selection"])
-        # Wait, the prompt says low_score, manual_review... 
-        # But simply put: classified = selected + rejected (at selection phase).
-        if result.classified != (result.selected + rejected_at_select):
+        if result.scored != (result.selected + rejected_at_select):
             diagnostics.append(
-                f"Mismatch at selection: classified({result.classified}) != "
+                f"Mismatch at selection: scored({result.scored}) != "
                 f"selected({result.selected}) + rejected({rejected_at_select})"
             )
 
@@ -1352,7 +1398,10 @@ class CareerWorkflowPipeline:
         selected_calc = (
             result.submitted +
             result.already_applied +
-            result.skipped_external +
+            result.ats_queue +
+            result.generic_queue +
+            result.manual_queue +
+            result.unsupported +
             result.policy_rejected +
             result.failed + 
             result.manual_review +
@@ -1384,7 +1433,7 @@ class CareerWorkflowPipeline:
         ):
             print(f"- {reason}: {count}")
 
-        print(f"Sent to AI: {result.classified}")
+        print(f"Sent to AI: {result.scored}")
         print(f"Qualified: {result.selected}")
         print(f"Applied: {result.submitted}")
 
@@ -1394,7 +1443,11 @@ class CareerWorkflowPipeline:
         print(f"- Policy rejected: {result.policy_rejected}")
         print(f"- Dry run skipped: {result.dry_run_skipped}")
         print(f"- Run limit reached: {result.run_limit_reached}")
-        print(f"- External/Local skipped: {result.skipped_external + result.skipped_local}")
+        print(f"- ATS queue: {result.ats_queue}")
+        print(f"- Generic queue: {result.generic_queue}")
+        print(f"- Manual queue: {result.manual_queue}")
+        print(f"- Unsupported: {result.unsupported}")
+        print(f"- Local skipped: {result.skipped_local}")
         if result.failed > 0:
             print(f"- Failed: {result.failed}")
 
@@ -1403,9 +1456,11 @@ class CareerWorkflowPipeline:
         secs = int(m.total_runtime % 60)
         print(f"Pipeline runtime: {mins}m {secs}s")
 
-        if result.classified > 0:
-            avg_job = m.total_runtime / result.classified
+        if result.scored > 0:
+            avg_job = m.total_runtime / result.scored
             print(f"Average/job: {avg_job:.1f}s")
+            yield_rate = (result.selected / result.scored) * 100
+            print(f"Qualified yield: {yield_rate:.1f}%")
 
         if m.total_runtime > 0:
             llm_pct = (m.llm_time / m.total_runtime) * 100

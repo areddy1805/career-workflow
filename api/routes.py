@@ -42,14 +42,22 @@ from control_center.review_state import (
     mark_reviewed,
     dismiss_job
 )
-from career_ui_legacy.services.control_center import (
-    get_workflow_queue,
-    get_queue_analytics,
-    workflow_queue_transition,
-    workflow_queue_add_note,
-    workflow_queue_retry,
-    latest_terminal_run
-)
+from src.application.workflow_queue import WorkflowQueue, WorkflowStatus
+
+_wq_instance = None
+def get_workflow_queue() -> WorkflowQueue:
+    global _wq_instance
+    if _wq_instance is None:
+        _wq_instance = WorkflowQueue()
+    return _wq_instance
+
+def workflow_queue_transition(job_id: str, to_status: str, note: str = "") -> bool:
+    wq = get_workflow_queue()
+    try:
+        wq.transition(job_id, WorkflowStatus(to_status), note=note)
+        return True
+    except Exception:
+        return False
 from control_center.run_inspector import read_json_artifact
 from api.schemas import (
     PipelineLaunchRequest,

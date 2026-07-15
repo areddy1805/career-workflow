@@ -14,6 +14,9 @@ from colorama import Fore, Style, init
 from dotenv import load_dotenv
 
 from config.candidate_profile import CANDIDATE_PROFILE
+from src.application.router import ApplicationRouter
+from src.application.capability import ProviderCapabilities
+from src.application.models import RoutingStrategy
 from src.application.adaptive_strategy import (
     AdaptiveStrategyConfig,
     build_adaptive_strategy,
@@ -1065,7 +1068,11 @@ class ApplicationRunSummary:
     applied: int
     already_applied: int
     skipped_local: int
-    skipped_external: int
+    native_applied: int
+    ats_queue: int
+    generic_queue: int
+    manual_queue: int
+    unsupported: int
     policy_rejected: int
     dry_run_skipped: int
     run_limit_reached: int
@@ -1402,7 +1409,11 @@ def run_application_batch(
     applied_count = 0
     already_applied_count = 0
     skipped_local_count = 0
-    skipped_external_count = 0
+    native_applied_count = 0
+    ats_queue_count = 0
+    generic_queue_count = 0
+    manual_queue_count = 0
+    unsupported_count = 0
     policy_rejected_count = 0
     dry_run_skipped_count = 0
     run_limit_reached_count = 0
@@ -1531,51 +1542,47 @@ def run_application_batch(
             continue
 
         # ----------------------------------------------------------
-        # External application check
+        # Application Routing Engine
         # ----------------------------------------------------------
 
         try:
             is_external = meta.get("is_external_apply")
-
             if is_external is None:
                 is_external = jc.is_external_apply(job.job_id)
 
-            if is_external:
-                print_status_skipped_external()
+            capabilities = ProviderCapabilities(
+                native_apply=not is_external,  # Naukri natively supports it, but this job might be external
+                returns_external_url=True,
+                requires_authentication=True,
+                supports_resume_upload=True,
+                supports_questionnaires=True
+            )
 
-                skipped_external_count += 1
-                _record_app_reject(job, 'EXTERNAL_REJECTION', 'Job requires applying on external portal')
+            external_url = getattr(job, "apply_link", None) if is_external else None
+            
+            route_result = ApplicationRouter.route(job, capabilities, external_url)
+
+            if route_result.strategy != RoutingStrategy.NATIVE_APPLY:
+                if route_result.strategy == RoutingStrategy.EXTERNAL_ATS:
+                    ats_queue_count += 1
+                elif route_result.strategy == RoutingStrategy.GENERIC_CAREER_SITE:
+                    generic_queue_count += 1
+                elif route_result.strategy == RoutingStrategy.MANUAL_REVIEW:
+                    manual_queue_count += 1
+                elif route_result.strategy == RoutingStrategy.UNSUPPORTED:
+                    unsupported_count += 1
+
+                _record_app_reject(job, route_result.strategy.name, route_result.reasoning)
                 if ledger is not None:
-                    ledger.record(job, "external_apply", meta=meta)
+                    ledger.record(job, route_result.strategy.name.lower(), meta=meta)
+                
+                # enqueue for manual review or future queue workers
                 job_id = str(job.job_id)
-
-                score_result = score_map.get(
-                    job_id,
-                    {},
-                )
-
+                score_result = score_map.get(job_id, {})
                 manual_action_queue.enqueue_external_apply(
                     job=job,
-                    score=int(
-                        score_result.get(
-                            "score",
-                            score_result.get(
-                                "ai_score",
-                                0,
-                            ),
-                        )
-                        or 0
-                    ),
-                    reason=str(
-                        score_result.get(
-                            "ai_detail",
-                            score_result.get(
-                                "ai_reason",
-                                "",
-                            ),
-                        )
-                        or ""
-                    ),
+                    score=int(score_result.get("score", score_result.get("ai_score", 0)) or 0),
+                    reason=str(score_result.get("ai_detail", score_result.get("ai_reason", "")) or ""),
                     run_id=run_id,
                 )
                 continue
@@ -1709,7 +1716,11 @@ def run_application_batch(
         applied=applied_count,
         already_applied=already_applied_count,
         skipped_local=skipped_local_count,
-        skipped_external=skipped_external_count,
+        native_applied=applied_count,
+        ats_queue=ats_queue_count,
+        generic_queue=generic_queue_count,
+        manual_queue=manual_queue_count,
+        unsupported=unsupported_count,
         policy_rejected=policy_rejected_count,
         dry_run_skipped=dry_run_skipped_count,
         run_limit_reached=run_limit_reached_count,

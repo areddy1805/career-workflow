@@ -9,14 +9,23 @@ class PipelineResult:
     status: str
 
     acquired: int = 0
-    classified: int = 0
+    summary_ranked: int = 0
+    detailed: int = 0
+    scored: int = 0
+    ranked: int = 0
     selected: int = 0
 
     attempted: int = 0
     submitted: int = 0
     already_applied: int = 0
     skipped_local: int = 0
-    skipped_external: int = 0
+    
+    native_applied: int = 0
+    ats_queue: int = 0
+    generic_queue: int = 0
+    manual_queue: int = 0
+    unsupported: int = 0
+    
     policy_rejected: int = 0
     dry_run_skipped: int = 0
     run_limit_reached: int = 0

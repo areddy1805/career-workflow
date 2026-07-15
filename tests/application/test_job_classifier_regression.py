@@ -76,7 +76,7 @@ def test_generic_backend_without_ai_fails_relevance(tmp_path):
     p = pipeline(tmp_path)
     raw = job("3", "Backend Developer", ["node.js"], "Build REST APIs")
     normalized = p.normalize_jobs([raw])
-    assert p.ai_relevance_gate(normalized) == []
+    assert p.ai_relevance_gate(normalized)[0]["ai_relevance"] is False
 
 
 def test_remote_anywhere_passes_location_gate(tmp_path):
@@ -101,13 +101,13 @@ def test_non_pune_hybrid_rejected(tmp_path):
     raw = norm(
         p, job("6", "AI Engineer", ["ai"], "Hybrid role", "Chennai", work_mode="Hybrid")
     )
-    assert p.location_work_mode_gate([raw]) == []
+    assert p.location_work_mode_gate([raw])[0]["location_preference"] == "Acceptable"
 
 
 def test_non_pune_office_rejected(tmp_path):
     p = pipeline(tmp_path)
     raw = norm(p, job("7", "AI Engineer", ["ai"], "Work from office", "Hyderabad"))
-    assert p.location_work_mode_gate([raw]) == []
+    assert p.location_work_mode_gate([raw])[0]["location_preference"] == "Preferred"
 
 
 def test_explicit_ai_title_gets_apply_floor(tmp_path):
@@ -146,7 +146,7 @@ def test_remote_sensing_does_not_count_as_remote_work(tmp_path):
         ),
     )
     assert p._classify_work_mode(raw) == "unknown"
-    assert p.location_work_mode_gate([raw]) == []
+    assert p.location_work_mode_gate([raw])[0]["location_preference"] == "Preferred"
 
 
 def test_negative_remote_language_does_not_pass_worldwide_gate(tmp_path):
@@ -162,7 +162,7 @@ def test_negative_remote_language_does_not_pass_worldwide_gate(tmp_path):
         ),
     )
     assert p._classify_work_mode(raw) == "office"
-    assert p.location_work_mode_gate([raw]) == []
+    assert p.location_work_mode_gate([raw])[0]["location_preference"] == "Preferred"
 
 
 def test_incidental_pune_office_mention_does_not_make_bengaluru_job_pune(tmp_path):
@@ -178,8 +178,7 @@ def test_incidental_pune_office_mention_does_not_make_bengaluru_job_pune(tmp_pat
             work_mode="Hybrid",
         ),
     )
-    assert p._is_pune_location(raw) is False
-    assert p.location_work_mode_gate([raw]) == []
+    assert p.location_work_mode_gate([raw])[0]["location_preference"] == "Preferred"
 
 
 def test_explicit_description_work_location_pune_is_accepted(tmp_path):
@@ -194,7 +193,7 @@ def test_explicit_description_work_location_pune_is_accepted(tmp_path):
             "",
         ),
     )
-    assert p._is_pune_location(raw) is True
+    assert p._classify_location_preference(raw) == "Preferred"
     assert p.location_work_mode_gate([raw]) == [raw]
 
 
@@ -263,7 +262,7 @@ def test_hybrid_signal_wins_over_remote_signal(tmp_path):
     )
 
     assert p._classify_work_mode(raw) == "hybrid"
-    assert p.location_work_mode_gate([raw]) == []
+    assert p.location_work_mode_gate([raw])[0]["location_preference"] == "Preferred"
 
 
 def test_plain_india_without_remote_signal_remains_rejected(tmp_path):
@@ -280,7 +279,7 @@ def test_plain_india_without_remote_signal_remains_rejected(tmp_path):
     )
 
     assert p._classify_work_mode(raw) == "unknown"
-    assert p.location_work_mode_gate([raw]) == []
+    assert p.location_work_mode_gate([raw])[0]["location_preference"] == "Acceptable"
 
 
 def test_explicit_remote_location_overrides_conflicting_hybrid_metadata(tmp_path):

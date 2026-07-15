@@ -6,11 +6,27 @@ The format follows a project-oriented changelog rather than individual commit hi
 
 ---
 
-# [2.7.0]
+# [3.0 Phase 1.1]
 
 ## Overview
-Version 2.7.0 replaces the legacy NiceGUI control plane with a polished, enterprise-grade React operations console. It introduces the configuration-driven Search Profile Engine for highly extensible, taxonomy-based querying. In addition, the update brings full artifact traceability, actionable queue management, and comprehensive REST API expansion to support the new frontend telemetry.
+Phase 1.1 refactors the classification funnel to align with the spray-and-pray application strategy. We transitioned from aggressive hard-gates to a progressive ranking architecture. Legacy NiceGUI dependencies have been fully removed.
 
+---
+
+## Changed
+- **Summary Ranking Pipeline**: Introduced an adaptive, heuristic-based summary ranker that scores jobs *before* executing the detail fetch budget.
+- **AI Relevance Gate**: Removed `LOW_AI_RELEVANCE` as a hard rejection. Engineering roles lacking explicit AI signals are now penalized in ranking, rather than eliminated.
+- **Location Policy**: Replaced the strict Pune-only office policy with a robust Location Preference engine (Preferred, Acceptable, Rejected) acting as a ranking penalty.
+- **Application Budgets**: `DAILY_APPLY_LIMIT` no longer abruptly truncates the classification pipeline; jobs are now fully ranked and handed over to the Selection stage.
+- **Decoupled Strategy Config**: Introduced `config/search_strategy.yaml` to decouple budget and gating thresholds from the core logic.
+
+## Removed
+- **Wrong Track Hard Gate**: Eliminated hard rejections for tracks like DevOps, SRE, and Mobile.
+- **Legacy NiceGUI**: Safely removed all unused legacy NiceGUI code, pages, and runner scripts.
+
+---
+
+# [2.7.0]
 ---
 
 ## Added

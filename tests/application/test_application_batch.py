@@ -127,7 +127,7 @@ def test_external_job_is_skipped() -> None:
         sleep_fn=sleep_calls.append,
     )
 
-    assert summary.skipped_external == 1
+    assert summary.manual_queue == 1
     assert summary.applied == 0
     assert summary.failed == 0
 
@@ -635,7 +635,7 @@ def test_external_job_does_not_consume_run_quota(
 
     assert process_calls == ["2"]
 
-    assert summary.skipped_external == 1
+    assert summary.manual_queue == 1
     assert summary.applied == 1
     assert summary.run_limit_reached == 0
 
