@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Dict, Any, List
 from .events import PipelineEvent
 
+
 class MetricsProjection:
     def __init__(self):
         self.metrics = {
@@ -32,7 +33,7 @@ class MetricsProjection:
         d = event.payload
         code = d.get("code")
         stage = event.stage
-        
+
         if t == "JobAcquired":
             self.metrics["acquired"] += 1
         elif t == "JobSelected":
@@ -68,7 +69,7 @@ class MetricsProjection:
             elif strategy == "UNSUPPORTED":
                 self.metrics["unsupported"] += 1
         elif t == "StageFinished":
-            s = d.get("stage")
+            s = event.stage
             c = d.get("output_count", 0)
             if s == "Acquisition":
                 self.metrics["acquired"] = c
@@ -93,30 +94,39 @@ class ExplorerProjection:
     def __call__(self, event: PipelineEvent):
         if not self.run_id:
             self.run_id = event.run_id
-            
+
         t = event.event_type
         d = event.payload
-        
+
         if t == "StageStarted":
             self.current_stage_data = {
-                "name": d["stage"],
+                "name": event.stage,
                 "input_count": d["input_count"],
                 "top_entering": d.get("top_entering", []),
                 "removed_jobs": [],
                 "cache_hits": 0,
-                "cache_misses": 0
+                "cache_misses": 0,
             }
         elif t == "StageFinished":
-            if self.current_stage_data and self.current_stage_data["name"] == event.stage:
+            if (
+                self.current_stage_data
+                and self.current_stage_data["name"] == event.stage
+            ):
                 self.current_stage_data["output_count"] = d.get("output_count", 0)
                 self.current_stage_data["top_leaving"] = d.get("top_leaving", [])
                 self.stages_summary.append(self.current_stage_data)
                 self.current_stage_data = None
-        elif t in ("JobRejected", "JobSkipped", "JobDeferred", "JobFailed", "JobRouted"):
+        elif t in (
+            "JobRejected",
+            "JobSkipped",
+            "JobDeferred",
+            "JobFailed",
+            "JobRouted",
+        ):
             if self.current_stage_data:
                 reason = d.get("reason", d.get("error", d.get("strategy", "Unknown")))
                 code = d.get("code", t)
-                
+
                 found = False
                 for rj in self.current_stage_data["removed_jobs"]:
                     if rj["code"] == code:
@@ -126,12 +136,14 @@ class ExplorerProjection:
                         found = True
                         break
                 if not found:
-                    self.current_stage_data["removed_jobs"].append({
-                        "code": code,
-                        "reason": reason,
-                        "count": 1,
-                        "examples": [reason]
-                    })
+                    self.current_stage_data["removed_jobs"].append(
+                        {
+                            "code": code,
+                            "reason": reason,
+                            "count": 1,
+                            "examples": [reason],
+                        }
+                    )
         elif t == "CacheHit":
             if self.current_stage_data:
                 self.current_stage_data["cache_hits"] += 1
@@ -144,11 +156,11 @@ class ExplorerProjection:
         if self.current_stage_data:
             self.stages_summary.append(self.current_stage_data)
             self.current_stage_data = None
-            
+
         data = {
             "run_id": self.run_id,
             "fingerprint": self.fingerprint,
-            "stages": self.stages_summary
+            "stages": self.stages_summary,
         }
         with open(run_dir / "pipeline_explorer.json", "w") as f:
             json.dump(data, f, indent=2)
@@ -162,7 +174,7 @@ class JobTraceProjection:
         jid = event.pipeline_job_id
         if not jid:
             return
-            
+
         if jid not in self.job_traces:
             # We initialize trace from first event usually Acquired or StageStarted
             title = event.payload.get("title", "")
@@ -173,9 +185,9 @@ class JobTraceProjection:
                 "title": title,
                 "company": company,
                 "provider_id": provider_id,
-                "timeline": []
+                "timeline": [],
             }
-            
+
         # Update missing basic info if provided later
         if event.payload.get("title") and not self.job_traces[jid]["title"]:
             self.job_traces[jid]["title"] = event.payload["title"]
@@ -186,12 +198,14 @@ class JobTraceProjection:
 
         # Only append actual job state transitions to the timeline
         if event.event_type.startswith("Job"):
-            self.job_traces[jid]["timeline"].append({
-                "stage": event.stage,
-                "event": event.event_type,
-                "details": event.payload,
-                "timestamp": event.timestamp
-            })
+            self.job_traces[jid]["timeline"].append(
+                {
+                    "stage": event.stage,
+                    "event": event.event_type,
+                    "details": event.payload,
+                    "timestamp": event.timestamp,
+                }
+            )
             self.job_traces[jid]["final_state"] = event.event_type
 
     def flush(self, run_dir: Path):
