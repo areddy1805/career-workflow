@@ -10,3 +10,8 @@ pydantic>=2.0,<3.0
 
 fastapi
 uvicorn
+
+# JobSpy — unauthenticated scraping for Google Jobs, Indeed, LinkedIn.
+# Internal DataFrame is converted immediately inside JobSpyProvider; pandas
+# never leaks into downstream Career Workflow code.
+python-jobspy>=1.1.82,<2.0

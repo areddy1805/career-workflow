@@ -61,6 +61,15 @@ from src.search.challenge_cooldown import SearchChallengeCooldown
 from src.search.job_search_cache import JobSearchCache
 from src.utils.questionnaire_telemetry import log_unresolved_questions
 
+# JobSpy acquisition — additive, isolated from Naukri path.
+from src.acquisition.config import load_acquisition_config
+from src.acquisition.acquisition_service import fetch_jobspy_jobs
+from src.acquisition.merge import merge_jobs
+from src.acquisition.providers.jobspy_provider import (
+    JobSpyConfig,
+    JobSpyProvider,
+)
+
 load_dotenv()
 init(autoreset=True)
 
@@ -928,7 +937,12 @@ def acquire_jobs(
     """
     Execute cooldown-aware job acquisition.
 
-    The cooldown prevents repeated search requests after a CAPTCHA
+    Naukri acquisition is unchanged.  If JobSpy is enabled in
+    config/search_strategy.yaml, its results are fetched independently
+    and merged into the final list.  Naukri failure/cooldown behaviour
+    is completely unaffected by the JobSpy path.
+
+    The cooldown prevents repeated Naukri search requests after a CAPTCHA
     challenge while still allowing cache-backed pipeline execution.
     If force_live is True, the cooldown check is bypassed.
     """
@@ -956,10 +970,59 @@ def acquire_jobs(
     if fetch_result.challenge_encountered:
         cooldown.record_challenge()
 
-    jobs = resolve_job_acquisition(
+    naukri_jobs = resolve_job_acquisition(
         fetch_result=fetch_result,
         cache=cache,
     )
+
+    # ------------------------------------------------------------------
+    # JobSpy additive acquisition
+    #
+    # Enabled only when acquisition.providers.jobspy.enabled = true in
+    # config/search_strategy.yaml.  Disabled by default so this commit
+    # has zero behavioural impact on existing deployments.
+    # ------------------------------------------------------------------
+    acq_config = load_acquisition_config()
+    jobspy_raw = acq_config.get("providers", {}).get("jobspy", {})
+
+    try:
+        jobspy_cfg = JobSpyConfig.from_dict(jobspy_raw)
+    except Exception as exc:
+        logger.warning("Invalid JobSpy configuration — skipping JobSpy acquisition: %s", exc)
+        return naukri_jobs, fetch_result
+
+    if jobspy_cfg.enabled:
+        jobspy_provider = JobSpyProvider(jobspy_cfg)
+
+        # Reuse the same search queries generated for Naukri so we search
+        # consistent keywords across all providers.
+        planner = SearchPlanner()
+        search_tracks = planner.generate_queries()
+
+        jobspy_jobs = fetch_jobspy_jobs(
+            provider=jobspy_provider,
+            search_tracks=search_tracks,
+        )
+
+        provider_priority = acq_config.get(
+            "provider_priority",
+            ["naukri", "indeed", "linkedin", "google"],
+        )
+
+        jobs = merge_jobs(
+            naukri_jobs=naukri_jobs,
+            jobspy_jobs=jobspy_jobs,
+            provider_priority=provider_priority,
+        )
+
+        logger.info(
+            "Acquisition merge: naukri=%d jobspy=%d merged=%d",
+            len(naukri_jobs),
+            len(jobspy_jobs),
+            len(jobs),
+        )
+    else:
+        jobs = naukri_jobs
 
     return jobs, fetch_result
 
@@ -1299,6 +1362,11 @@ def enrich_jobs_with_details(
     Fetch each candidate's detail payload once and enrich the normalized
     classifier job with its full description.
 
+    JobSpy jobs (job_id starting with "jobspy_") are skipped for Naukri
+    detail enrichment because they use a different provider and the Naukri
+    detail API will simply 404 on their IDs.  They retain whatever
+    description the JobSpy adapter already extracted.
+
     Failed detail fetches are retained with their existing search-result
     description rather than silently deleting potentially valid candidates.
     """
@@ -1312,6 +1380,12 @@ def enrich_jobs_with_details(
         job_id = str(job.get("job_id") or "").strip()
 
         if not job_id:
+            enriched_jobs.append(job)
+            continue
+
+        # JobSpy jobs carry their description from the adapter already.
+        # Skip Naukri detail enrichment to avoid spurious 404/auth errors.
+        if job_id.startswith("jobspy_"):
             enriched_jobs.append(job)
             continue
 
