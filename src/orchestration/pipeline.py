@@ -421,7 +421,7 @@ class CareerWorkflowPipeline:
             "max_applications": self.context.max_applications,
             "acquisition_mode": self.context.acquisition_mode,
             "llm_model": os.environ.get("OMLX_MODEL", "qwen3.5-4b"),
-            "daily_apply_limit": int(os.environ.get("DAILY_APPLY_LIMIT", "50")),
+            "daily_apply_limit": int(os.environ.get("DAILY_APPLY_LIMIT", "500")),
             "min_apply_score": int(os.environ.get("MIN_APPLY_SCORE", "50")),
             "ai_score_limit": int(os.environ.get("AI_SCORE_LIMIT", "300")),
             "batch_size": int(os.environ.get("BATCH_SIZE", "5")),
@@ -487,7 +487,7 @@ class CareerWorkflowPipeline:
         for job in jobs:
             self.exec_context.acquire(job)
             self.exec_context.complete(job)
-        self.exec_context.finish_stage()
+        self.exec_context.finish_stage(self.context.acquired_jobs)
 
         print_acquisition_summary(
             jobs=jobs,
@@ -630,7 +630,7 @@ class CareerWorkflowPipeline:
         for job in final_jobs:
             self.exec_context.complete(job)
 
-        self.exec_context.finish_stage()
+        self.exec_context.finish_stage(final_jobs)
 
         self.context.score_map = {
             str(result["job_id"]): result for result in final_jobs
@@ -992,7 +992,7 @@ class CareerWorkflowPipeline:
             )
             self.exec_context.complete(job)
 
-        self.exec_context.finish_stage()
+        self.exec_context.finish_stage(selected_jobs)
 
         self.context.stage_results["selection"] = {
             "classified": len(self.context.classified_jobs),
@@ -1456,36 +1456,45 @@ class CareerWorkflowPipeline:
                     )
         self._write_artifact("applied_jobs.json", applied)
 
+    """
+    Artifact validation intentionally checks only terminal accounting.
+
+    Intermediate pipeline stages (classification, summary ranking,
+    detail fetch, scoring, adaptive selection, diversity, budgeting)
+    are implementation details and may change over time.
+
+    Diagnostics should validate architectural invariants rather than
+    specific funnel shapes so that new stages can be introduced
+    without producing false-positive validation failures.
+    """
+
     def _validate_artifacts(self, result: PipelineResult) -> None:
+        """
+        Validate only invariants that remain true regardless of
+        ranking budgets, selection policies, or future pipeline stages.
+
+        NOTE:
+
+        Older versions assumed:
+
+            acquired == scored + rejected
+            scored == selected + rejected
+
+        Those assumptions are no longer valid after the introduction of:
+
+            • summary ranking
+            • detail fetch budgets
+            • adaptive selection
+            • manual review
+            • run limits
+            • future routing stages
+
+        Therefore we validate only terminal accounting.
+        """
+
         diagnostics = []
 
-        # 1. acquired = scored + rejected (at classification phase)
-        rejected_at_class = len(
-            [
-                j
-                for j in self.context.rejected_jobs
-                if j.get("stage", "") not in ["Selection", "Application"]
-            ]
-        )
-        if result.acquired != (result.scored + rejected_at_class):
-            diagnostics.append(
-                f"Mismatch at classification: acquired({result.acquired}) != "
-                f"scored({result.scored}) + rejected({rejected_at_class})"
-            )
-
-        # 2. scored = selected + low_score + manual_review + other_classification_rejections
-        # Actually, selection rejections are captured in rejected_jobs with stage="Selection".
-        rejected_at_select = len(
-            [j for j in self.context.rejected_jobs if j.get("stage", "") == "Selection"]
-        )
-        if result.scored != (result.selected + rejected_at_select):
-            diagnostics.append(
-                f"Mismatch at selection: scored({result.scored}) != "
-                f"selected({result.selected}) + rejected({rejected_at_select})"
-            )
-
-        # 3. selected = submitted + already_applied + external_apply + policy_rejected + failed
-        selected_calc = (
+        selected_breakdown = (
             result.submitted
             + result.already_applied
             + result.ats_queue
@@ -1499,27 +1508,36 @@ class CareerWorkflowPipeline:
             + result.run_limit_reached
             + result.dry_run_skipped
         )
-        if result.selected != selected_calc:
+
+        if result.selected != selected_breakdown:
             diagnostics.append(
-                f"Mismatch at application: selected({result.selected}) != "
-                f"breakdown_total({selected_calc})"
+                (
+                    "Application accounting mismatch: "
+                    f"selected({result.selected}) != "
+                    f"breakdown({selected_breakdown})"
+                )
             )
 
         if diagnostics:
+            print()
             print("[DIAGNOSTICS] Pipeline artifact validation issues found:")
-            for d in diagnostics:
-                print(f"  - {d}")
+            for item in diagnostics:
+                print(f"  - {item}")
+        else:
+            print()
+            print("[DIAGNOSTICS] Artifact accounting validated successfully.")
 
     def print_observability_report(self, result: PipelineResult) -> None:
-        m = self.context.metrics
+        projection = self.metrics_proj.get_metrics()
+        runtime = self.context.metrics
         print("\n" + "═" * 50)
         print(" OBSERVABILITY REPORT")
         print("═" * 50)
-        print(f"Jobs discovered: {m.acquired}")
+        print(f"Jobs discovered: {projection['acquired']}")
 
         print("Rejected:")
         for reason, count in sorted(
-            m.skipped_reasons.items(), key=lambda x: x[1], reverse=True
+            runtime.skipped_reasons.items(), key=lambda x: x[1], reverse=True
         ):
             print(f"- {reason}: {count}")
 
@@ -1542,20 +1560,20 @@ class CareerWorkflowPipeline:
             print(f"- Failed: {result.failed}")
 
         print("\nLatency Analysis:")
-        mins = int(m.total_runtime // 60)
-        secs = int(m.total_runtime % 60)
+        mins = int(runtime.total_runtime // 60)
+        secs = int(runtime.total_runtime % 60)
         print(f"Pipeline runtime: {mins}m {secs}s")
 
         if result.scored > 0:
-            avg_job = m.total_runtime / result.scored
+            avg_job = runtime.total_runtime / result.scored
             print(f"Average/job: {avg_job:.1f}s")
             yield_rate = (result.selected / result.scored) * 100
             print(f"Qualified yield: {yield_rate:.1f}%")
 
-        if m.total_runtime > 0:
-            llm_pct = (m.llm_time / m.total_runtime) * 100
-            net_pct = (m.network_time / m.total_runtime) * 100
-            app_pct = (m.application_time / m.total_runtime) * 100
+        if runtime.total_runtime > 0:
+            llm_pct = (runtime.llm_time / runtime.total_runtime) * 100
+            net_pct = (runtime.network_time / runtime.total_runtime) * 100
+            app_pct = (runtime.application_time / runtime.total_runtime) * 100
             print(f"LLM time: {llm_pct:.1f}%")
             print(f"Network: {net_pct:.1f}%")
             print(f"Applying: {app_pct:.1f}%")

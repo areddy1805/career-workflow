@@ -338,7 +338,7 @@ class JobFilterPipeline2:
         base_url: str | None = None,
         model: str | None = None,
         cache_file: str = "data/score_cache.json",
-        daily_apply_limit: int = 50,
+        daily_apply_limit: int = 500,
         min_apply_score: int = 50,
         ai_score_limit: int = 300,
         batch_size: int = 5,

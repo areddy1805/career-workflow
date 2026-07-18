@@ -1055,6 +1055,31 @@ python run_pipeline.py \
   --force-live
 ```
 
+### Capture the production live run
+
+```bash
+RUN_ID=$(date +%Y%m%d_%H%M%S)
+
+mkdir -p artifacts/live_runs/${RUN_ID}
+
+history | tail -1 \
+> artifacts/live_runs/${RUN_ID}/command.txt
+
+python run_pipeline.py \
+  --live \
+  --confirm-live APPLY_LIVE \
+  --provider all \
+  --acquisition-mode full \
+  --force-live \
+  2>&1 | tee artifacts/live_runs/${RUN_ID}/terminal.log
+
+echo $? > artifacts/live_runs/${RUN_ID}/exit_code.txt
+
+perl -pe 's/\e\[[0-9;]*[A-Za-z]//g' \
+  artifacts/live_runs/${RUN_ID}/terminal.log \
+  > artifacts/live_runs/${RUN_ID}/terminal_clean.log
+```
+
 ### Broad validation dry run
 
 ```bash
