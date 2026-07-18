@@ -126,16 +126,40 @@ class PipelineExecutionContext:
     def complete(self, job: Any):
         self.emit_job_event(job, "JobCompleted", {})
 
-    def finish_stage(self):
+    def finish_stage(
+        self,
+        output_jobs: list | None = None,
+    ):
+        """
+        Finish the current stage.
+
+        output_jobs should contain the jobs leaving the stage.
+
+        This allows projections to build correct metrics,
+        explorer summaries and diagnostics.
+        """
+
         if not self.current_stage:
             raise RuntimeError("No active stage to finish.")
 
         stage = self.current_stage
 
-        # Take a snapshot of the current configuration context
-        payload = {"snapshot": {"fingerprint": self.fingerprint}}
+        output_jobs = output_jobs or []
 
-        event = self.event_factory.create(stage, "StageFinished", payload)
+        payload = {
+            "output_count": len(output_jobs),
+            "top_leaving": self._extract_top_5(output_jobs),
+            "snapshot": {
+                "fingerprint": self.fingerprint,
+            },
+        }
+
+        event = self.event_factory.create(
+            stage,
+            "StageFinished",
+            payload,
+        )
+
         self.bus.publish(event)
 
         self.current_stage = None

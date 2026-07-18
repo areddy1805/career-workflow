@@ -68,18 +68,25 @@ class MetricsProjection:
                 self.metrics["manual_queue"] += 1
             elif strategy == "UNSUPPORTED":
                 self.metrics["unsupported"] += 1
+
         elif t == "StageFinished":
             s = event.stage
-            if "output_count" in d:
-                c = d["output_count"]
-                if s == "Acquisition":
-                    self.metrics["acquired"] = c
-                elif s == "Classification":
-                    self.metrics["classified"] = c
-                    self.metrics["detail_candidates"] = c
-                    self.metrics["prefiltered"] = c
-                elif s == "Selection":
-                    self.metrics["selected"] = c
+
+            if "output_count" not in d:
+                raise RuntimeError(f"StageFinished({s}) missing output_count")
+
+            c = int(d["output_count"])
+
+            if s == "Acquisition":
+                self.metrics["acquired"] = c
+
+            elif s == "Classification":
+                self.metrics["classified"] = c
+                self.metrics["detail_candidates"] = c
+                self.metrics["prefiltered"] = c
+
+            elif s == "Selection":
+                self.metrics["selected"] = c
 
     def get_metrics(self) -> Dict[str, int]:
         return self.metrics
