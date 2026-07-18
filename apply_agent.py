@@ -1418,9 +1418,13 @@ def enrich_jobs_with_details(
             enriched_jobs.append(job)
             continue
 
+        if job_id.startswith("jobspy_"):
+            enriched_jobs.append(job)
+            continue
+
         provider_id = job.get("provider_id", "naukri")
         provider = providers.get(provider_id)
-        
+
         if not provider:
             enriched_jobs.append(job)
             continue
@@ -1697,15 +1701,18 @@ def run_application_batch(
         # ----------------------------------------------------------
 
         try:
-            provider_id = job.get("provider_id", "naukri")
+            provider_id = getattr(job, "provider_id", "naukri")
             jc = providers.get(provider_id)
 
             if not jc:
-                is_external = True
-            else:
-                is_external = meta.get("is_external_apply")
-                if is_external is None:
-                    is_external = jc.is_external_apply(job.job_id)
+                raise ValueError(
+                    f"Provider '{provider_id}' is not configured "
+                    "in providers dictionary"
+                )
+
+            is_external = meta.get("is_external_apply")
+            if is_external is None:
+                is_external = jc.is_external_apply(job.job_id)
 
             capabilities = ProviderCapabilities(
                 native_apply=not is_external,  # Naukri natively supports it, but this job might be external
@@ -2278,7 +2285,7 @@ def run_application_cycle(
     detail_cache: dict[str, dict] = {}
 
     enriched_candidates = enrich_jobs_with_details(
-        jc=jc,
+        providers=providers,
         jobs=candidates,
         detail_cache=detail_cache,
     )
@@ -2513,7 +2520,7 @@ def run_application_cycle(
     )
 
     run_summary = run_application_batch(
-        jc=jc,
+        providers=providers,
         jobs=allowed_jobs,
         score_map=score_map,
         questionnaire_resolver=questionnaire_resolver,

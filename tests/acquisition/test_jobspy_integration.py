@@ -416,7 +416,7 @@ class TestNaukriRegression:
         }
 
         enriched = enrich_jobs_with_details(
-            jc=mock_jc,
+            providers={"naukri": mock_jc},
             jobs=[jobspy_job, naukri_job],
             detail_cache={},
         )

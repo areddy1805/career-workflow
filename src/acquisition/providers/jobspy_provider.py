@@ -53,6 +53,7 @@ from src.exceptions.exceptions import (
 )
 from src.models.models import Job
 from src.search.challenge_cooldown import SearchChallengeCooldown
+from src.acquisition.providers.jobspy_planner import JobSpySearchPlanner
 
 logger = logging.getLogger(__name__)
 
@@ -128,6 +129,11 @@ class JobSpyConfig:
 
     # Minutes a site stays in cooldown after a challenge.
     cooldown_minutes: int = 60
+    
+    # New configuration fields for redesigned search strategy
+    benchmarking_mode: bool = False
+    adaptive_acquisition: dict = field(default_factory=dict)
+    profiles: dict = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         unknown = [s for s in self.sites if s not in SUPPORTED_SITES]
@@ -245,10 +251,16 @@ class JobSpyProvider:
             )
             for site in config.sites
         }
+        
+        self.planner = JobSpySearchPlanner(config.profiles)
 
     # ------------------------------------------------------------------
     # Public interface
     # ------------------------------------------------------------------
+
+    def generate_planned_searches(self, locations: list[str]) -> list:
+        """Generate layered queries based on the configuration profiles."""
+        return self.planner.generate_planned_searches(locations)
 
     def is_enabled(self) -> bool:
         """Return True if JobSpy acquisition is enabled in config."""

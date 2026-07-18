@@ -69,3 +69,57 @@ acquisition:
       # proxies for production use (e.g. from JOBSPY_PROXIES env var).
       proxies: []
 
+      # Benchmarking mode runs a small representative sample
+      benchmarking_mode: false
+
+      adaptive_acquisition:
+        rolling_window_size: 25
+        min_yield_percent: 3.0
+
+      profiles:
+        aggressive:
+          priority: 100
+          providers: ["google", "indeed", "linkedin"]
+          max_queries: 250
+          max_titles: 10
+          max_frameworks: 8
+          layers:
+            roles:
+              - "AI Engineer"
+              - "GenAI Engineer"
+              - "Machine Learning Engineer"
+              - "LLM Engineer"
+              - "Applied AI Engineer"
+              - "Prompt Engineer"
+              - "RAG Engineer"
+              - "Forward Deployed Engineer"
+              - "AI Consultant"
+              - "AI Solutions Engineer"
+            frameworks:
+              - "LangChain"
+              - "LangGraph"
+              - "OpenAI"
+              - "Anthropic"
+              - "Azure OpenAI"
+              - "CrewAI"
+              - "LlamaIndex"
+              - "Semantic Kernel"
+            platforms:
+              - "Azure AI"
+              - "AWS Bedrock"
+              - "Vertex AI"
+              - "Hugging Face"
+              - "Databricks AI"
+              - "Snowflake Cortex"
+          negative_keywords: ["SAP", "Salesforce", "BPO"]
+        focused:
+          priority: 80
+          providers: ["linkedin", "indeed"]
+          max_queries: 45
+          max_titles: 15
+          max_frameworks: 8
+          layers:
+            roles:
+              - "AI Engineer"
+              - "Applied AI"
+          negative_keywords: []
