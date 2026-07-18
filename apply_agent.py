@@ -551,6 +551,7 @@ class JobFetchResult:
     search_requests_attempted: int = 0
     pages_stopped_low_yield: int = 0
     stop_reasons: dict[str, int] = field(default_factory=dict)
+    jobspy_health: dict = field(default_factory=dict)
 
 
 def fetch_all_jobs(
@@ -1029,6 +1030,21 @@ def acquire_jobs(
             search_tracks=search_tracks,
         )
         print(f"JobSpy returned {len(jobspy_jobs)} jobs")
+        jobspy_queries = sum(
+            h.get("total_searches", 0)
+            for h in jobspy_provider.health_summary().values()
+        )
+        fetch_result.search_requests_attempted += jobspy_queries
+        
+        health_summary = {}
+        degraded = getattr(jobspy_provider, "degraded_providers", set())
+        for site, h in jobspy_provider.health_summary().items():
+            site_status = "degraded" if site in degraded else "active"
+            health_summary[site] = {
+                "status": site_status,
+                **h
+            }
+        fetch_result.jobspy_health = health_summary
 
     for job in jobspy_jobs:
         setattr(job, "provider_id", "jobspy")

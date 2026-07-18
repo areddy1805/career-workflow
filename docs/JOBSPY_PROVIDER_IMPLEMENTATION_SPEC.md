@@ -4,8 +4,8 @@
 # Career Workflow 2.0
 ## JobSpy Provider Integration Specification
 
-**Status:** Planned
-**Estimated Effort:** 2–3 Days
+**Status:** Completed
+**Estimated Effort:** Completed (2–3 Days)
 **Primary Goal:** Expand job discovery by integrating JobSpy into the existing acquisition pipeline with minimal architectural changes.
 
 ---

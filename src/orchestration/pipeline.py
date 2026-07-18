@@ -502,6 +502,7 @@ class CareerWorkflowPipeline:
             "search_requests_attempted": fetch_result.search_requests_attempted,
             "pages_stopped_low_yield": fetch_result.pages_stopped_low_yield,
             "stop_reasons": fetch_result.stop_reasons,
+            "jobspy_health": getattr(fetch_result, "jobspy_health", {}),
         }
 
         self._write_artifact(

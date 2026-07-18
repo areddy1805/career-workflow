@@ -379,3 +379,11 @@ class TestFullRowNormalization:
     def test_returned_object_is_job_instance(self):
         job = _normalize({"id": "1", "title": "Engineer"})
         assert isinstance(job, Job)
+
+    def test_provider_metadata_is_populated(self):
+        job = _normalize({"id": "meta1", "job_url": "https://www.indeed.com/viewjob?id=meta1"}, site="indeed")
+        assert job.provider_id == "jobspy"
+        assert job.provider_name == "Indeed"
+        assert job.provider_source == "indeed"
+        assert job.provider_url == "https://www.indeed.com/viewjob?id=meta1"
+        assert job.provider_job_id == "meta1"

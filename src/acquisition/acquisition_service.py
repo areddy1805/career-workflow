@@ -72,6 +72,7 @@ def fetch_jobspy_jobs(
     Fetch jobs from all enabled JobSpy sites for all search queries.
     """
     if not provider.is_enabled():
+        logger.info("JobSpy Provider is DISABLED.")
         return []
 
     cfg = provider.config
@@ -102,9 +103,27 @@ def fetch_jobspy_jobs(
                     layer=q.get("matched_technology", "")
                 ))
     
+    input_count = len(planned_queries)
     if cfg.benchmarking_mode:
-        print(f"{Fore.YELLOW}*** BENCHMARKING MODE ENABLED - LIMITING TO 10 QUERIES ***{Style.RESET_ALL}")
-        planned_queries = planned_queries[:10]
+        print(f"{Fore.YELLOW}*** BENCHMARKING MODE ENABLED - INTERLEAVING AND LIMITING TO 10 QUERIES ***{Style.RESET_ALL}")
+        by_provider = {}
+        for q in planned_queries:
+            by_provider.setdefault(q.provider, []).append(q)
+        
+        interleaved = []
+        max_len = max(len(lst) for lst in by_provider.values()) if by_provider else 0
+        for idx in range(max_len):
+            for provider_name in ["indeed", "linkedin", "google"]:
+                if provider_name in by_provider and idx < len(by_provider[provider_name]):
+                    interleaved.append(by_provider[provider_name][idx])
+        planned_queries = interleaved[:10]
+
+    budget_value = 10 if cfg.benchmarking_mode else "unlimited"
+    logger.info("JobSpy Provider Enabled: %s", provider.is_enabled())
+    logger.info("Input planned queries: %d", input_count)
+    logger.info("Budget limit (benchmarking): %s", budget_value)
+    logger.info("Query count (actual budget): %d", len(planned_queries))
+    logger.info("Entering execution loop: %s", len(planned_queries) > 0)
 
     _print_section_title(
         f"fetching JobSpy jobs  "
@@ -126,6 +145,9 @@ def fetch_jobspy_jobs(
     
     provider_trackers = {site: RollingYieldTracker(window_size) for site in cfg.sites}
     stopped_providers = set()
+    consecutive_zero_or_fail = {site: 0 for site in cfg.sites}
+    degraded_providers = set()
+    provider.degraded_providers = degraded_providers
     
     # Analytics
     query_analytics = []
@@ -135,27 +157,48 @@ def fetch_jobspy_jobs(
         keyword = query.keyword
         location = query.location
         
+        if site in degraded_providers:
+            logger.info("Skipped query '%s' on %s due to provider DEGRADED status.", keyword, site)
+            queries_skipped += 1
+            continue
+
         if site in stopped_providers:
+            logger.info("Skipped query '%s' on %s due to adaptive threshold stop.", keyword, site)
             queries_skipped += 1
             continue
 
         if not provider.is_site_available(site):
-            print(f"  {Fore.YELLOW}[JOBSPY:{site.upper()}]{Style.RESET_ALL} On cooldown — skipping.")
+            logger.info("Skipped query '%s' on %s due to provider site cooldown.", keyword, site)
             queries_skipped += 1
             continue
 
         queries_executed += 1
         t_start = time.perf_counter()
 
+        success_query = False
         try:
             print(f"\nCalling JobSpy: {site} | {keyword} | {location}")
             jobs = provider.search(keyword=keyword, location=location, site=site)
             # Display top 3
             for job in jobs[:3]:
                 print(f"  -> {job.title} | {job.company} | {job.location}")
+            if len(jobs) > 0:
+                success_query = True
         except Exception as exc:
             print(f"  {Fore.RED}[JOBSPY:{site.upper()}]{Style.RESET_ALL} {keyword!r} @ {location!r}  →  {exc}")
+            consecutive_zero_or_fail[site] += 1
+            if consecutive_zero_or_fail[site] >= 3:
+                degraded_providers.add(site)
+                logger.warning("Provider '%s' is marked DEGRADED due to consecutive failures.", site)
             continue
+
+        if success_query:
+            consecutive_zero_or_fail[site] = 0
+        else:
+            consecutive_zero_or_fail[site] += 1
+            if consecutive_zero_or_fail[site] >= 3:
+                degraded_providers.add(site)
+                logger.warning("Provider '%s' is marked DEGRADED due to consecutive zero-yields.", site)
 
         latency = time.perf_counter() - t_start
         
@@ -222,7 +265,7 @@ def fetch_jobspy_jobs(
     print("Provider          JobSpy")
     print("Sites")
     for site in cfg.sites:
-        status = "stopped" if site in stopped_providers else ("cooldown" if not provider.is_site_available(site) else "active")
+        status = "degraded" if site in degraded_providers else ("stopped" if site in stopped_providers else ("cooldown" if not provider.is_site_available(site) else "active"))
         print(f"  {site.capitalize():<14} ({status})")
 
     print(f"Queries Planned   {total_planned}")
@@ -236,6 +279,9 @@ def fetch_jobspy_jobs(
     print(f"Duplicates        {duplicates_removed}")
     print(f"Failures          {failures}")
     print(f"Final Jobs        {len(all_jobs)}")
+    logger.info("Total queries executed: %d", queries_executed)
+    logger.info("Total queries skipped: %d", queries_skipped)
+    logger.info("Output jobs fetched: %d", len(all_jobs))
     
     if queries_executed > 0:
         total_time = sum(a["runtime"] for a in query_analytics)

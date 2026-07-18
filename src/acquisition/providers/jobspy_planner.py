@@ -21,6 +21,15 @@ class JobSpyQuery:
     layer: str
 
 
+def _quote_if_needed(val: str) -> str:
+    val = val.strip()
+    if not val:
+        return ""
+    if " " in val and not (val.startswith('"') and val.endswith('"')):
+        return f'"{val}"'
+    return val
+
+
 class ProviderSearchStrategy(ABC):
     @abstractmethod
     def format_query(self, keyword: str, negative_keywords: list[str]) -> str:
@@ -31,25 +40,35 @@ class ProviderSearchStrategy(ABC):
 class GoogleStrategy(ProviderSearchStrategy):
     def format_query(self, keyword: str, negative_keywords: list[str]) -> str:
         # Google accepts robust boolean logic.
-        neg_suffix = " ".join(f"-{neg}" for neg in negative_keywords)
-        if neg_suffix:
-            return f"{keyword} {neg_suffix}"
-        return keyword
+        quoted = _quote_if_needed(keyword)
+        neg_parts = []
+        for neg in negative_keywords:
+            neg = neg.strip()
+            if neg:
+                neg_parts.append(f"-{_quote_if_needed(neg)}")
+        if neg_parts:
+            return f"{quoted} {' '.join(neg_parts)}"
+        return quoted
 
 
 class IndeedStrategy(ProviderSearchStrategy):
     def format_query(self, keyword: str, negative_keywords: list[str]) -> str:
         # Indeed is fairly standard, supports minus sign for exclusion.
-        neg_suffix = " ".join(f"-{neg}" for neg in negative_keywords)
-        if neg_suffix:
-            return f"{keyword} {neg_suffix}"
-        return keyword
+        quoted = _quote_if_needed(keyword)
+        neg_parts = []
+        for neg in negative_keywords:
+            neg = neg.strip()
+            if neg:
+                neg_parts.append(f"-{_quote_if_needed(neg)}")
+        if neg_parts:
+            return f"{quoted} {' '.join(neg_parts)}"
+        return quoted
 
 
 class LinkedInStrategy(ProviderSearchStrategy):
     def format_query(self, keyword: str, negative_keywords: list[str]) -> str:
         # LinkedIn prefers precise titles and often breaks with complex booleans.
-        return keyword
+        return _quote_if_needed(keyword)
 
 
 class JobSpySearchPlanner:

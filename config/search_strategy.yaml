@@ -38,7 +38,7 @@ acquisition:
     jobspy:
       # Set enabled: false to bypass JobSpy entirely. When disabled the
       # acquisition phase behaves exactly as before this integration.
-      enabled: false
+      enabled: true
 
       # Which JobSpy sites to query. Supported: google, indeed, linkedin.
       # Naukri/Glassdoor/Bayt are explicitly excluded (out of scope).
@@ -79,7 +79,7 @@ acquisition:
       profiles:
         aggressive:
           priority: 100
-          providers: ["google", "indeed", "linkedin"]
+          providers: ["indeed", "linkedin", "google"]
           max_queries: 250
           max_titles: 10
           max_frameworks: 8

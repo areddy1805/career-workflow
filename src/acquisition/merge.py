@@ -50,15 +50,17 @@ def merge_jobs(
 
     def _provider_rank(job) -> int:
         """Lower rank = higher priority."""
-        job_id = str(getattr(job, "job_id", ""))
-        if job_id.startswith("jobspy_indeed_"):
-            source = "indeed"
-        elif job_id.startswith("jobspy_linkedin_"):
-            source = "linkedin"
-        elif job_id.startswith("jobspy_google_"):
-            source = "google"
-        else:
-            source = "naukri"
+        source = getattr(job, "provider_source", "unknown")
+        if source == "unknown":
+            job_id = str(getattr(job, "job_id", ""))
+            if job_id.startswith("jobspy_indeed_"):
+                source = "indeed"
+            elif job_id.startswith("jobspy_linkedin_"):
+                source = "linkedin"
+            elif job_id.startswith("jobspy_google_"):
+                source = "google"
+            else:
+                source = "naukri"
         try:
             return provider_priority.index(source)
         except ValueError:
@@ -94,6 +96,9 @@ def merge_jobs(
         key_index[_identity_key(job)] = idx
 
     def _source_tag(job) -> str:
+        source = getattr(job, "provider_source", "unknown")
+        if source != "unknown":
+            return f"source:{source}"
         job_id = str(getattr(job, "job_id", ""))
         for site in ("indeed", "linkedin", "google"):
             if f"jobspy_{site}_" in job_id:

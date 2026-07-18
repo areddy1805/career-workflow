@@ -37,6 +37,11 @@ class Job:
     description: str = ""
     tags: list = field(default_factory=list)
     decision_history: list = field(default_factory=list)
+    provider_id: str = "unknown"
+    provider_name: str = "unknown"
+    provider_source: str = "unknown"
+    provider_url: str = ""
+    provider_job_id: str = ""
 
 
 @dataclass

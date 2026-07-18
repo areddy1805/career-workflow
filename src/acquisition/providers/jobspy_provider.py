@@ -135,6 +135,14 @@ class JobSpyConfig:
     adaptive_acquisition: dict = field(default_factory=dict)
     profiles: dict = field(default_factory=dict)
 
+    # Scraper override parameters
+    country_indeed: str = "usa"
+    distance: int | None = None
+    is_remote: bool | None = None
+    job_type: str | None = None
+    easy_apply: bool | None = None
+    offset: int | None = None
+
     def __post_init__(self) -> None:
         unknown = [s for s in self.sites if s not in SUPPORTED_SITES]
         if unknown:
@@ -170,6 +178,15 @@ class JobSpyConfig:
             "proxies",
             "challenge_state_dir",
             "cooldown_minutes",
+            "benchmarking_mode",
+            "adaptive_acquisition",
+            "profiles",
+            "country_indeed",
+            "distance",
+            "is_remote",
+            "job_type",
+            "easy_apply",
+            "offset",
         }
         filtered = {k: v for k, v in raw.items() if k in known_fields}
         return cls(**filtered)
@@ -388,6 +405,13 @@ class JobSpyProvider:
 
         proxies = self.config.proxies or None
 
+        # Guess country_indeed based on location if not explicitly set to something else or is default "usa"
+        country_indeed = self.config.country_indeed
+        if not country_indeed or country_indeed == "usa":
+            loc_lower = (location or "").lower()
+            if any(city in loc_lower for city in ["pune", "bangalore", "bengaluru", "mumbai", "delhi", "hyderabad", "chennai", "noida", "gurgaon", "kolkata", "india"]):
+                country_indeed = "india"
+
         kwargs: dict[str, Any] = {
             "site_name": [site],
             "search_term": keyword,
@@ -401,6 +425,36 @@ class JobSpyProvider:
         if proxies:
             kwargs["proxies"] = proxies
 
+        if country_indeed:
+            kwargs["country_indeed"] = country_indeed
+        if self.config.distance is not None:
+            kwargs["distance"] = self.config.distance
+        if self.config.is_remote is not None:
+            kwargs["is_remote"] = self.config.is_remote
+        if self.config.job_type:
+            kwargs["job_type"] = self.config.job_type
+        if self.config.easy_apply is not None:
+            kwargs["easy_apply"] = self.config.easy_apply
+        if self.config.offset is not None:
+            kwargs["offset"] = self.config.offset
+
+        # Log the COMPLETE request parameters
+        logger.info(
+            "Invoking JobSpy.scrape_jobs with parameters: "
+            "site_name=%r, search_term=%r, location=%r, results_wanted=%r, "
+            "hours_old=%r, country_indeed=%r, linkedin_fetch_description=%r, "
+            "distance=%r, is_remote=%r, job_type=%r, easy_apply=%r, offset=%r",
+            kwargs["site_name"], kwargs["search_term"], kwargs["location"], kwargs["results_wanted"],
+            kwargs["hours_old"], kwargs.get("country_indeed"), kwargs["linkedin_fetch_description"],
+            kwargs.get("distance"), kwargs.get("is_remote"), kwargs.get("job_type"),
+            kwargs.get("easy_apply"), kwargs.get("offset")
+        )
+
+        logger.info(
+            "Invoking python-jobspy with parameters for site %s: search_term=%r, location=%r, country_indeed=%r, results_wanted=%r",
+            site, keyword, location, country_indeed, kwargs.get("results_wanted")
+        )
+
         try:
             df = jobspy.scrape_jobs(**kwargs)
         except Exception as exc:
@@ -408,8 +462,11 @@ class JobSpyProvider:
             raise  # unreachable — _translate_exception always raises
 
         if df is None or (hasattr(df, "empty") and df.empty):
+            logger.info("Zero raw rows returned by python-jobspy for provider: %s", site)
             return []
 
+        raw_count = len(df)
+        logger.info("Raw rows returned by python-jobspy for site %s: %d", site, raw_count)
         return self._normalize_dataframe(df, site=site)
 
     # ------------------------------------------------------------------
@@ -489,16 +546,36 @@ class JobSpyProvider:
         No row, column, or Series escapes this method.
         """
         jobs: list[Job] = []
+        raw_count = len(df)
+        discarded_count = 0
+        discard_reasons: list[str] = []
 
-        for _, row in df.iterrows():
+        for idx, row in df.iterrows():
             try:
                 job = self._normalize_row(row, site=site)
                 if job is not None:
                     jobs.append(job)
+                else:
+                    discarded_count += 1
+                    raw_id = row.get("id") if hasattr(row, "get") else None
+                    if not raw_id:
+                        discard_reasons.append(f"Row {idx}: missing 'id' value (cannot generate job_id)")
+                    else:
+                        discard_reasons.append(f"Row {idx} (id={raw_id}): normalized to None (criteria validation failed)")
             except Exception as exc:
+                discarded_count += 1
+                discard_reasons.append(f"Row {idx}: normalization exception: {exc}")
                 logger.warning(
                     "Failed to normalize JobSpy row for site=%s: %s", site, exc
                 )
+
+        logger.info(
+            "Normalization Summary for %s: Raw rows=%d, Normalized=%d, Discarded=%d",
+            site, raw_count, len(jobs), discarded_count
+        )
+        if discarded_count > 0:
+            for reason in discard_reasons:
+                logger.debug("Discard reason for %s: %s", site, reason)
 
         return jobs
 
@@ -622,6 +699,11 @@ class JobSpyProvider:
             description=description,
             tags=tags,
             decision_history=decision_history,
+            provider_id="jobspy",
+            provider_name=site.capitalize(),
+            provider_source=site,
+            provider_url=str(raw_url).strip() if raw_url else "",
+            provider_job_id=str(raw_id).strip() if raw_id else "",
         )
 
     # ------------------------------------------------------------------
