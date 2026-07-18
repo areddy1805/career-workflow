@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { useQueryClient } from '@tanstack/react-query';
 import { fetchJobDetails, transitionQueueJob } from '@/lib/api';
-import { formatSalary } from '@/lib/utils';
-import { Loader2, ExternalLink, CheckCircle, XCircle, Clock, Search } from 'lucide-react';
+import { formatSalary, cn } from '@/lib/utils';
+import { Loader2, ExternalLink, CheckCircle, XCircle, SkipForward, Search, AlertCircle } from 'lucide-react';
 
 interface JobDrawerProps {
   jobId: string | null;
@@ -15,28 +16,44 @@ interface JobDrawerProps {
 
 export function JobDrawer({ jobId, open, onOpenChange, onTransitioned }: JobDrawerProps) {
   const [loading, setLoading] = useState(false);
+  const [transitioning, setTransitioning] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<any>(null);
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     if (jobId && open) {
       setLoading(true);
+      setError(null);
       fetchJobDetails(jobId)
         .then(res => setData(res))
-        .catch(err => console.error(err))
+        .catch(err => { console.error(err); setError('Failed to load job details.'); })
         .finally(() => setLoading(false));
     } else {
       setData(null);
+      setError(null);
     }
   }, [jobId, open]);
 
+  // WorkflowStatus valid values: NEW, PENDING, IN_PROGRESS, OPENED, APPLIED, INTERVIEW, OFFER, REJECTED, ARCHIVED
+  // Skip → REJECTED (workflow machine maps this cleanly)
+  // Dismiss → ARCHIVED (terminal state)
   const handleTransition = async (status: string) => {
     if (!jobId) return;
+    setTransitioning(status);
+    setError(null);
     try {
-      await transitionQueueJob(jobId, status, "From UI Drawer");
+      await transitionQueueJob(jobId, status, 'From UI Drawer');
+      // Invalidate all queue-related queries so the list refreshes
+      queryClient.invalidateQueries({ queryKey: ['queue'] });
+      queryClient.invalidateQueries({ queryKey: ['jobs'] });
       onTransitioned();
       onOpenChange(false);
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
+      setError(`Transition to ${status} failed — the current status may not allow this action.`);
+    } finally {
+      setTransitioning(null);
     }
   };
 
@@ -81,16 +98,43 @@ export function JobDrawer({ jobId, open, onOpenChange, onTransitioned }: JobDraw
                    <ExternalLink className="w-4 h-4 mr-2" /> Open Job
                  </Button>
                ) : null}
-               <Button variant="default" size="sm" onClick={() => handleTransition('APPLIED')} className="bg-green-600 hover:bg-green-700 text-white">
-                 <CheckCircle className="w-4 h-4 mr-2" /> Mark Applied
+               {/* APPLIED is valid from: IN_PROGRESS, OPENED states */}
+               <Button
+                 variant="default" size="sm"
+                 onClick={() => handleTransition('APPLIED')}
+                 disabled={!!transitioning}
+                 className="bg-green-600 hover:bg-green-700 text-white"
+               >
+                 {transitioning === 'APPLIED' ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle className="w-4 h-4 mr-2" />}
+                 Mark Applied
                </Button>
-               <Button variant="outline" size="sm" onClick={() => handleTransition('SKIPPED')} className="text-orange-600 border-orange-200 hover:bg-orange-50">
-                 <Clock className="w-4 h-4 mr-2" /> Skip
+               {/* REJECTED is the correct status for skip/pass — valid from PENDING, IN_PROGRESS, OPENED, APPLIED, INTERVIEW */}
+               <Button
+                 variant="outline" size="sm"
+                 onClick={() => handleTransition('REJECTED')}
+                 disabled={!!transitioning}
+                 className="text-orange-500 border-orange-500/30 hover:bg-orange-500/10 dark:hover:bg-orange-500/10"
+               >
+                 {transitioning === 'REJECTED' ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <SkipForward className="w-4 h-4 mr-2" />}
+                 Skip
                </Button>
-               <Button variant="ghost" size="sm" onClick={() => handleTransition('DISMISSED')} className="text-red-600 hover:bg-red-50">
-                 <XCircle className="w-4 h-4 mr-2" /> Dismiss
+               {/* ARCHIVED is the terminal dismiss — valid from most states */}
+               <Button
+                 variant="ghost" size="sm"
+                 onClick={() => handleTransition('ARCHIVED')}
+                 disabled={!!transitioning}
+                 className="text-destructive hover:bg-destructive/10"
+               >
+                 {transitioning === 'ARCHIVED' ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <XCircle className="w-4 h-4 mr-2" />}
+                 Dismiss
                </Button>
             </div>
+            {error && (
+              <div className="flex items-start gap-2 text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded p-3">
+                <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                {error}
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-4 text-sm bg-muted/30 p-4 rounded-lg">
               <div><span className="font-semibold text-muted-foreground">Experience:</span> {data.overview?.experience || 'N/A'}</div>
