@@ -86,8 +86,8 @@ def merge_jobs(
 
     # Index existing Naukri jobs
     merged: list = list(naukri_jobs)
-    url_index: dict[str, int] = {}   # canonical_url → index in merged
-    key_index: dict[tuple, int] = {} # (title, company, location) → index in merged
+    url_index: dict[str, int] = {}  # canonical_url → index in merged
+    key_index: dict[tuple, int] = {}  # (title, company, location) → index in merged
 
     for idx, job in enumerate(merged):
         url = _canonical_url(job)

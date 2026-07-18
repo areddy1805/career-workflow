@@ -115,4 +115,3 @@ class JobSpyConfigError(JobSpyProviderError):
     """
 
     pass
-

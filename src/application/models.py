@@ -1,11 +1,13 @@
 from enum import Enum
 
+
 class RoutingStrategy(str, Enum):
     NATIVE_APPLY = "Native Apply"
     EXTERNAL_ATS = "External ATS"
     GENERIC_CAREER_SITE = "Generic Career Site"
     MANUAL_REVIEW = "Manual Review"
     UNSUPPORTED = "Unsupported"
+
 
 class ATSType(str, Enum):
     GREENHOUSE = "Greenhouse"

@@ -22,7 +22,6 @@ from src.acquisition.merge import merge_jobs
 from src.acquisition.providers.jobspy_provider import JobSpyConfig, JobSpyProvider
 from src.models.models import Job
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -100,7 +99,14 @@ class TestMergeJobsNoDuplicates:
 
     def test_unique_jobs_are_combined(self):
         naukri = [_job("N1", title="Backend Engineer", company="Acme", location="Pune")]
-        jobspy = [_job("jobspy_indeed_J1", title="Data Scientist", company="Beta Corp", location="Bangalore")]
+        jobspy = [
+            _job(
+                "jobspy_indeed_J1",
+                title="Data Scientist",
+                company="Beta Corp",
+                location="Bangalore",
+            )
+        ]
         result = merge_jobs(naukri, jobspy, ["naukri", "indeed"])
         ids = [j.job_id for j in result]
         assert "N1" in ids
@@ -299,7 +305,9 @@ class TestFetchJobspyJobsMocked:
         provider = JobSpyProvider(cfg)
         duplicate_job = _job("jobspy_indeed_DUP")
 
-        with patch.object(provider, "search", return_value=[duplicate_job, duplicate_job]):
+        with patch.object(
+            provider, "search", return_value=[duplicate_job, duplicate_job]
+        ):
             result = fetch_jobspy_jobs(
                 provider,
                 [

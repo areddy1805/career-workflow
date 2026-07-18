@@ -2,8 +2,8 @@
 src/acquisition/providers/jobspy_planner.py
 ===========================================
 
-Generates JobSpy-specific search queries. Replaces Cartesian product explosion 
-with prioritized, layered, and budgeted queries. Provider-specific strategies 
+Generates JobSpy-specific search queries. Replaces Cartesian product explosion
+with prioritized, layered, and budgeted queries. Provider-specific strategies
 format the search terms appropriately.
 """
 
@@ -91,21 +91,21 @@ class JobSpySearchPlanner:
         Generate queries for each provider based on profile budgets and layers.
         """
         all_queries: list[JobSpyQuery] = []
-        
+
         if not self.profiles_config:
             return all_queries
 
         # Sort profiles by priority (highest first)
         sorted_profiles = sorted(
-            self.profiles_config.items(), 
-            key=lambda item: item[1].get("priority", 0), 
-            reverse=True
+            self.profiles_config.items(),
+            key=lambda item: item[1].get("priority", 0),
+            reverse=True,
         )
-        
+
         for profile_name, profile_data in sorted_profiles:
             providers = profile_data.get("providers", ["google", "indeed", "linkedin"])
             priority = profile_data.get("priority", 50)
-            
+
             # Map priority to tracking tier
             if priority >= 100:
                 track = "TIER_S"
@@ -115,45 +115,47 @@ class JobSpySearchPlanner:
                 track = "TIER_B"
             else:
                 track = "TIER_C"
-                
+
             max_queries = profile_data.get("max_queries", 250)
             max_titles = profile_data.get("max_titles", 15)
             max_frameworks = profile_data.get("max_frameworks", 8)
-            
+
             layers = profile_data.get("layers", {})
             roles = layers.get("roles", [])[:max_titles]
             frameworks = layers.get("frameworks", [])[:max_frameworks]
             platforms = layers.get("platforms", [])
             negative_keywords = profile_data.get("negative_keywords", [])
-            
+
             for provider in providers:
                 strategy = self.strategies.get(provider, GoogleStrategy())
                 provider_query_count = 0
-                
+
                 # Combine layers logically but independently (Layered approach)
                 layer_terms = [
                     ("roles", roles),
                     ("frameworks", frameworks),
-                    ("platforms", platforms)
+                    ("platforms", platforms),
                 ]
-                
+
                 for layer_name, terms in layer_terms:
                     for term in terms:
                         if provider_query_count >= max_queries:
                             break
-                        
+
                         fmt_keyword = strategy.format_query(term, negative_keywords)
                         for loc in locations:
-                            all_queries.append(JobSpyQuery(
-                                keyword=fmt_keyword,
-                                location=loc,
-                                track=track,
-                                provider=provider,
-                                search_profile=profile_name,
-                                layer=layer_name
-                            ))
-                            
+                            all_queries.append(
+                                JobSpyQuery(
+                                    keyword=fmt_keyword,
+                                    location=loc,
+                                    track=track,
+                                    provider=provider,
+                                    search_profile=profile_name,
+                                    layer=layer_name,
+                                )
+                            )
+
                         # Count the base term as 1 against the budget
                         provider_query_count += 1
-                        
+
         return all_queries

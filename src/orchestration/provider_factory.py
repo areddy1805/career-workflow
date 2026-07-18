@@ -18,8 +18,12 @@ def initialize_providers(provider_mode: str = "all") -> dict:
     naukri_enabled = naukri_raw.get("enabled", True)
     jobspy_enabled = jobspy_raw.get("enabled", False)
 
-    run_naukri = (provider_mode == "naukri") or (provider_mode == "all" and naukri_enabled)
-    run_jobspy = (provider_mode == "jobspy") or (provider_mode == "all" and jobspy_enabled)
+    run_naukri = (provider_mode == "naukri") or (
+        provider_mode == "all" and naukri_enabled
+    )
+    run_jobspy = (provider_mode == "jobspy") or (
+        provider_mode == "all" and jobspy_enabled
+    )
 
     providers = {}
 
@@ -40,7 +44,9 @@ def initialize_providers(provider_mode: str = "all") -> dict:
             jc = NaukriJobClient(login_client)
             providers["naukri"] = jc
         except Exception as exc:
-            print(f"{Fore.RED}Failed to initialize Naukri client: {exc}{Style.RESET_ALL}")
+            print(
+                f"{Fore.RED}Failed to initialize Naukri client: {exc}{Style.RESET_ALL}"
+            )
 
     if run_jobspy:
         try:

@@ -18,7 +18,6 @@ from src.acquisition.providers.jobspy_provider import (
 )
 from src.exceptions.exceptions import JobSpyConfigError
 
-
 # ---------------------------------------------------------------------------
 # JobSpyConfig
 # ---------------------------------------------------------------------------
@@ -222,7 +221,9 @@ class TestHealthStats:
 
 class TestCanonicalizeUrl:
     def test_strips_utm_params(self):
-        url = "https://www.indeed.com/viewjob?jk=abc123&utm_source=google&utm_campaign=x"
+        url = (
+            "https://www.indeed.com/viewjob?jk=abc123&utm_source=google&utm_campaign=x"
+        )
         result = canonicalize_url(url)
         assert "utm_source" not in result
         assert "utm_campaign" not in result

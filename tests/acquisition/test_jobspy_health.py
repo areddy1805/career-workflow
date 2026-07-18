@@ -20,7 +20,6 @@ from src.exceptions.exceptions import (
 )
 from src.models.models import Job
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -200,8 +199,6 @@ class TestHealthTracking:
         assert summary["google"]["successful_searches"] == 1
         # Latency is measured via perf_counter; with a mock it may be 0.0.
         assert summary["google"]["average_latency_seconds"] >= 0
-
-
 
 
 # ---------------------------------------------------------------------------

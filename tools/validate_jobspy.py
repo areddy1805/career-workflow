@@ -9,16 +9,33 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 from src.acquisition.providers.jobspy_provider import JobSpyProvider, JobSpyConfig
 from src.models.models import Job
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+)
 logger = logging.getLogger("validate_jobspy")
+
 
 def main():
     parser = argparse.ArgumentParser(description="Standalone JobSpy validation script.")
-    parser.add_argument("--keyword", type=str, default="AI Engineer", help="Keyword to search.")
-    parser.add_argument("--location", type=str, default="Pune", help="Location to search.")
-    parser.add_argument("--site", type=str, default="google", choices=["google", "indeed", "linkedin"], help="JobSpy site to search.")
-    parser.add_argument("--results", type=int, default=3, help="Number of results wanted.")
-    parser.add_argument("--country", type=str, default="india", help="Indeed country parameter.")
+    parser.add_argument(
+        "--keyword", type=str, default="AI Engineer", help="Keyword to search."
+    )
+    parser.add_argument(
+        "--location", type=str, default="Pune", help="Location to search."
+    )
+    parser.add_argument(
+        "--site",
+        type=str,
+        default="google",
+        choices=["google", "indeed", "linkedin"],
+        help="JobSpy site to search.",
+    )
+    parser.add_argument(
+        "--results", type=int, default=3, help="Number of results wanted."
+    )
+    parser.add_argument(
+        "--country", type=str, default="india", help="Indeed country parameter."
+    )
     args = parser.parse_args()
 
     print("=" * 60)
@@ -35,6 +52,7 @@ def main():
     print("\n--- Phase 1: Direct JobSpy scraping ---")
     try:
         import jobspy
+
         print("Importing python-jobspy: SUCCESS")
     except ImportError as e:
         print(f"Importing python-jobspy: FAILED ({e})")
@@ -47,7 +65,7 @@ def main():
             location=args.location,
             results_wanted=args.results,
             country_indeed=args.country,
-            verbose=1
+            verbose=1,
         )
         if df is None or df.empty:
             print("Direct JobSpy scrape succeeded but returned 0 jobs.")
@@ -76,9 +94,7 @@ def main():
 
     try:
         jobs = provider.search(
-            keyword=args.keyword,
-            location=args.location,
-            site=args.site
+            keyword=args.keyword, location=args.location, site=args.site
         )
         print(f"Provider search succeeded! Returned {len(jobs)} normalized jobs.")
         if jobs:
@@ -97,7 +113,7 @@ def main():
             print(f"  provider_source : {job.provider_source}")
             print(f"  provider_url    : {job.provider_url}")
             print(f"  provider_job_id : {job.provider_job_id}")
-            
+
             # Check validation criteria
             assert job.provider_id == "jobspy", "provider_id mismatch"
             assert job.provider_source == args.site, "provider_source mismatch"
@@ -108,11 +124,13 @@ def main():
     except Exception as e:
         print(f"Provider search FAILED: {e}")
         import traceback
+
         traceback.print_exc()
 
     print("\n" + "=" * 60)
     print("VALIDATION COMPLETE")
     print("=" * 60)
+
 
 if __name__ == "__main__":
     main()

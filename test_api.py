@@ -5,12 +5,7 @@ from api.main import app
 
 client = TestClient(app)
 
-endpoints = [
-    "/api/dashboard",
-    "/api/runtime",
-    "/api/jobs",
-    "/api/runs"
-]
+endpoints = ["/api/dashboard", "/api/runtime", "/api/jobs", "/api/runs"]
 
 success = True
 for endpoint in endpoints:

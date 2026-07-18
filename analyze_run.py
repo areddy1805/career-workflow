@@ -17,4 +17,3 @@ with open(f"{run_dir}/selection.json") as f:
 print("Acquisition:", acq_data)
 print("Classification Summary:", class_data["summary"])
 print("Selection Summary:", sel_data)
-

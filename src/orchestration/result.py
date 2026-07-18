@@ -19,13 +19,13 @@ class PipelineResult:
     submitted: int = 0
     already_applied: int = 0
     skipped_local: int = 0
-    
+
     native_applied: int = 0
     ats_queue: int = 0
     generic_queue: int = 0
     manual_queue: int = 0
     unsupported: int = 0
-    
+
     policy_rejected: int = 0
     dry_run_skipped: int = 0
     run_limit_reached: int = 0

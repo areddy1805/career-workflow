@@ -343,7 +343,7 @@ class JobFilterPipeline2:
         ai_score_limit: int = 300,
         batch_size: int = 5,
         metrics: PipelineRunMetrics | None = None,
-        exec_context = None,
+        exec_context=None,
     ):
         self.metrics = metrics
         self.exec_context = exec_context
@@ -377,12 +377,12 @@ class JobFilterPipeline2:
         job_copy["rejection_stage"] = stage
         job_copy["rejection_code"] = code
         job_copy["rejection_reason"] = reason
-        
+
         if self.exec_context:
             self.exec_context.reject(job, reason=reason, code=code)
-            
+
         self.rejected_jobs.append(job_copy)
-        
+
         decisions = job.setdefault("decisions", [])
         decisions.append(
             {
@@ -919,14 +919,14 @@ class JobFilterPipeline2:
     def _classify_location_preference(job):
         location = str(job.get("location") or "").lower()
         description = str(job.get("description") or "").lower()
-        
+
         mode = JobFilterPipeline2._classify_work_mode(job)
         if mode == "remote":
             return "Preferred"
 
         preferred_pattern = r"\bpune\b|\bpimpri\b|\bchinchwad\b|\bhinja?wadi\b|\bbengaluru\b|\bbangalore\b|\bhyderabad\b|\bremote\b"
         acceptable_pattern = r"\bmumbai\b|\bchennai\b|\bnoida\b|\bgurgaon\b|\bgurugram\b|\bdelhi ncr\b|\bflexible\b|\bindia\b"
-        
+
         if re.search(preferred_pattern, location):
             return "Preferred"
         if re.search(acceptable_pattern, location):
@@ -939,7 +939,7 @@ class JobFilterPipeline2:
         )
         if any(re.search(pattern, description) for pattern in explicit_preferred):
             return "Preferred"
-            
+
         explicit_acceptable = (
             rf"\b(?:job|work|base|office) location\s*[:\-]\s*[^.\n]{{0,100}}(?:{acceptable_pattern})",
             rf"\bbased in\s+(?:{acceptable_pattern})",
@@ -958,7 +958,7 @@ class JobFilterPipeline2:
         for job in jobs:
             mode = self._classify_work_mode(job)
             loc_pref = self._classify_location_preference(job)
-            
+
             job["work_mode_classification"] = mode
             job["location_preference"] = loc_pref
 
@@ -973,8 +973,9 @@ class JobFilterPipeline2:
 
     def tag_presort(self, jobs):
         my_stack = set(self.MY_STACK)
-        
+
         from src.config.search_strategy import load_search_strategy
+
         strategy = load_search_strategy()
         weights = strategy.summary_scoring
 
@@ -982,17 +983,17 @@ class JobFilterPipeline2:
             tags = set(j.get("tags", []))
             mandatory_hit = sum(1 for t in j.get("mandatory_tags", []) if t in my_stack)
             total_hit = len(tags & my_stack)
-            
+
             days_old = j.get("days_old", 7)
             # Recency bonus: max 7 points (0 days old = 7, 7 days old = 0)
             recency_days = max(0, 7 - days_old)
-            
+
             mandatory_score = mandatory_hit * weights.mandatory_weight
             skills_score = total_hit * weights.skills_weight
             recency_score = recency_days * weights.recency_weight
-            
+
             total_score = mandatory_score + skills_score + recency_score
-            
+
             j["summary_score"] = total_score
             j["summary_breakdown"] = {
                 "mandatory_hits": mandatory_hit,

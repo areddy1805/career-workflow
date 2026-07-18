@@ -8,23 +8,27 @@ from src.acquisition.providers.jobspy_planner import (
     JobSpySearchPlanner,
 )
 
+
 def test_google_strategy_quoting_and_negatives():
     strat = GoogleStrategy()
-    
+
     # Single word, no negatives
     assert strat.format_query("Python", []) == "Python"
-    
+
     # Multi word keyword, no negatives -> should quote
     assert strat.format_query("AI Engineer", []) == '"AI Engineer"'
-    
+
     # Already quoted multi word -> should not double quote
     assert strat.format_query('"AI Engineer"', []) == '"AI Engineer"'
-    
+
     # Single word, single negative
     assert strat.format_query("Python", ["SAP"]) == "Python -SAP"
-    
+
     # Multi word with multi word negatives
-    assert strat.format_query("AI Engineer", ["SAP", "Sales Force"]) == '"AI Engineer" -SAP -"Sales Force"'
+    assert (
+        strat.format_query("AI Engineer", ["SAP", "Sales Force"])
+        == '"AI Engineer" -SAP -"Sales Force"'
+    )
 
 
 def test_indeed_strategy_quoting_and_negatives():

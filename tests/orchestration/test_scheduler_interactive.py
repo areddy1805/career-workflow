@@ -10,18 +10,25 @@ import pytest
 from src.orchestration.scheduler import SchedulerConfig, run_scheduler
 from src.orchestration.runtime import RuntimeState
 
+
 class TestRunSchedulerInteractive:
     @pytest.fixture
     def mock_deps(self):
-        with patch("src.orchestration.scheduler.RuntimeStateManager") as m_state, \
-             patch("src.orchestration.scheduler.PipelineLock") as m_lock, \
-             patch("src.orchestration.scheduler.RunManager") as m_run, \
-             patch("src.orchestration.scheduler.HeartbeatManager") as m_hb, \
-             patch("src.orchestration.scheduler.RecoveryManager") as m_rec, \
-             patch("src.orchestration.scheduler.Watchdog") as m_wd, \
-             patch("src.orchestration.scheduler.CircuitBreaker") as m_cb, \
-             patch("src.orchestration.scheduler.subprocess.run") as m_sub, \
-             patch("src.orchestration.scheduler.time.sleep") as m_sleep:
+        with patch("src.orchestration.scheduler.RuntimeStateManager") as m_state, patch(
+            "src.orchestration.scheduler.PipelineLock"
+        ) as m_lock, patch("src.orchestration.scheduler.RunManager") as m_run, patch(
+            "src.orchestration.scheduler.HeartbeatManager"
+        ) as m_hb, patch(
+            "src.orchestration.scheduler.RecoveryManager"
+        ) as m_rec, patch(
+            "src.orchestration.scheduler.Watchdog"
+        ) as m_wd, patch(
+            "src.orchestration.scheduler.CircuitBreaker"
+        ) as m_cb, patch(
+            "src.orchestration.scheduler.subprocess.run"
+        ) as m_sub, patch(
+            "src.orchestration.scheduler.time.sleep"
+        ) as m_sleep:
 
             # Make the run manager return a mock run
             mock_run_instance = MagicMock()
@@ -35,9 +42,15 @@ class TestRunSchedulerInteractive:
 
             m_sub.return_value.returncode = 0
             yield {
-                "state": m_state, "lock": m_lock, "run": m_run,
-                "hb": m_hb, "rec": m_rec, "wd": m_wd, "cb": m_cb,
-                "sub": m_sub, "sleep": m_sleep
+                "state": m_state,
+                "lock": m_lock,
+                "run": m_run,
+                "hb": m_hb,
+                "rec": m_rec,
+                "wd": m_wd,
+                "cb": m_cb,
+                "sub": m_sub,
+                "sleep": m_sleep,
             }
 
     def test_interactive_immediate_execution(self, mock_deps, tmp_path):

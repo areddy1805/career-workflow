@@ -77,10 +77,10 @@ _STRIP_PARAMS = frozenset(
         "refId",
         "session_id",
         "sessionId",
-        "jk",          # Indeed job key
-        "fccid",       # Indeed tracking
-        "vjs",         # Indeed variant
-        "trk",         # LinkedIn tracking
+        "jk",  # Indeed job key
+        "fccid",  # Indeed tracking
+        "vjs",  # Indeed variant
+        "trk",  # LinkedIn tracking
         "trackingId",
         "originToLandingJobPostings",
         "position",
@@ -129,7 +129,7 @@ class JobSpyConfig:
 
     # Minutes a site stays in cooldown after a challenge.
     cooldown_minutes: int = 60
-    
+
     # New configuration fields for redesigned search strategy
     benchmarking_mode: bool = False
     adaptive_acquisition: dict = field(default_factory=dict)
@@ -152,13 +152,9 @@ class JobSpyConfig:
                 site="config",
             )
         if self.results_wanted < 1:
-            raise JobSpyConfigError(
-                "results_wanted must be >= 1", site="config"
-            )
+            raise JobSpyConfigError("results_wanted must be >= 1", site="config")
         if self.timeout_seconds < 1:
-            raise JobSpyConfigError(
-                "timeout_seconds must be >= 1", site="config"
-            )
+            raise JobSpyConfigError("timeout_seconds must be >= 1", site="config")
 
     @classmethod
     def from_dict(cls, raw: dict) -> "JobSpyConfig":
@@ -268,7 +264,7 @@ class JobSpyProvider:
             )
             for site in config.sites
         }
-        
+
         self.planner = JobSpySearchPlanner(config.profiles)
 
     # ------------------------------------------------------------------
@@ -310,7 +306,9 @@ class JobSpyProvider:
         health = self._health.get(site)
         if health:
             health.record_failure()
-        logger.warning("JobSpy challenge recorded for site=%s. Cooldown activated.", site)
+        logger.warning(
+            "JobSpy challenge recorded for site=%s. Cooldown activated.", site
+        )
 
     def record_success(self, site: str, latency: float) -> None:
         """Record a successful search for the given site."""
@@ -409,7 +407,22 @@ class JobSpyProvider:
         country_indeed = self.config.country_indeed
         if not country_indeed or country_indeed == "usa":
             loc_lower = (location or "").lower()
-            if any(city in loc_lower for city in ["pune", "bangalore", "bengaluru", "mumbai", "delhi", "hyderabad", "chennai", "noida", "gurgaon", "kolkata", "india"]):
+            if any(
+                city in loc_lower
+                for city in [
+                    "pune",
+                    "bangalore",
+                    "bengaluru",
+                    "mumbai",
+                    "delhi",
+                    "hyderabad",
+                    "chennai",
+                    "noida",
+                    "gurgaon",
+                    "kolkata",
+                    "india",
+                ]
+            ):
                 country_indeed = "india"
 
         kwargs: dict[str, Any] = {
@@ -444,15 +457,27 @@ class JobSpyProvider:
             "site_name=%r, search_term=%r, location=%r, results_wanted=%r, "
             "hours_old=%r, country_indeed=%r, linkedin_fetch_description=%r, "
             "distance=%r, is_remote=%r, job_type=%r, easy_apply=%r, offset=%r",
-            kwargs["site_name"], kwargs["search_term"], kwargs["location"], kwargs["results_wanted"],
-            kwargs["hours_old"], kwargs.get("country_indeed"), kwargs["linkedin_fetch_description"],
-            kwargs.get("distance"), kwargs.get("is_remote"), kwargs.get("job_type"),
-            kwargs.get("easy_apply"), kwargs.get("offset")
+            kwargs["site_name"],
+            kwargs["search_term"],
+            kwargs["location"],
+            kwargs["results_wanted"],
+            kwargs["hours_old"],
+            kwargs.get("country_indeed"),
+            kwargs["linkedin_fetch_description"],
+            kwargs.get("distance"),
+            kwargs.get("is_remote"),
+            kwargs.get("job_type"),
+            kwargs.get("easy_apply"),
+            kwargs.get("offset"),
         )
 
         logger.info(
             "Invoking python-jobspy with parameters for site %s: search_term=%r, location=%r, country_indeed=%r, results_wanted=%r",
-            site, keyword, location, country_indeed, kwargs.get("results_wanted")
+            site,
+            keyword,
+            location,
+            country_indeed,
+            kwargs.get("results_wanted"),
         )
 
         try:
@@ -462,11 +487,15 @@ class JobSpyProvider:
             raise  # unreachable — _translate_exception always raises
 
         if df is None or (hasattr(df, "empty") and df.empty):
-            logger.info("Zero raw rows returned by python-jobspy for provider: %s", site)
+            logger.info(
+                "Zero raw rows returned by python-jobspy for provider: %s", site
+            )
             return []
 
         raw_count = len(df)
-        logger.info("Raw rows returned by python-jobspy for site %s: %d", site, raw_count)
+        logger.info(
+            "Raw rows returned by python-jobspy for site %s: %d", site, raw_count
+        )
         return self._normalize_dataframe(df, site=site)
 
     # ------------------------------------------------------------------
@@ -559,9 +588,13 @@ class JobSpyProvider:
                     discarded_count += 1
                     raw_id = row.get("id") if hasattr(row, "get") else None
                     if not raw_id:
-                        discard_reasons.append(f"Row {idx}: missing 'id' value (cannot generate job_id)")
+                        discard_reasons.append(
+                            f"Row {idx}: missing 'id' value (cannot generate job_id)"
+                        )
                     else:
-                        discard_reasons.append(f"Row {idx} (id={raw_id}): normalized to None (criteria validation failed)")
+                        discard_reasons.append(
+                            f"Row {idx} (id={raw_id}): normalized to None (criteria validation failed)"
+                        )
             except Exception as exc:
                 discarded_count += 1
                 discard_reasons.append(f"Row {idx}: normalization exception: {exc}")
@@ -571,7 +604,10 @@ class JobSpyProvider:
 
         logger.info(
             "Normalization Summary for %s: Raw rows=%d, Normalized=%d, Discarded=%d",
-            site, raw_count, len(jobs), discarded_count
+            site,
+            raw_count,
+            len(jobs),
+            discarded_count,
         )
         if discarded_count > 0:
             for reason in discard_reasons:
@@ -598,6 +634,7 @@ class JobSpyProvider:
                 # Use pandas isna when available but don't import pandas globally
                 try:
                     import pandas as pd  # noqa: PLC0415 — intentionally local
+
                     if pd.isna(val):
                         return default
                 except Exception:
@@ -624,7 +661,11 @@ class JobSpyProvider:
         # company  — strip common legal suffixes for dedup cleanliness
         # ------------------------------------------------------------------
         raw_company = _get("company", "")
-        company = _COMPANY_SUFFIX_RE.sub("", str(raw_company)).strip() if raw_company else "N/A"
+        company = (
+            _COMPANY_SUFFIX_RE.sub("", str(raw_company)).strip()
+            if raw_company
+            else "N/A"
+        )
         if not company:
             company = "N/A"
 
@@ -637,7 +678,9 @@ class JobSpyProvider:
         is_remote = bool(_get("is_remote", False))
 
         location_parts = [p for p in [city, state, country] if p and str(p).strip()]
-        location = ", ".join(str(p) for p in location_parts) if location_parts else "N/A"
+        location = (
+            ", ".join(str(p) for p in location_parts) if location_parts else "N/A"
+        )
         if is_remote:
             location = f"{location} (Remote)" if location != "N/A" else "Remote"
 

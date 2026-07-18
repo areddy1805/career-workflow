@@ -1190,9 +1190,9 @@ class CareerWorkflowPipeline:
         fetched_total = 0
         changed_total = 0
         history_total = []
-        
+
         executed = False
-        
+
         for pid, provider in self.context.providers.items():
             if hasattr(provider, "reconcile_history"):
                 res = provider.reconcile_history(self.context.ledger)

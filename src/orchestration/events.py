@@ -4,8 +4,10 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
+
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
 
 @dataclass
 class PipelineEvent:
@@ -29,15 +31,18 @@ class PipelineEvent:
             "timestamp": self.timestamp,
             "stage": self.stage,
             "event": self.event_type,
-            "payload": self.payload
+            "payload": self.payload,
         }
+
 
 class EventFactory:
     def __init__(self, run_id: str):
         self.run_id = run_id
         self.sequence_counter = 0
 
-    def create(self, stage: str, event_type: str, payload: dict, job_id: str = None) -> PipelineEvent:
+    def create(
+        self, stage: str, event_type: str, payload: dict, job_id: str = None
+    ) -> PipelineEvent:
         self.sequence_counter += 1
         return PipelineEvent(
             schema_version=1,
@@ -48,5 +53,5 @@ class EventFactory:
             timestamp=utc_now(),
             stage=stage,
             event_type=event_type,
-            payload=payload
+            payload=payload,
         )

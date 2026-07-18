@@ -259,7 +259,6 @@ def test_failed_job_does_not_stop_batch(
     assert summary.applied == 1
     assert summary.failed == 1
 
-
     assert sleep_calls == [
         3,
         3,
@@ -515,7 +514,6 @@ def test_per_run_limit_prevents_additional_application_attempts(
         "1",
         "2",
     ]
-
 
     assert sleep_calls == [
         3,

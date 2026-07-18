@@ -1035,15 +1035,12 @@ def acquire_jobs(
             for h in jobspy_provider.health_summary().values()
         )
         fetch_result.search_requests_attempted += jobspy_queries
-        
+
         health_summary = {}
         degraded = getattr(jobspy_provider, "degraded_providers", set())
         for site, h in jobspy_provider.health_summary().items():
             site_status = "degraded" if site in degraded else "active"
-            health_summary[site] = {
-                "status": site_status,
-                **h
-            }
+            health_summary[site] = {"status": site_status, **h}
         fetch_result.jobspy_health = health_summary
 
     for job in jobspy_jobs:
@@ -2243,6 +2240,7 @@ def run_application_cycle(
     print("Entered acquire_jobs()")
 
     from src.orchestration.provider_factory import initialize_providers
+
     providers = initialize_providers()
 
     jobs, fetch_result = acquire_jobs(

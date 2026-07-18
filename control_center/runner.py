@@ -153,7 +153,10 @@ def launch_pipeline(
         raise RuntimeError("A pipeline process is already running.")
 
     command = build_pipeline_command(
-        live=live, max_applications=max_applications, canary=canary, force_live=force_live
+        live=live,
+        max_applications=max_applications,
+        canary=canary,
+        force_live=force_live,
     )
     _ensure_runtime_dir()
     EXIT_PATH.unlink(missing_ok=True)

@@ -32,13 +32,14 @@ from src.acquisition.merge import merge_jobs
 from src.acquisition.providers.jobspy_provider import JobSpyConfig, JobSpyProvider
 from src.models.models import Job
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 
-def _job(job_id: str, title: str = "Engineer", company: str = "Acme", location: str = "Pune") -> Job:
+def _job(
+    job_id: str, title: str = "Engineer", company: str = "Acme", location: str = "Pune"
+) -> Job:
     return Job(
         job_id=job_id,
         title=title,
@@ -115,23 +116,31 @@ class TestFullAdapterPipeline:
         provider = JobSpyProvider(cfg)
         fake_df = _make_fake_dataframe([_FAKE_ROW])
 
-        with patch.object(provider, "_invoke_jobspy", return_value=[Job(
-            job_id="jobspy_indeed_abc123",
-            title="LLM Engineer",
-            company="AI Corp",
-            location="Pune, Maharashtra, India",
-            experience="4+ years",
-            salary="1,500,000-2,500,000 INR (yearly)",
-            posted_date="2025-07-10",
-            apply_link="https://www.indeed.com/viewjob",
-            description="Build RAG systems with 4+ years experience.",
-        )]):
+        with patch.object(
+            provider,
+            "_invoke_jobspy",
+            return_value=[
+                Job(
+                    job_id="jobspy_indeed_abc123",
+                    title="LLM Engineer",
+                    company="AI Corp",
+                    location="Pune, Maharashtra, India",
+                    experience="4+ years",
+                    salary="1,500,000-2,500,000 INR (yearly)",
+                    posted_date="2025-07-10",
+                    apply_link="https://www.indeed.com/viewjob",
+                    description="Build RAG systems with 4+ years experience.",
+                )
+            ],
+        ):
             jobs = provider.search("llm engineer", "Pune", "indeed")
 
         assert all(isinstance(j, Job) for j in jobs)
 
     def test_adapter_returns_correct_job_id(self, tmp_path):
-        cfg = JobSpyConfig(enabled=True, sites=["indeed"], challenge_state_dir=str(tmp_path))
+        cfg = JobSpyConfig(
+            enabled=True, sites=["indeed"], challenge_state_dir=str(tmp_path)
+        )
         provider = JobSpyProvider(cfg)
         fake_job = Job(
             job_id="jobspy_indeed_abc123",
@@ -152,7 +161,9 @@ class TestFullAdapterPipeline:
     def test_adapter_strips_tracking_from_url(self, tmp_path):
         """URL canonicalization is tested via the normalization tests; this confirms
         the apply_link field is always a plain str."""
-        cfg = JobSpyConfig(enabled=True, sites=["indeed"], challenge_state_dir=str(tmp_path))
+        cfg = JobSpyConfig(
+            enabled=True, sites=["indeed"], challenge_state_dir=str(tmp_path)
+        )
         provider = JobSpyProvider(cfg)
         # Use the real _invoke_jobspy path but mock the jobspy module import
         # by patching _normalize_dataframe to return a controlled job.
@@ -176,11 +187,14 @@ class TestFullAdapterPipeline:
         """Verifies URL canonicalization is applied inside _normalize_row;
         covered in detail in test_jobspy_normalization.py."""
         from src.acquisition.providers.jobspy_provider import canonicalize_url
+
         url = "https://in.indeed.com/viewjob?id=abc"
         assert "www.indeed.com" in canonicalize_url(url)
 
     def test_adapter_handles_empty_dataframe(self, tmp_path):
-        cfg = JobSpyConfig(enabled=True, sites=["google"], challenge_state_dir=str(tmp_path))
+        cfg = JobSpyConfig(
+            enabled=True, sites=["google"], challenge_state_dir=str(tmp_path)
+        )
         provider = JobSpyProvider(cfg)
 
         with patch.object(provider, "_invoke_jobspy", return_value=[]):
@@ -190,7 +204,9 @@ class TestFullAdapterPipeline:
 
     def test_no_pandas_object_in_returned_jobs(self, tmp_path):
         """Verify none of the Job fields contain pandas types."""
-        cfg = JobSpyConfig(enabled=True, sites=["indeed"], challenge_state_dir=str(tmp_path))
+        cfg = JobSpyConfig(
+            enabled=True, sites=["indeed"], challenge_state_dir=str(tmp_path)
+        )
         provider = JobSpyProvider(cfg)
         fake_job = Job(
             job_id="jobspy_indeed_abc123",
@@ -208,12 +224,21 @@ class TestFullAdapterPipeline:
             jobs = provider.search("ai", "Pune", "indeed")
 
         for job in jobs:
-            for field_name in ("job_id", "title", "company", "location", "experience",
-                               "salary", "posted_date", "apply_link", "description"):
+            for field_name in (
+                "job_id",
+                "title",
+                "company",
+                "location",
+                "experience",
+                "salary",
+                "posted_date",
+                "apply_link",
+                "description",
+            ):
                 val = getattr(job, field_name)
-                assert isinstance(val, (str, type(None))), (
-                    f"Field {field_name!r} has unexpected type {type(val).__name__}: {val!r}"
-                )
+                assert isinstance(
+                    val, (str, type(None))
+                ), f"Field {field_name!r} has unexpected type {type(val).__name__}: {val!r}"
             assert isinstance(job.tags, list)
             assert isinstance(job.decision_history, list)
 
@@ -229,7 +254,9 @@ class TestProviderDisabled:
         provider = JobSpyProvider(cfg)
 
         with patch.object(provider, "_invoke_jobspy") as mock_invoke:
-            result = fetch_jobspy_jobs(provider, [{"keyword": "ai", "location": "Pune", "track": "T"}])
+            result = fetch_jobspy_jobs(
+                provider, [{"keyword": "ai", "location": "Pune", "track": "T"}]
+            )
             mock_invoke.assert_not_called()
 
         assert result == []
@@ -260,7 +287,12 @@ class TestProviderEnabledEndToEnd:
             challenge_state_dir=str(tmp_path),
         )
         provider = JobSpyProvider(cfg)
-        jobspy_job = _job("jobspy_indeed_NEW", title="Data Scientist", company="Beta Corp", location="Bangalore")
+        jobspy_job = _job(
+            "jobspy_indeed_NEW",
+            title="Data Scientist",
+            company="Beta Corp",
+            location="Bangalore",
+        )
 
         with patch.object(provider, "search", return_value=[jobspy_job]):
             jobspy_jobs = fetch_jobspy_jobs(
@@ -268,7 +300,9 @@ class TestProviderEnabledEndToEnd:
                 [{"keyword": "data scientist", "location": "Bangalore", "track": "T"}],
             )
 
-        naukri_jobs = [_job("N1", title="Backend Engineer", company="Acme", location="Pune")]
+        naukri_jobs = [
+            _job("N1", title="Backend Engineer", company="Acme", location="Pune")
+        ]
         result = merge_jobs(naukri_jobs, jobspy_jobs, ["naukri", "indeed"])
 
         assert len(result) == 2
@@ -318,7 +352,12 @@ class TestFailureIsolationIntegration:
         provider = JobSpyProvider(cfg)
         provider.record_challenge("indeed")  # indeed on cooldown
 
-        google_job = _job("jobspy_google_G1", title="ML Engineer", company="Google Co", location="Bangalore")
+        google_job = _job(
+            "jobspy_google_G1",
+            title="ML Engineer",
+            company="Google Co",
+            location="Bangalore",
+        )
 
         def _search(keyword, location, site):
             if site == "google":
@@ -342,7 +381,12 @@ class TestFailureIsolationIntegration:
             challenge_state_dir=str(tmp_path),
         )
         provider = JobSpyProvider(cfg)
-        good_job = _job("jobspy_indeed_GOOD", title="AI Researcher", company="DeepMind", location="London")
+        good_job = _job(
+            "jobspy_indeed_GOOD",
+            title="AI Researcher",
+            company="DeepMind",
+            location="London",
+        )
 
         call_n = [0]
 
@@ -378,7 +422,12 @@ class TestNaukriRegression:
             _job("N3", title="AI Engineer", company="HCL", location="Bangalore"),
         ]
         jobspy = [
-            _job("jobspy_indeed_NEW1", title="Data Analyst", company="Analytics Co", location="Delhi"),
+            _job(
+                "jobspy_indeed_NEW1",
+                title="Data Analyst",
+                company="Analytics Co",
+                location="Delhi",
+            ),
         ]
 
         result = merge_jobs(naukri, jobspy, ["naukri", "indeed", "linkedin", "google"])
@@ -424,5 +473,7 @@ class TestNaukriRegression:
         # get_job_details should only have been called for the Naukri job
         mock_jc.get_job_details.assert_called_once_with("naukri_12345")
         # JobSpy job retains its original description
-        jobspy_enriched = next(j for j in enriched if j["job_id"] == "jobspy_indeed_SKIP")
+        jobspy_enriched = next(
+            j for j in enriched if j["job_id"] == "jobspy_indeed_SKIP"
+        )
         assert jobspy_enriched["description"] == "Already has description from adapter."

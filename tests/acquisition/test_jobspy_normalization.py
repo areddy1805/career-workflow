@@ -23,7 +23,6 @@ from src.acquisition.providers.jobspy_provider import (
 )
 from src.models.models import Job
 
-
 # ---------------------------------------------------------------------------
 # Minimal row shim — avoids pandas as a test-time dependency
 # ---------------------------------------------------------------------------
@@ -381,7 +380,10 @@ class TestFullRowNormalization:
         assert isinstance(job, Job)
 
     def test_provider_metadata_is_populated(self):
-        job = _normalize({"id": "meta1", "job_url": "https://www.indeed.com/viewjob?id=meta1"}, site="indeed")
+        job = _normalize(
+            {"id": "meta1", "job_url": "https://www.indeed.com/viewjob?id=meta1"},
+            site="indeed",
+        )
         assert job.provider_id == "jobspy"
         assert job.provider_name == "Indeed"
         assert job.provider_source == "indeed"
