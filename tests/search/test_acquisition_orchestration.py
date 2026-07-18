@@ -98,7 +98,7 @@ def test_active_cooldown_skips_live_search(
     )
 
     jobs, result = apply_agent.acquire_jobs(
-        jc=client,
+        providers={"naukri": client},
         cache=cache,
         cooldown=cooldown,
     )
@@ -137,7 +137,7 @@ def test_challenge_records_cooldown(
     )
 
     jobs, result = apply_agent.acquire_jobs(
-        jc=client,
+        providers={"naukri": client},
         cache=cache,
         cooldown=cooldown,
     )
@@ -172,7 +172,7 @@ def test_normal_search_does_not_record_cooldown(
     )
 
     jobs, result = apply_agent.acquire_jobs(
-        jc=client,
+        providers={"naukri": client},
         cache=cache,
         cooldown=cooldown,
     )

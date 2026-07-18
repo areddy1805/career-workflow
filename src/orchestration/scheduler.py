@@ -270,7 +270,9 @@ def run_scheduler(
             mono = time.monotonic()
 
             if session_hours and (mono - session_start_mono) >= session_hours * 3600:
-                log_warning(logger, "session_timeout_reached", session_hours=session_hours)
+                log_warning(
+                    logger, "session_timeout_reached", session_hours=session_hours
+                )
                 _request_shutdown()
                 continue
 
@@ -352,7 +354,7 @@ def run_scheduler(
                 "--acquisition-mode",
                 mode,
             ]
-            
+
             if force_live:
                 command.append("--force-live")
 

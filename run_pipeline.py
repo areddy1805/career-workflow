@@ -42,6 +42,12 @@ def parse_args():
         action="store_true",
         help="Bypass search challenge cooldowns and force a live acquisition.",
     )
+    parser.add_argument(
+        "--provider",
+        choices=("all", "naukri", "jobspy"),
+        default="all",
+        help="Specify which acquisition providers to run. Default is all.",
+    )
     return parser.parse_args()
 
 
@@ -66,6 +72,7 @@ def main() -> None:
         max_applications=max_applications,
         acquisition_mode=args.acquisition_mode,
         force_live=args.force_live,
+        acquisition_provider=args.provider,
     )
     result = pipeline.run()
     print()

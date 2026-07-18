@@ -91,7 +91,7 @@ def test_local_applied_job_is_skipped_without_network_call(
     )
 
     summary = run_application_batch(
-        jc=client,
+        providers={"naukri": client},
         jobs=[job],
         score_map={"1": {}},
         questionnaire_resolver=FakeResolver(),
@@ -119,7 +119,7 @@ def test_external_job_is_skipped() -> None:
     sleep_calls: list[int] = []
 
     summary = run_application_batch(
-        jc=client,
+        providers={"naukri": client},
         jobs=[job],
         score_map={"1": {}},
         questionnaire_resolver=FakeResolver(),
@@ -127,7 +127,7 @@ def test_external_job_is_skipped() -> None:
         sleep_fn=sleep_calls.append,
     )
 
-    assert summary.skipped_external == 1
+    assert summary.manual_queue == 1
     assert summary.applied == 0
     assert summary.failed == 0
 
@@ -155,7 +155,7 @@ def test_successful_application_is_persisted(
     )
 
     summary = run_application_batch(
-        jc=client,
+        providers={"naukri": client},
         jobs=[job],
         score_map={"1": {}},
         questionnaire_resolver=FakeResolver(),
@@ -190,7 +190,7 @@ def test_server_already_applied_repairs_local_state(
     )
 
     summary = run_application_batch(
-        jc=client,
+        providers={"naukri": client},
         jobs=[job],
         score_map={"1": {}},
         questionnaire_resolver=FakeResolver(),
@@ -239,7 +239,7 @@ def test_failed_job_does_not_stop_batch(
     )
 
     summary = run_application_batch(
-        jc=client,
+        providers={"naukri": client},
         jobs=jobs,
         score_map={
             "1": {},
@@ -258,7 +258,6 @@ def test_failed_job_does_not_stop_batch(
     assert summary.total_candidates == 2
     assert summary.applied == 1
     assert summary.failed == 1
-
 
     assert sleep_calls == [
         3,
@@ -285,7 +284,7 @@ def test_non_success_outcome_counts_as_failure(
     )
 
     summary = run_application_batch(
-        jc=client,
+        providers={"naukri": client},
         jobs=[job],
         score_map={"1": {}},
         questionnaire_resolver=FakeResolver(),
@@ -324,7 +323,7 @@ def test_policy_rejected_job_never_reaches_application_boundary(
     )
 
     summary = run_application_batch(
-        jc=client,
+        providers={"naukri": client},
         jobs=[job],
         score_map={
             "1": {
@@ -376,7 +375,7 @@ def test_dry_run_job_never_reaches_application_boundary(
     )
 
     summary = run_application_batch(
-        jc=client,
+        providers={"naukri": client},
         jobs=[job],
         score_map={
             "1": {
@@ -430,7 +429,7 @@ def test_policy_allowed_live_job_reaches_application_boundary(
     )
 
     summary = run_application_batch(
-        jc=client,
+        providers={"naukri": client},
         jobs=[job],
         score_map={
             "1": {
@@ -489,7 +488,7 @@ def test_per_run_limit_prevents_additional_application_attempts(
     )
 
     summary = run_application_batch(
-        jc=client,
+        providers={"naukri": client},
         jobs=jobs,
         score_map={
             "1": {"score": 90},
@@ -515,7 +514,6 @@ def test_per_run_limit_prevents_additional_application_attempts(
         "1",
         "2",
     ]
-
 
     assert sleep_calls == [
         3,
@@ -553,7 +551,7 @@ def test_failed_application_attempt_does_not_consume_submission_quota(
     )
 
     summary = run_application_batch(
-        jc=client,
+        providers={"naukri": client},
         jobs=jobs,
         score_map={
             "1": {"score": 90},
@@ -612,7 +610,7 @@ def test_external_job_does_not_consume_run_quota(
     )
 
     summary = run_application_batch(
-        jc=client,
+        providers={"naukri": client},
         jobs=jobs,
         score_map={
             "1": {"score": 90},
@@ -635,7 +633,7 @@ def test_external_job_does_not_consume_run_quota(
 
     assert process_calls == ["2"]
 
-    assert summary.skipped_external == 1
+    assert summary.manual_queue == 1
     assert summary.applied == 1
     assert summary.run_limit_reached == 0
 
@@ -664,7 +662,7 @@ def test_zero_run_limit_blocks_all_application_attempts(
     )
 
     summary = run_application_batch(
-        jc=client,
+        providers={"naukri": client},
         jobs=[job],
         score_map={
             "1": {"score": 90},

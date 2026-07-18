@@ -495,5 +495,3 @@ def test_unknown_initial_response_is_returned_as_unknown() -> None:
 
     assert len(client.apply_calls) == 1
     assert client.questionnaire_calls == []
-
-

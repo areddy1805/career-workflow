@@ -265,49 +265,42 @@ The UI does not maintain a second application truth model. Existing ledger, arti
 
 ```mermaid
 flowchart TD
-    A[Candidate Profile & Evidence] --> D[Job Classifier]
-
+    subgraph Discovery
     S1[Naukri Search API] --> B[Acquisition Orchestrator]
     S2[Recommended Jobs] --> B
+    S3[JobSpy: Indeed / LinkedIn / Google] --> B
     B --> C{Search Healthy?}
-
-    C -->|Yes| D
+    C -->|Yes| SR[Summary Ranking]
     C -->|Challenge| E[Challenge Cooldown]
     E --> F[Search Cache Fallback]
-    F --> D
+    F --> SR
+    end
 
-    D --> G[Fit Scoring & AI Relevance]
-    G --> H[Application Policy]
-    H --> I[Diversity Controls]
-    I --> J[Adaptive Strategy]
-    J --> K[Ranked Application Batch]
+    subgraph Ranking
+    SR -->|Top 150| DF[Detail Fetch]
+    DF --> D[LLM Scoring]
+    D --> G[Ranked Pool]
+    end
 
-    K --> L[Application Executor]
-    L --> M{Response Type}
+    subgraph Selection
+    G --> H[Selection Strategy]
+    H --> I[Application Budget Limit]
+    I --> J[Ranked Application Batch]
+    end
 
-    M -->|Success| N[Application Ledger]
-    M -->|Already Applied| N
-    M -->|Questionnaire| O[Hybrid Questionnaire Resolver]
-    M -->|Failure| P[Failure Classifier]
+    subgraph Application Router
+    J --> L[Application Router]
+    end
 
-    O --> Q[Evidence Retrieval]
-    Q --> R[Deterministic Resolution]
-    R --> T[Constraint & Shape Validation]
-    T -->|Resolved| U[Questionnaire Submission]
-    T -->|Unresolved| V[Local LLM Fallback]
-    V --> U
-    U --> N
-
-    P --> W{Recoverable?}
-    W -->|Yes| X[Retry Policy]
-    X --> L
-    W -->|No| N
-
-    N --> Y[Server History Monitor]
-    Y --> Z[Lifecycle Reconciliation]
-    Z --> AA[Application Analytics]
-    AA --> AB[Strategy Optimization]
-    AB --> J
+    subgraph Application Engines
+    L --> M{Application Type}
+    M -->|Naukri Native| NAE[Naukri Engine]
+    M -->|ATS Redirect| ATS[ATS Handler]
+    M -->|External| EXT[External Engine]
+    
+    NAE --> Q[Questionnaire Resolver]
+    Q --> N[Application Ledger]
+    end
 ```
 
 ---
@@ -822,7 +815,6 @@ flowchart LR
 ```text
 career-workflow/
 ├── run_pipeline.py
-├── run_nicegui.py                  # NiceGUI control-plane entry point
 ├── apply_agent.py
 ├── monitor_applications.py
 ├── application_report.py
@@ -830,14 +822,10 @@ career-workflow/
 ├── requirements.txt
 ├── .env.example
 │
-├── career_ui/                      # NiceGUI operations control plane
-│   ├── app.py
-│   ├── shell.py                    # Application shell and navigation
-│   ├── components.py               # Shared operational UI primitives
-│   ├── theme.py                    # Design system and styling
-│   ├── pages/                      # Operational views
-│   └── services/
-│       └── control_center.py       # Operational service adapter
+├── frontend/                       # Modern React + Vite operations console
+│   ├── src/
+│   ├── package.json
+│   └── vite.config.ts
 │
 ├── control_center/                 # Framework-independent operational services
 │   ├── data.py
@@ -870,8 +858,7 @@ career-workflow/
 │   ├── client/
 │   ├── llm/
 │   ├── resolution/
-│   ├── search/
-│   └── nicegui_ui/
+│   └── search/
 │
 ├── data/
 ├── logs/
@@ -918,8 +905,18 @@ The LLM endpoint is used as a fallback for unresolved questionnaire cases. Core 
 
 ### 3. Launch the Operations Control Plane
 
+Start the backend API server:
+
 ```bash
-python run_nicegui.py
+uvicorn api.main:app --reload
+```
+
+In a new terminal window, start the React frontend:
+
+```bash
+cd frontend
+npm install
+npm run dev
 ```
 
 The control plane provides the primary operational interface for pipeline execution, runtime inspection, application portfolio review, manual and review queues, lifecycle analytics, run artifact inspection, system diagnostics, and runtime configuration visibility.
@@ -1182,9 +1179,61 @@ The system is designed for different execution modes rather than one permanently
 A normal operating cycle is:
 
 ```text
+1. Broad or incremental acquisition
+2. Classification and ranking
+3. Controlled application batch
+4. Persist local outcomes
+5. Reconcile server history
+6. Inspect lifecycle funnel
+7. Allow adaptive strategy only when evidence thresholds are met
+```
+
+The system does not assume every run should exhaust its configured application limit. Eligibility, diversity and available fresh supply determine the actual batch size.
+
+---
+
+### Provider Selection
+
+The pipeline supports multi-provider execution, allowing you to run Naukri and JobSpy independently or together.
+
+```bash
+# Run both providers (default if enabled in config)
+python run_pipeline.py --provider all
+
+# Run only Naukri
+python run_pipeline.py --provider naukri
+
+# Run only JobSpy
+python run_pipeline.py --provider jobspy
+```
+
+#### Supported Providers & Prioritization
+
+The acquisition layer supports:
+- **Naukri**: Native authenticated API client (primary channel for direct apply flows).
+- **JobSpy**: Non-authenticated scraping provider (`python-jobspy` wrapper) supporting:
+  - **Indeed** (Priority 1: Stable, high yield, supports keyword exclusion queries)
+  - **LinkedIn** (Priority 2: Stable guest-scraping, moderate yield)
+  - **Google Jobs** (Priority 3: Best effort, prone to upstream parser/markup changes)
+
+You can configure the active providers and search priorities under `profiles` in `config/search_strategy.yaml`:
+```yaml
+profiles:
+  aggressive:
+    providers: ["indeed", "linkedin", "google"]
+```
+
+#### Provider Health & Degradation Safeguards
+
+To prevent unstable job boards from exhausting network resources or blocking the pipeline, the system tracks provider health at runtime:
+- **Degradation Detection**: If a site (such as Google Jobs) returns `0` results or raises scraper exceptions for **3 consecutive queries**, it is marked as `degraded` for the current execution.
+- **Resilient Execution**: The remaining queries for the degraded site are skipped, and the acquisition pipeline continues with other healthy sites (Indeed, LinkedIn) without raising terminal exceptions.
+- **Interleaved Budgeting**: In `benchmarking_mode`, queries are interleaved across providers (e.g. Indeed Q1 -> LinkedIn Q1 -> Google Q1 -> Indeed Q2 ...) to ensure a single degraded site cannot monopolize the benchmark quota.
+- **Telemetry Visibility**: Provider health statuses are written directly to `acquisition.json` and logged in pipeline runs.
+
 ### Acquisition Mode vs Cache Policy
 
-Acquisition depth is controlled by the mode (`full` or `incremental`). 
+Acquisition depth is controlled by the mode (`full` or `incremental`).
 
 By default, if Naukri presents a CAPTCHA or blocking challenge, the orchestrator records a cooldown and falls back to cached results to avoid banning your IP. This safety mechanism is active regardless of acquisition mode.
 
@@ -1196,22 +1245,13 @@ python run_pipeline.py --acquisition-mode full
 
 # Ignores cooldown and forces a live search attempt
 python run_pipeline.py --acquisition-mode full --force-live
+
+# Actually run the pipeline with maximum eligible applications
+python run_pipeline.py \
+  --live \
+  --confirm-live APPLY_LIVE \
+  --acquisition-mode full
 ```
-
-This flag is also available on the scheduler daemon (`python run_scheduler.py --interactive --force-live`) and in the UI Control Plane.
-
-### Step-by-Step Flow
-
-1. Broad or incremental acquisition
-2. Classification and ranking
-3. Controlled application batch
-4. Persist local outcomes
-5. Reconcile server history
-6. Inspect lifecycle funnel
-7. Allow adaptive strategy only when evidence thresholds are met
-```
-
-The system does not assume every run should exhaust its configured application limit. Eligibility, diversity and available fresh supply determine the actual batch size.
 
 ---
 

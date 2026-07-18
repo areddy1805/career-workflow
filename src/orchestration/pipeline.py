@@ -40,8 +40,11 @@ from src.application.eligibility import (
 )
 from src.application.ledger import ApplicationLedger
 from src.application.policy import ApplicationPolicy
+from src.config.search_strategy import load_search_strategy
 from src.client.job_classifier import JobFilterPipeline2
 from src.client.job_client import NaukriJobClient
+from src.orchestration.provider_factory import initialize_providers
+
 from src.client.naukri_client import NaukriLoginClient
 from src.llm.client import OMLXClient
 from src.llm.question_resolver import LLMQuestionResolver
@@ -68,6 +71,7 @@ class CareerWorkflowPipeline:
         max_applications: int | None,
         acquisition_mode: str = "full",
         force_live: bool = False,
+        acquisition_provider: str = "all",
         artifacts_root: str | Path = "artifacts/runs",
     ) -> None:
         if max_applications is not None and max_applications < 0:
@@ -79,6 +83,7 @@ class CareerWorkflowPipeline:
             max_applications=max_applications,
             acquisition_mode=acquisition_mode,
             force_live=force_live,
+            acquisition_provider=acquisition_provider,
         )
 
         self.artifacts_root = Path(
@@ -87,9 +92,38 @@ class CareerWorkflowPipeline:
 
         self.run_dir = self.artifacts_root / self.context.run_id
 
+        from src.orchestration.execution_context import PipelineExecutionContext
+
+        self.exec_context = PipelineExecutionContext(self.context.run_id, self.run_dir)
+
         self.stage_statuses = {stage: StageStatus.PENDING for stage in PIPELINE_STAGES}
 
         self.status = PipelineStatus.RUNNING
+
+        from src.orchestration.projections import (
+            MetricsProjection,
+            ExplorerProjection,
+            JobTraceProjection,
+        )
+
+        self.metrics_proj = MetricsProjection()
+        self.explorer_proj = ExplorerProjection(fingerprint={})
+        self.trace_proj = JobTraceProjection()
+
+        self.exec_context.bus.subscribe(self.metrics_proj)
+        self.exec_context.bus.subscribe(self.explorer_proj)
+        self.exec_context.bus.subscribe(self.trace_proj)
+        # Load config hashes for fingerprinting
+        from src.config.search_strategy import load_search_strategy
+        import yaml
+
+        try:
+            with open("config/search_strategy.yaml", "r") as f:
+                s_dict = yaml.safe_load(f)
+            self.exec_context.set_config_fingerprint(CANDIDATE_PROFILE, s_dict)
+            self.explorer_proj.fingerprint = s_dict
+        except Exception:
+            pass
 
     @staticmethod
     def _generate_run_id() -> str:
@@ -104,14 +138,16 @@ class CareerWorkflowPipeline:
     def initialize_run(self) -> None:
         self.run_dir.mkdir(
             parents=True,
-            exist_ok=False,
+            exist_ok=True,
         )
 
         self._persist_state()
         self._update_global_pipeline_state(current_stage="STARTING")
 
     def _update_global_pipeline_state(self, current_stage: str | None = None) -> None:
-        state_path = Path(os.getenv("PIPELINE_STATE_PATH", "data/ui_runtime/pipeline_state.json"))
+        state_path = Path(
+            os.getenv("PIPELINE_STATE_PATH", "data/ui_runtime/pipeline_state.json")
+        )
         state_path.parent.mkdir(parents=True, exist_ok=True)
 
         status = self.status.value
@@ -261,6 +297,11 @@ class CareerWorkflowPipeline:
             stage_record["duration_ms"] = int(duration * 1000)
 
         except Exception as error:
+            import traceback
+
+            print("\n========== FULL TRACEBACK ==========\n")
+            traceback.print_exc()
+            print("\n====================================\n")
             self.stage_statuses[name] = StageStatus.FAILED
 
             stage_record["completed_at"] = datetime.now(timezone.utc).isoformat()
@@ -401,20 +442,6 @@ class CareerWorkflowPipeline:
     # ------------------------------------------------------------------
 
     def acquire(self) -> None:
-        username = os.environ["NAUKRI_USERNAME"]
-
-        password = os.environ["NAUKRI_PASSWORD"]
-
-        login_client = NaukriLoginClient(
-            username,
-            password,
-        )
-
-        login_client.login()
-
-        job_client = NaukriJobClient(
-            login_client,
-        )
 
         job_cache = JobSearchCache(
             path=os.getenv(
@@ -442,21 +469,25 @@ class CareerWorkflowPipeline:
             ),
         )
 
+        self.context.providers = initialize_providers(self.context.acquisition_provider)
+
         jobs, fetch_result = acquire_jobs(
-            jc=job_client,
+            providers=self.context.providers,
             cache=job_cache,
             cooldown=search_cooldown,
             mode=self.context.acquisition_mode,
             force_live=self.context.force_live,
         )
 
-        self.context.login_client = login_client
-
-        self.context.job_client = job_client
-
         self.context.acquired_jobs = jobs
 
         self.context.fetch_result = fetch_result
+
+        self.exec_context.start_stage("Acquisition", [])
+        for job in jobs:
+            self.exec_context.acquire(job)
+            self.exec_context.complete(job)
+        self.exec_context.finish_stage()
 
         print_acquisition_summary(
             jobs=jobs,
@@ -471,6 +502,7 @@ class CareerWorkflowPipeline:
             "search_requests_attempted": fetch_result.search_requests_attempted,
             "pages_stopped_low_yield": fetch_result.pages_stopped_low_yield,
             "stop_reasons": fetch_result.stop_reasons,
+            "jobspy_health": getattr(fetch_result, "jobspy_health", {}),
         }
 
         self._write_artifact(
@@ -483,12 +515,13 @@ class CareerWorkflowPipeline:
     # ------------------------------------------------------------------
 
     def classify(self) -> None:
-        if self.context.job_client is None:
-            raise RuntimeError("Job client unavailable")
-
-        classifier = JobFilterPipeline2(metrics=self.context.metrics)
-
         jobs = self.context.acquired_jobs
+        self.exec_context.start_stage("Classification", jobs)
+
+        classifier = JobFilterPipeline2(
+            metrics=self.context.metrics, exec_context=self.exec_context
+        )
+
         jobs = classifier.normalize_jobs(jobs)
         jobs = classifier.dedup(jobs)
         jobs = classifier.hard_veto(jobs)
@@ -496,20 +529,53 @@ class CareerWorkflowPipeline:
         jobs = classifier.desc_red_flag_check(jobs)
         jobs = classifier.title_filter(jobs)
         jobs = classifier.ai_relevance_gate(jobs)
+
+        # SUMMARY RANKING
+        # tag_presort now acts as our cheap heuristic summary ranker
         jobs = classifier.tag_presort(jobs)
 
-        candidates = jobs[: classifier.ai_score_limit]
-        for j in jobs[classifier.ai_score_limit :]:
-            classifier.record_decision(
-                j,
-                "AI Score Limit",
-                "ATTEMPT_BUDGET",
-                "Job fell below score batch cutoff",
-            )
+        # FIXED-BUCKET SUMMARY SCORE DISTRIBUTION
+        summary_distribution = {}
+        for j in jobs:
+            score = j.get("summary_score", 0)
+            bin_start = (int(score) // 5) * 5
+            bin_end = bin_start + 5
+            bin_label = f"{bin_start}-{bin_end}"
+            summary_distribution[bin_label] = summary_distribution.get(bin_label, 0) + 1
 
-        detail_fetch_budget = int(os.getenv("DETAIL_FETCH_BUDGET", "60"))
+        self._write_artifact(
+            "summary_distribution.json",
+            dict(
+                sorted(
+                    summary_distribution.items(),
+                    key=lambda item: int(item[0].split("-")[0]),
+                )
+            ),
+        )
+
+        strategy = load_search_strategy()
+
+        detail_fetch_budget = strategy.detail_fetch_budget
         if detail_fetch_budget < 1:
-            raise ValueError("DETAIL_FETCH_BUDGET must be at least 1")
+            detail_fetch_budget = 150  # Safe default
+
+        # Adaptive Budgeting
+        if len(jobs) <= detail_fetch_budget:
+            candidates = jobs
+        else:
+            candidates = jobs[:detail_fetch_budget]
+            for j in jobs[detail_fetch_budget:]:
+                classifier.record_decision(
+                    j,
+                    "Detail Fetch Cutoff",
+                    "BUDGET_EXCEEDED",
+                    "Job fell below summary rank cutoff for detail fetching",
+                )
+                self.exec_context.reject(
+                    j,
+                    "Job fell below summary rank cutoff for detail fetching",
+                    "BUDGET_EXCEEDED",
+                )
 
         candidates_before_suppression = len(candidates)
 
@@ -521,7 +587,7 @@ class CareerWorkflowPipeline:
         )
 
         enriched_candidates = enrich_jobs_with_details(
-            jc=self.context.job_client,
+            providers=self.context.providers,
             jobs=candidates,
             detail_cache=(self.context.detail_cache),
         )
@@ -536,14 +602,7 @@ class CareerWorkflowPipeline:
         jobs = classifier.post_score_guard(jobs)
         jobs = classifier.rank(jobs)
 
-        final_jobs = jobs[: classifier.daily_apply_limit]
-        for j in jobs[classifier.daily_apply_limit :]:
-            classifier.record_decision(
-                j,
-                "Daily Apply Limit",
-                "ATTEMPT_BUDGET",
-                "Exceeded daily application limit",
-            )
+        final_jobs = jobs
 
         self.context.rejected_jobs.extend(classifier.rejected_jobs)
 
@@ -567,6 +626,11 @@ class CareerWorkflowPipeline:
         final_jobs = enrich_application_metadata(final_jobs)
 
         self.context.classified_jobs = final_jobs
+
+        for job in final_jobs:
+            self.exec_context.complete(job)
+
+        self.exec_context.finish_stage()
 
         self.context.score_map = {
             str(result["job_id"]): result for result in final_jobs
@@ -601,14 +665,31 @@ class CareerWorkflowPipeline:
         }
 
         self._write_artifact(
-            "classification.json",
+            "classification_summary.json",
             {
                 "summary": (self.context.stage_results["classification"]),
                 "rejection_summary": rejection_summary,
-                "jobs": final_jobs,
-                "rejected_jobs": self.context.rejected_jobs,
+                "jobs_count": len(final_jobs),
+                "rejected_count": len(self.context.rejected_jobs),
             },
         )
+
+        self._write_artifact(
+            "rejection_histogram.json",
+            rejection_summary,
+        )
+
+        ranking_dist = {}
+        location_hist = {}
+        for j in final_jobs:
+            score_bucket = (j.get("score") or 0) // 10 * 10
+            ranking_dist[score_bucket] = ranking_dist.get(score_bucket, 0) + 1
+
+            loc = j.get("location_preference", "Unknown")
+            location_hist[loc] = location_hist.get(loc, 0) + 1
+
+        self._write_artifact("ranking_distribution.json", ranking_dist)
+        self._write_artifact("location_histogram.json", location_hist)
 
     # ------------------------------------------------------------------
     # Selection
@@ -697,6 +778,8 @@ class CareerWorkflowPipeline:
     def select(self) -> None:
         ledger = self.context.ledger
 
+        self.exec_context.start_stage("Selection", self.context.classified_jobs)
+
         self.context.applied_job_ids = ledger.applied_job_ids()
 
         metadata_quality = ledger.metadata_completeness()
@@ -773,17 +856,23 @@ class CareerWorkflowPipeline:
                 f"| {reasons}"
             )
 
-            self.context.rejected_jobs.append(
-                {
-                    "job_id": str(decision["job_id"]),
-                    "title": str(decision["title"]),
-                    "company": str(decision["company"]),
-                    "stage": "Selection / Eligibility",
-                    "code": "SELECTION_INELIGIBLE",
-                    "reason": str(reasons),
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                }
-            )
+            rejection_dict = {
+                "job_id": str(decision["job_id"]),
+                "title": str(decision["title"]),
+                "company": str(decision["company"]),
+                "stage": "Selection / Eligibility",
+                "code": "SELECTION_INELIGIBLE",
+                "reason": str(reasons),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+
+            self.context.rejected_jobs.append(rejection_dict)
+
+            job = self.context.score_map.get(str(decision["job_id"]))
+            if job:
+                self.exec_context.reject(
+                    job, reason=str(reasons), code="SELECTION_INELIGIBLE"
+                )
 
         if rejection_summary:
             print("HARD-GATE REJECTION SUMMARY:")
@@ -833,6 +922,9 @@ class CareerWorkflowPipeline:
                         "timestamp": datetime.now(timezone.utc).isoformat(),
                     }
                 )
+                self.exec_context.reject(
+                    j, "Failed diversity constraints", "DIVERSITY_POLICY"
+                )
 
         attempt_budget = effective_limit(
             strategy.max_applications_per_run,
@@ -876,6 +968,9 @@ class CareerWorkflowPipeline:
                         "timestamp": datetime.now(timezone.utc).isoformat(),
                     }
                 )
+                self.exec_context.reject(
+                    j, "Exceeded attempt budget / strategy limits", "ATTEMPT_BUDGET"
+                )
 
         self.context.selected_jobs = selected_jobs
 
@@ -889,6 +984,15 @@ class CareerWorkflowPipeline:
         print(f"FINAL APPLICATION QUEUE: {len(selected_jobs)}")
 
         strategy_payload = strategy_audit_payload(strategy)
+
+        # Explainability for selected jobs
+        for job in selected_jobs:
+            self.exec_context.select(
+                job, {"cause": "Eligible and within selection bounds"}
+            )
+            self.exec_context.complete(job)
+
+        self.exec_context.finish_stage()
 
         self.context.stage_results["selection"] = {
             "classified": len(self.context.classified_jobs),
@@ -951,6 +1055,8 @@ class CareerWorkflowPipeline:
         )
 
     def apply(self) -> None:
+        # Removed explorer.start_stage
+
         if not self.context.selected_jobs:
             self.context.stage_results["application"] = {
                 "message": ("No selected jobs available"),
@@ -958,7 +1064,11 @@ class CareerWorkflowPipeline:
                 "submitted": 0,
                 "already_applied": 0,
                 "skipped_local": 0,
-                "skipped_external": 0,
+                "native_applied": 0,
+                "ats_queue": 0,
+                "generic_queue": 0,
+                "manual_queue": 0,
+                "unsupported": 0,
                 "policy_rejected": 0,
                 "dry_run_skipped": 0,
                 "run_limit_reached": 0,
@@ -971,6 +1081,8 @@ class CareerWorkflowPipeline:
                 self.context.stage_results["application"],
             )
 
+            # Removed explorer.finish_stage
+
             return
 
         questionnaire_resolver = None
@@ -980,9 +1092,15 @@ class CareerWorkflowPipeline:
 
         self.context.questionnaire_resolver = questionnaire_resolver
 
+        strategy = load_search_strategy()
+
         effective_run_limit = effective_limit(
             self.context.adaptive_strategy.max_applications_per_run,
-            self.context.max_applications,
+            (
+                self.context.max_applications
+                if self.context.max_applications is not None
+                else strategy.application_budget
+            ),
         )
 
         policy = ApplicationPolicy(
@@ -1004,7 +1122,7 @@ class CareerWorkflowPipeline:
         )
 
         summary = run_application_batch(
-            jc=self.context.job_client,
+            providers=self.context.providers,
             jobs=self.context.selected_jobs,
             score_map=self.context.score_map,
             questionnaire_resolver=(questionnaire_resolver),
@@ -1015,6 +1133,8 @@ class CareerWorkflowPipeline:
             run_id=self.context.run_id,
             metrics=self.context.metrics,
             rejected_jobs=self.context.rejected_jobs,
+            # Removed explorer
+            exec_context=self.exec_context,
         )
 
         self.context.application_summary = summary
@@ -1028,10 +1148,7 @@ class CareerWorkflowPipeline:
             failed=summary.failed,
         )
 
-        attempted = (
-            summary.applied
-            + summary.failed
-        )
+        attempted = summary.applied + summary.failed
 
         self.context.stage_results["application"] = {
             "total_candidates": (summary.total_candidates),
@@ -1039,13 +1156,19 @@ class CareerWorkflowPipeline:
             "submitted": summary.applied,
             "already_applied": (summary.already_applied),
             "skipped_local": (summary.skipped_local),
-            "skipped_external": (summary.skipped_external),
+            "native_applied": (summary.native_applied),
+            "ats_queue": (summary.ats_queue),
+            "generic_queue": (summary.generic_queue),
+            "manual_queue": (summary.manual_queue),
+            "unsupported": (summary.unsupported),
             "policy_rejected": (summary.policy_rejected),
             "dry_run_skipped": (summary.dry_run_skipped),
             "run_limit_reached": (summary.run_limit_reached),
             "failed": summary.failed,
             "manual_review": summary.manual_review,
         }
+
+        # Removed explorer.finish_stage
 
         self._write_artifact(
             "application.json",
@@ -1064,21 +1187,36 @@ class CareerWorkflowPipeline:
     # ------------------------------------------------------------------
 
     def reconcile(self) -> None:
-        if self.context.login_client is None:
-            raise RuntimeError("Authenticated login client unavailable")
+        fetched_total = 0
+        changed_total = 0
+        history_total = []
 
-        result = reconcile_application_history(
-            client=(self.context.login_client),
-            ledger=self.context.ledger,
-        )
+        executed = False
 
-        self.context.server_history = result["history"]
+        for pid, provider in self.context.providers.items():
+            if hasattr(provider, "reconcile_history"):
+                res = provider.reconcile_history(self.context.ledger)
+                if res:
+                    fetched_total += res.get("fetched", 0)
+                    changed_total += res.get("changed", 0)
+                    history_total.extend(res.get("history", []))
+                executed = True
 
-        self.context.reconciliation_changes = result["changed"]
+        if not executed:
+            self.context.stage_results["reconciliation"] = {
+                "server_applications_fetched": 0,
+                "new_or_changed_records": 0,
+                "status": "skipped (no provider supports reconciliation)",
+            }
+            return
+
+        self.context.server_history = history_total
+
+        self.context.reconciliation_changes = changed_total
 
         self.context.stage_results["reconciliation"] = {
-            "server_applications_fetched": (result["fetched"]),
-            "new_or_changed_records": (result["changed"]),
+            "server_applications_fetched": fetched_total,
+            "new_or_changed_records": changed_total,
         }
 
         self._write_artifact(
@@ -1204,6 +1342,8 @@ class CareerWorkflowPipeline:
                 result.to_dict(),
             )
 
+            # Removed EXPORT OBSERVABILITY ARTIFACTS for explorer
+
             self._generate_dedicated_artifacts(result)
             self._validate_artifacts(result)
 
@@ -1240,57 +1380,36 @@ class CareerWorkflowPipeline:
             timezone.utc,
         )
 
-        summary = self.context.application_summary
+        self.explorer_proj.flush(self.run_dir)
+        self.trace_proj.flush(self.run_dir)
 
-        counts = {
-            "attempted": 0,
-            "submitted": 0,
-            "already_applied": 0,
-            "skipped_local": 0,
-            "skipped_external": 0,
-            "policy_rejected": 0,
-            "dry_run_skipped": 0,
-            "run_limit_reached": 0,
-            "failed": 0,
-            "manual_review": 0,
-        }
+        counts = self.metrics_proj.get_metrics()
 
-        if summary is not None:
-            counts.update(
-                {
-                    "attempted": (
-                        summary.applied
-                        + summary.failed
-                    ),
-                    "submitted": summary.applied,
-                    "already_applied": summary.already_applied,
-                    "skipped_local": summary.skipped_local,
-                    "skipped_external": summary.skipped_external,
-                    "policy_rejected": summary.policy_rejected,
-                    "dry_run_skipped": summary.dry_run_skipped,
-                    "run_limit_reached": summary.run_limit_reached,
-                    "failed": summary.failed,
-                    "manual_review": summary.manual_review,
-                }
-            )
+        c_res = self.context.stage_results.get("classification", {})
 
         return PipelineResult(
             run_id=self.context.run_id,
             status=self.status.value,
-            acquired=len(self.context.acquired_jobs),
-            classified=len(self.context.classified_jobs),
-            selected=len(self.context.selected_jobs),
+            acquired=counts["acquired"],
+            summary_ranked=c_res.get("prefiltered", 0),
+            detailed=c_res.get("detail_candidates", 0),
+            scored=c_res.get("classified", 0),
+            ranked=c_res.get("classified", 0),
+            selected=counts["selected"],
             attempted=counts["attempted"],
             submitted=counts["submitted"],
             already_applied=counts["already_applied"],
             skipped_local=counts["skipped_local"],
-            skipped_external=counts["skipped_external"],
+            native_applied=counts["native_applied"],
+            ats_queue=counts["ats_queue"],
+            generic_queue=counts["generic_queue"],
+            manual_queue=counts["manual_queue"],
+            unsupported=counts["unsupported"],
             policy_rejected=counts["policy_rejected"],
             dry_run_skipped=counts["dry_run_skipped"],
             run_limit_reached=counts["run_limit_reached"],
-            failed=counts["failed"],
             manual_review=counts["manual_review"],
-            started_at=(self.context.started_at),
+            started_at=self.context.started_at,
             completed_at=completed_at,
             stage_results={
                 name: status.value for name, status in self.stage_statuses.items()
@@ -1307,65 +1426,85 @@ class CareerWorkflowPipeline:
                 selected.append(sm_job)
         self._write_artifact("selected_jobs.json", selected)
 
-        manual = [r for r in self.context.rejected_jobs if r.get("code") in {"MANUAL_REVIEW", "EXTERNAL_REJECTION"}]
+        manual = [
+            r
+            for r in self.context.rejected_jobs
+            if r.get("code") in {"MANUAL_REVIEW", "EXTERNAL_REJECTION"}
+        ]
         self._write_artifact("manual_review.json", manual)
         self._write_artifact("external_apply.json", manual)
 
-        already = [r for r in self.context.rejected_jobs if r.get("code") == "ALREADY_APPLIED"]
+        already = [
+            r for r in self.context.rejected_jobs if r.get("code") == "ALREADY_APPLIED"
+        ]
         self._write_artifact("already_applied.json", already)
-        
+
         applied = []
         if self.context.ledger:
             rows = self.context.ledger.analytics_rows()
             for row in rows:
-                if row.get("run_id") == self.context.ledger_run_id and row.get("status") == "applied":
-                    applied.append({
-                        "job_id": row.get("job_id"),
-                        "status": "SUBMITTED",
-                        "application_time": row.get("timestamp")
-                    })
+                if (
+                    row.get("run_id") == self.context.ledger_run_id
+                    and row.get("status") == "applied"
+                ):
+                    applied.append(
+                        {
+                            "job_id": row.get("job_id"),
+                            "status": "SUBMITTED",
+                            "application_time": row.get("timestamp"),
+                        }
+                    )
         self._write_artifact("applied_jobs.json", applied)
 
     def _validate_artifacts(self, result: PipelineResult) -> None:
         diagnostics = []
-        
-        # 1. acquired = classified + rejected (at classification phase)
-        rejected_at_class = len([j for j in self.context.rejected_jobs if j.get("stage", "") not in ["Selection", "Application"]])
-        if result.acquired != (result.classified + rejected_at_class):
+
+        # 1. acquired = scored + rejected (at classification phase)
+        rejected_at_class = len(
+            [
+                j
+                for j in self.context.rejected_jobs
+                if j.get("stage", "") not in ["Selection", "Application"]
+            ]
+        )
+        if result.acquired != (result.scored + rejected_at_class):
             diagnostics.append(
                 f"Mismatch at classification: acquired({result.acquired}) != "
-                f"classified({result.classified}) + rejected({rejected_at_class})"
+                f"scored({result.scored}) + rejected({rejected_at_class})"
             )
 
-        # 2. classified = selected + low_score + manual_review + other_classification_rejections
-        # Actually, selection rejections are captured in rejected_jobs with stage="Selection". 
-        rejected_at_select = len([j for j in self.context.rejected_jobs if j.get("stage", "") == "Selection"])
-        # Wait, the prompt says low_score, manual_review... 
-        # But simply put: classified = selected + rejected (at selection phase).
-        if result.classified != (result.selected + rejected_at_select):
+        # 2. scored = selected + low_score + manual_review + other_classification_rejections
+        # Actually, selection rejections are captured in rejected_jobs with stage="Selection".
+        rejected_at_select = len(
+            [j for j in self.context.rejected_jobs if j.get("stage", "") == "Selection"]
+        )
+        if result.scored != (result.selected + rejected_at_select):
             diagnostics.append(
-                f"Mismatch at selection: classified({result.classified}) != "
+                f"Mismatch at selection: scored({result.scored}) != "
                 f"selected({result.selected}) + rejected({rejected_at_select})"
             )
 
         # 3. selected = submitted + already_applied + external_apply + policy_rejected + failed
         selected_calc = (
-            result.submitted +
-            result.already_applied +
-            result.skipped_external +
-            result.policy_rejected +
-            result.failed + 
-            result.manual_review +
-            result.skipped_local +
-            result.run_limit_reached +
-            result.dry_run_skipped
+            result.submitted
+            + result.already_applied
+            + result.ats_queue
+            + result.generic_queue
+            + result.manual_queue
+            + result.unsupported
+            + result.policy_rejected
+            + result.failed
+            + result.manual_review
+            + result.skipped_local
+            + result.run_limit_reached
+            + result.dry_run_skipped
         )
         if result.selected != selected_calc:
             diagnostics.append(
                 f"Mismatch at application: selected({result.selected}) != "
                 f"breakdown_total({selected_calc})"
             )
-            
+
         if diagnostics:
             print("[DIAGNOSTICS] Pipeline artifact validation issues found:")
             for d in diagnostics:
@@ -1384,7 +1523,7 @@ class CareerWorkflowPipeline:
         ):
             print(f"- {reason}: {count}")
 
-        print(f"Sent to AI: {result.classified}")
+        print(f"Sent to AI: {result.scored}")
         print(f"Qualified: {result.selected}")
         print(f"Applied: {result.submitted}")
 
@@ -1394,7 +1533,11 @@ class CareerWorkflowPipeline:
         print(f"- Policy rejected: {result.policy_rejected}")
         print(f"- Dry run skipped: {result.dry_run_skipped}")
         print(f"- Run limit reached: {result.run_limit_reached}")
-        print(f"- External/Local skipped: {result.skipped_external + result.skipped_local}")
+        print(f"- ATS queue: {result.ats_queue}")
+        print(f"- Generic queue: {result.generic_queue}")
+        print(f"- Manual queue: {result.manual_queue}")
+        print(f"- Unsupported: {result.unsupported}")
+        print(f"- Local skipped: {result.skipped_local}")
         if result.failed > 0:
             print(f"- Failed: {result.failed}")
 
@@ -1403,9 +1546,11 @@ class CareerWorkflowPipeline:
         secs = int(m.total_runtime % 60)
         print(f"Pipeline runtime: {mins}m {secs}s")
 
-        if result.classified > 0:
-            avg_job = m.total_runtime / result.classified
+        if result.scored > 0:
+            avg_job = m.total_runtime / result.scored
             print(f"Average/job: {avg_job:.1f}s")
+            yield_rate = (result.selected / result.scored) * 100
+            print(f"Qualified yield: {yield_rate:.1f}%")
 
         if m.total_runtime > 0:
             llm_pct = (m.llm_time / m.total_runtime) * 100

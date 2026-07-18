@@ -9,6 +9,7 @@ from typing import Any
 from control_center.runner import RUNTIME_DIR, process_is_running, read_process_state
 from control_center.data import latest_run
 
+
 def _read_json(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {}
@@ -17,6 +18,7 @@ def _read_json(path: Path) -> dict[str, Any]:
         return payload if isinstance(payload, dict) else {}
     except (OSError, json.JSONDecodeError):
         return {}
+
 
 def get_scheduler_runtime() -> dict[str, Any]:
     """
@@ -29,15 +31,15 @@ def get_scheduler_runtime() -> dict[str, Any]:
     scheduler_state_path = RUNTIME_DIR / "scheduler_state.json"
     heartbeat_path = RUNTIME_DIR / "heartbeat.json"
     lock_path = RUNTIME_DIR / "pipeline.lock"
-    
+
     state = _read_json(scheduler_state_path)
     heartbeat = _read_json(heartbeat_path)
-    
+
     pid = state.get("pid") or heartbeat.get("pid")
     is_alive = False
     if pid and process_is_running(int(pid)):
         is_alive = True
-        
+
     hb_timestamp = heartbeat.get("timestamp")
     hb_age = None
     is_stale = False
@@ -49,10 +51,10 @@ def get_scheduler_runtime() -> dict[str, Any]:
                 is_stale = True
         except ValueError:
             pass
-            
+
     raw_status = str(state.get("status", "UNKNOWN")).upper()
     has_lock = lock_path.exists()
-    
+
     if raw_status in ("STOPPED", "SHUTDOWN"):
         status = "STOPPED"
     elif is_alive and not is_stale:
@@ -66,7 +68,7 @@ def get_scheduler_runtime() -> dict[str, Any]:
         status = "ORPHANED"
     else:
         status = "STOPPED" if not is_alive else "IDLE"
-        
+
     return {
         "status": status,
         "pid": pid,
@@ -75,6 +77,7 @@ def get_scheduler_runtime() -> dict[str, Any]:
         "raw_state": raw_status,
         "lock": has_lock,
     }
+
 
 def get_pipeline_runtime() -> dict[str, Any]:
     """
@@ -85,18 +88,14 @@ def get_pipeline_runtime() -> dict[str, Any]:
     is_alive = False
     if pid and process_is_running(int(pid)):
         is_alive = True
-        
+
     status = state.get("status", "IDLE")
     # if it says running but process is dead, we adjust it
     if status == "RUNNING" and not is_alive:
         status = "ORPHANED"
-        
-    return {
-        "status": status,
-        "pid": pid,
-        "is_alive": is_alive,
-        "raw_state": state
-    }
+
+    return {"status": status, "pid": pid, "is_alive": is_alive, "raw_state": state}
+
 
 def get_ui_runtime() -> dict[str, Any]:
     """
@@ -107,6 +106,7 @@ def get_ui_runtime() -> dict[str, Any]:
         "pid": os.getpid(),
         "is_alive": True,
     }
+
 
 def get_latest_run_runtime() -> dict[str, Any]:
     run = latest_run()

@@ -343,8 +343,10 @@ class JobFilterPipeline2:
         ai_score_limit: int = 300,
         batch_size: int = 5,
         metrics: PipelineRunMetrics | None = None,
+        exec_context=None,
     ):
         self.metrics = metrics
+        self.exec_context = exec_context
         self.api_key = api_key or os.getenv("OMLX_API_KEY")
 
         if not self.api_key:
@@ -370,10 +372,16 @@ class JobFilterPipeline2:
     # STATE TRACKING
     # =========================================================
 
-    def record_decision(self, job: dict, stage: str, code: str, reason: str):
-        job["rejection_stage"] = stage
-        job["rejection_code"] = code
-        job["rejection_reason"] = reason
+    def record_decision(self, job: dict, stage: str, code: str, reason: str) -> None:
+        job_copy = job.copy()
+        job_copy["rejection_stage"] = stage
+        job_copy["rejection_code"] = code
+        job_copy["rejection_reason"] = reason
+
+        if self.exec_context:
+            self.exec_context.reject(job, reason=reason, code=code)
+
+        self.rejected_jobs.append(job_copy)
 
         decisions = job.setdefault("decisions", [])
         decisions.append(
@@ -534,6 +542,11 @@ class JobFilterPipeline2:
                 raw_tags = re.split(r"[,;|]", raw_tags)
             tags = [t.strip().lower() for t in raw_tags if t.strip()]
 
+            # Preserve existing decision history if seeded, else seed it
+            decision_history = job.get("decision_history")
+            if not decision_history:
+                decision_history = [{"stage": "Acquisition"}]
+
             normalized.append(
                 {
                     "job_id": job.get("job_id"),
@@ -551,8 +564,13 @@ class JobFilterPipeline2:
                     "search_query": (job.get("search_query") or ""),
                     "search_profile": (job.get("search_profile") or "unknown"),
                     "matched_technology": (job.get("matched_technology") or ""),
-                    "decision_history": [{"stage": "Acquisition"}],
+                    "decision_history": decision_history,
                     "rejection_reason": "",
+                    "provider_id": job.get("provider_id", "unknown"),
+                    "provider_name": job.get("provider_name", "unknown"),
+                    "provider_source": job.get("provider_source", "unknown"),
+                    "provider_url": job.get("provider_url", ""),
+                    "provider_job_id": job.get("provider_job_id", ""),
                 }
             )
 
@@ -740,15 +758,8 @@ class JobFilterPipeline2:
                     self.metrics.record_rejection("Title Filter (Not SW/AI)")
                 continue
 
-            if not explicit_ai_title and any(
-                keyword in title for keyword in self.WRONG_TRACK_TITLE_KEYWORDS
-            ):
-                self.record_decision(
-                    job, "Title Filter", "TITLE_WRONG_TRACK", "Target track mismatch"
-                )
-                if self.metrics:
-                    self.metrics.record_rejection("Title Filter (Wrong Track)")
-                continue
+            # We removed the WRONG_TRACK rejection so things like Android/iOS, DevOps, SRE
+            # can be penalized by the AI instead of hard-rejected.
 
             result.append(job)
 
@@ -771,14 +782,9 @@ class JobFilterPipeline2:
 
     def ai_relevance_gate(self, jobs):
         """
-        Keep Applied-AI roles and AI-enabled software roles.
-
-        Generic backend/full-stack/frontend overlap is not enough. Conversely,
-        Angular or full-stack work is not a negative when the JD contains
-        concrete LLM/RAG/agent/application-AI responsibilities.
+        AI relevance is now a ranking signal, not a hard gate.
+        We will score all engineering roles.
         """
-        relevant = []
-
         for job in jobs:
             title = (job.get("title") or "").lower()
             tags_text = " ".join(job.get("tags") or []).lower()
@@ -801,36 +807,27 @@ class JobFilterPipeline2:
 
             if explicit_ai_title:
                 relevance_reason = f"AI title signal: {title_hits[0]}"
+                ai_relevance = True
             elif concrete_ai_work:
                 relevance_reason = f"Strong AI signal: {strong_hits[0]}"
+                ai_relevance = True
             elif broad_ai_evidence:
                 relevance_reason = "Multiple AI signals: " + ", ".join(medium_hits[:3])
+                ai_relevance = True
             else:
-                print(
-                    f"  [AI RELEVANCE REJECT] "
-                    f"{job.get('title')} @ {job.get('company')}"
-                )
-                self.record_decision(
-                    job,
-                    "AI Relevance Gate",
-                    "LOW_AI_RELEVANCE",
-                    "Traditional backend role with no meaningful AI responsibilities",
-                )
-                if self.metrics:
-                    self.metrics.record_rejection("Non-AI")
-                continue
+                relevance_reason = "No strong AI signals found; treated as general software engineering."
+                ai_relevance = False
 
-            job["ai_relevance"] = True
+            job["ai_relevance"] = ai_relevance
             job["ai_relevance_reason"] = relevance_reason
             job["ai_signal_count"] = (
                 len(title_hits) + len(strong_hits) + len(medium_hits)
             )
             job.setdefault("decision_history", []).append(
-                {"stage": "AI Filter", "decision": "PASS"}
+                {"stage": "AI Filter", "decision": "PASS (Ranking Signal)"}
             )
-            relevant.append(job)
 
-        return relevant
+        return jobs
 
     def primary_stack_conflict_filter(
         self,
@@ -919,91 +916,95 @@ class JobFilterPipeline2:
         return "unknown"
 
     @staticmethod
-    def _is_pune_location(job):
-        pune_pattern = r"\bpune\b|\bpimpri\b|\bchinchwad\b|\bhinja?wadi\b"
-
+    def _classify_location_preference(job):
         location = str(job.get("location") or "").lower()
-        if re.search(pune_pattern, location):
-            return True
-
         description = str(job.get("description") or "").lower()
-        explicit_location_patterns = (
-            rf"\b(?:job|work|base|office) location\s*[:\-]\s*[^.\n]{{0,100}}(?:{pune_pattern})",
-            rf"\bbased in\s+(?:{pune_pattern})",
-            rf"\bposition is based in\s+(?:{pune_pattern})",
+
+        mode = JobFilterPipeline2._classify_work_mode(job)
+        if mode == "remote":
+            return "Preferred"
+
+        preferred_pattern = r"\bpune\b|\bpimpri\b|\bchinchwad\b|\bhinja?wadi\b|\bbengaluru\b|\bbangalore\b|\bhyderabad\b|\bremote\b"
+        acceptable_pattern = r"\bmumbai\b|\bchennai\b|\bnoida\b|\bgurgaon\b|\bgurugram\b|\bdelhi ncr\b|\bflexible\b|\bindia\b"
+
+        if re.search(preferred_pattern, location):
+            return "Preferred"
+        if re.search(acceptable_pattern, location):
+            return "Acceptable"
+
+        explicit_preferred = (
+            rf"\b(?:job|work|base|office) location\s*[:\-]\s*[^.\n]{{0,100}}(?:{preferred_pattern})",
+            rf"\bbased in\s+(?:{preferred_pattern})",
+            rf"\bposition is based in\s+(?:{preferred_pattern})",
         )
-        return any(
-            re.search(pattern, description) for pattern in explicit_location_patterns
+        if any(re.search(pattern, description) for pattern in explicit_preferred):
+            return "Preferred"
+
+        explicit_acceptable = (
+            rf"\b(?:job|work|base|office) location\s*[:\-]\s*[^.\n]{{0,100}}(?:{acceptable_pattern})",
+            rf"\bbased in\s+(?:{acceptable_pattern})",
+            rf"\bposition is based in\s+(?:{acceptable_pattern})",
         )
+        if any(re.search(pattern, description) for pattern in explicit_acceptable):
+            return "Acceptable"
+
+        return "Unknown"
 
     def location_work_mode_gate(self, jobs):
         """
-        Hard location/work-mode policy:
-
-        - remote/WFH: eligible worldwide;
-        - office/hybrid: eligible only when Pune is explicitly present;
-        - unknown mode: eligible only when Pune is explicitly present.
-
-        This is the only hard job-selection gate.
+        Location is now a ranking penalty, not a hard gate, unless explicitly blacklisted.
         """
         eligible = []
-
         for job in jobs:
             mode = self._classify_work_mode(job)
-            location = (job.get("location") or "").strip()
-            is_pune = self._is_pune_location(job)
+            loc_pref = self._classify_location_preference(job)
 
             job["work_mode_classification"] = mode
-            job["is_pune_location"] = is_pune
+            job["location_preference"] = loc_pref
 
-            if mode == "remote":
-                eligible.append(job)
-                continue
-
-            if mode in {"office", "hybrid"}:
-                if is_pune:
-                    eligible.append(job)
-                else:
-                    print(
-                        f"  [LOCATION REJECT - {mode}] "
-                        f"{job.get('title')} @ {job.get('company')} | {location}"
-                    )
-                    self.record_decision(
-                        job,
-                        "Location Filter",
-                        "LOCATION_OUTSIDE_PUNE",
-                        "Role outside target location",
-                    )
-                continue
-
-            if is_pune:
-                eligible.append(job)
-            else:
-                print(
-                    "  [LOCATION REJECT - unknown-mode-non-pune] "
-                    f"{job.get('title')} @ {job.get('company')} | {location}"
-                )
-                self.record_decision(
-                    job,
-                    "Location Filter",
-                    "LOCATION_OUTSIDE_PUNE",
-                    "Role outside target location",
-                )
+            # We can reject if it's explicitly onsite abroad, but for now we'll pass it and let the LLM score it low.
+            # Record it for metrics.
+            job.setdefault("decision_history", []).append(
+                {"stage": "Location Filter", "decision": f"PASS ({loc_pref})"}
+            )
+            eligible.append(job)
 
         return eligible
 
     def tag_presort(self, jobs):
         my_stack = set(self.MY_STACK)
 
-        def overlap(j):
+        from src.config.search_strategy import load_search_strategy
+
+        strategy = load_search_strategy()
+        weights = strategy.summary_scoring
+
+        for j in jobs:
             tags = set(j.get("tags", []))
             mandatory_hit = sum(1 for t in j.get("mandatory_tags", []) if t in my_stack)
             total_hit = len(tags & my_stack)
-            recency_bonus = max(0, 7 - j.get("days_old", 7))
-            # mandatory tags weighted 3x — they represent the job's core ask
-            return mandatory_hit * 3 + total_hit + recency_bonus
 
-        return sorted(jobs, key=overlap, reverse=True)
+            days_old = j.get("days_old", 7)
+            # Recency bonus: max 7 points (0 days old = 7, 7 days old = 0)
+            recency_days = max(0, 7 - days_old)
+
+            mandatory_score = mandatory_hit * weights.mandatory_weight
+            skills_score = total_hit * weights.skills_weight
+            recency_score = recency_days * weights.recency_weight
+
+            total_score = mandatory_score + skills_score + recency_score
+
+            j["summary_score"] = total_score
+            j["summary_breakdown"] = {
+                "mandatory_hits": mandatory_hit,
+                "mandatory_score": mandatory_score,
+                "skills_hits": total_hit,
+                "skills_score": skills_score,
+                "recency_days": days_old,
+                "recency_score": recency_score,
+            }
+
+        return sorted(jobs, key=lambda j: j["summary_score"], reverse=True)
 
     def _job_text(self, job):
         return " ".join(

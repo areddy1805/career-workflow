@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 from functools import wraps
 from typing import Callable, Any
 
+
 @dataclass
 class PipelineRunMetrics:
     # High-level counts
@@ -41,6 +42,7 @@ def instrument_stage(stage_name: str):
     """
     Decorator to wrap pipeline stages and log their high-level runtime.
     """
+
     def decorator(func: Callable):
         @wraps(func)
         def wrapper(*args, **kwargs):
@@ -50,5 +52,7 @@ def instrument_stage(stage_name: str):
             # If the instance has a context with metrics, we could log it there,
             # but for now, we just rely on explicit accumulation for sub-timings.
             return result
+
         return wrapper
+
     return decorator

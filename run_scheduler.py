@@ -4,10 +4,24 @@ from src.orchestration.scheduler import run_scheduler, SchedulerConfig
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run the scheduler daemon.")
-    parser.add_argument("--run-now", action="store_true", help="Run the pipeline immediately upon startup")
-    parser.add_argument("--interactive", action="store_true", help="Run in interactive mode")
-    parser.add_argument("--session-hours", type=float, help="Automatically exit after this many hours (interactive mode)")
-    parser.add_argument("--incremental", type=int, help="Custom incremental interval in minutes (interactive mode)")
+    parser.add_argument(
+        "--run-now",
+        action="store_true",
+        help="Run the pipeline immediately upon startup",
+    )
+    parser.add_argument(
+        "--interactive", action="store_true", help="Run in interactive mode"
+    )
+    parser.add_argument(
+        "--session-hours",
+        type=float,
+        help="Automatically exit after this many hours (interactive mode)",
+    )
+    parser.add_argument(
+        "--incremental",
+        type=int,
+        help="Custom incremental interval in minutes (interactive mode)",
+    )
     parser.add_argument(
         "--force-live",
         action="store_true",

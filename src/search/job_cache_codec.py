@@ -41,6 +41,11 @@ class JobCacheCodec:
                 "acquisition_source",
                 "unknown",
             ),
+            "provider_id": getattr(job, "provider_id", "unknown"),
+            "provider_name": getattr(job, "provider_name", "unknown"),
+            "provider_source": getattr(job, "provider_source", "unknown"),
+            "provider_url": getattr(job, "provider_url", ""),
+            "provider_job_id": getattr(job, "provider_job_id", ""),
         }
 
     @classmethod
@@ -74,6 +79,11 @@ class JobCacheCodec:
             apply_link=str(payload["apply_link"]),
             description=str(payload.get("description") or ""),
             tags=list(tags),
+            provider_id=str(payload.get("provider_id") or "unknown"),
+            provider_name=str(payload.get("provider_name") or "unknown"),
+            provider_source=str(payload.get("provider_source") or "unknown"),
+            provider_url=str(payload.get("provider_url") or ""),
+            provider_job_id=str(payload.get("provider_job_id") or ""),
         )
 
         setattr(

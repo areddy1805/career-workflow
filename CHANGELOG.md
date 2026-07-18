@@ -6,11 +6,48 @@ The format follows a project-oriented changelog rather than individual commit hi
 
 ---
 
-# [2.7.0]
+# [3.1.0]
 
 ## Overview
-Version 2.7.0 replaces the legacy NiceGUI control plane with a polished, enterprise-grade React operations console. It introduces the configuration-driven Search Profile Engine for highly extensible, taxonomy-based querying. In addition, the update brings full artifact traceability, actionable queue management, and comprehensive REST API expansion to support the new frontend telemetry.
+Version 3.1.0 introduces the JobSpy provider integration, provider-aware acquisition, multi-site job discovery (Indeed, LinkedIn, Google Jobs), interleaved benchmark budgeting, and real-time provider health tracking.
 
+---
+
+## Added
+- **JobSpy Provider Integration**: Implemented `JobSpyProvider` to enable unauthenticated guest-scraping from Indeed, LinkedIn, and Google Jobs.
+- **Provider Health Tracking**: Added automated health monitoring. If a provider site encounters 3 consecutive zero-yield or scraper failures, it is marked as `degraded` and subsequent queries are skipped for that run.
+- **Interleaved Benchmark Budgeting**: Developed provider-interleaving query allocation under `benchmarking_mode` to ensure a single degraded site cannot monopolize the benchmark run.
+- **Detailed Adapter & Service Logs**: Introduced clean structured logging indicating parameter values, raw scraper row counts, normalized jobs, and validation reasons for discards.
+- **JobSpy Telemetry**: Added provider health statistics directly into the final `stage_results` and `acquisition.json` run telemetry.
+
+## Fixed
+- **Reconciliation Keyword Mismatch**: Fixed a Python signature crash in `reconcile_history()` when calling `reconcile_application_history`.
+- **Stage Finished Metrics Projection Reset**: Resolved a bug in stage progression metrics where stage completion reset counts when `output_count` was missing in payloads.
+- **Search Requests Attempted Accumulation**: Resolved issues where JobSpy searches were not counted or added to total pipeline attempted query telemetry.
+
+---
+
+# [3.0 Phase 1.1]
+
+## Overview
+Phase 1.1 refactors the classification funnel to align with the spray-and-pray application strategy. We transitioned from aggressive hard-gates to a progressive ranking architecture. Legacy NiceGUI dependencies have been fully removed.
+
+---
+
+## Changed
+- **Summary Ranking Pipeline**: Introduced an adaptive, heuristic-based summary ranker that scores jobs *before* executing the detail fetch budget.
+- **AI Relevance Gate**: Removed `LOW_AI_RELEVANCE` as a hard rejection. Engineering roles lacking explicit AI signals are now penalized in ranking, rather than eliminated.
+- **Location Policy**: Replaced the strict Pune-only office policy with a robust Location Preference engine (Preferred, Acceptable, Rejected) acting as a ranking penalty.
+- **Application Budgets**: `DAILY_APPLY_LIMIT` no longer abruptly truncates the classification pipeline; jobs are now fully ranked and handed over to the Selection stage.
+- **Decoupled Strategy Config**: Introduced `config/search_strategy.yaml` to decouple budget and gating thresholds from the core logic.
+
+## Removed
+- **Wrong Track Hard Gate**: Eliminated hard rejections for tracks like DevOps, SRE, and Mobile.
+- **Legacy NiceGUI**: Safely removed all unused legacy NiceGUI code, pages, and runner scripts.
+
+---
+
+# [2.7.0]
 ---
 
 ## Added
