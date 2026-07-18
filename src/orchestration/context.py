@@ -22,12 +22,13 @@ class PipelineContext:
 
     # Runtime dependencies
     login_client: Any | None = None
-    job_client: Any | None = None
+    providers: dict[str, Any] = field(default_factory=dict)
     questionnaire_resolver: Any | None = None
     ledger: Any | None = None
 
     acquisition_mode: str = "full"
     force_live: bool = False
+    acquisition_provider: str = "all"
 
     # Acquisition
     acquired_jobs: list[Any] = field(default_factory=list)

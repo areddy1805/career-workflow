@@ -935,7 +935,7 @@ def resolve_job_acquisition(
 
 
 def acquire_jobs(
-    jc: NaukriJobClient,
+    providers: dict,
     cache: JobSearchCache,
     cooldown: SearchChallengeCooldown,
     mode: str = "full",
@@ -952,72 +952,86 @@ def acquire_jobs(
     JobSpy acquisition continues to run so providers remain isolated.
     """
 
+    # Load configuration to get provider_priority
+    acq_config = load_acquisition_config()
+
+    run_naukri = "naukri" in providers
+    run_jobspy = "jobspy" in providers
+
+    print("Entered acquire_jobs()")
+    print(f"Running Naukri = {run_naukri}")
+    print(f"Running JobSpy = {run_jobspy}")
+
     # ---------------------------------------------------------------
     # Acquire Naukri jobs (live or cache)
     # ---------------------------------------------------------------
-    if not force_live and cooldown.is_active():
+    if not run_naukri:
+        naukri_jobs = []
         fetch_result = JobFetchResult(
             jobs=[],
             challenge_encountered=False,
-            completed_normally=False,
-            search_skipped_due_to_cooldown=True,
-            search_requests_attempted=0,
+            completed_normally=True,
         )
-
-        naukri_jobs = resolve_job_acquisition(
-            fetch_result=fetch_result,
-            cache=cache,
-        )
-
     else:
-        print(">>> RUNNING NAUKRI ACQUISITION")
-        fetch_result = (
-            fetch_all_jobs(jc) if mode == "full" else fetch_all_jobs(jc, mode=mode)
-        )
+        jc = providers["naukri"]
+        if not force_live and cooldown.is_active():
+            fetch_result = JobFetchResult(
+                jobs=[],
+                challenge_encountered=False,
+                completed_normally=False,
+                search_skipped_due_to_cooldown=True,
+                search_requests_attempted=0,
+            )
 
-        if fetch_result.challenge_encountered:
-            cooldown.record_challenge()
+            naukri_jobs = resolve_job_acquisition(
+                fetch_result=fetch_result,
+                cache=cache,
+            )
 
-        naukri_jobs = resolve_job_acquisition(
-            fetch_result=fetch_result,
-            cache=cache,
-        )
+        else:
+            print(">>> RUNNING NAUKRI ACQUISITION")
+            fetch_result = (
+                fetch_all_jobs(jc) if mode == "full" else fetch_all_jobs(jc, mode=mode)
+            )
+
+            if fetch_result.challenge_encountered:
+                cooldown.record_challenge()
+
+            naukri_jobs = resolve_job_acquisition(
+                fetch_result=fetch_result,
+                cache=cache,
+            )
+
+    for job in naukri_jobs:
+        setattr(job, "provider_id", "naukri")
 
     # ---------------------------------------------------------------
     # JobSpy additive acquisition
     #
-    # This executes regardless of whether Naukri came from:
-    #
-    #   • Live search
-    #   • Local cache (cooldown)
+    # Note: Does not mutate fetch_result since JobSpy does not run under
+    # the Naukri challenge constraints.
     #
     # Failure of JobSpy never affects Naukri.
     # ---------------------------------------------------------------
-    acq_config = load_acquisition_config()
-    jobspy_raw = acq_config.get("providers", {}).get("jobspy", {})
 
-    try:
-        jobspy_cfg = JobSpyConfig.from_dict(jobspy_raw)
-    except Exception as exc:
-        logger.warning(
-            "Invalid JobSpy configuration — skipping JobSpy acquisition: %s",
-            exc,
+    jobspy_jobs = []
+    if not run_jobspy:
+        print("Skipping JobSpy acquisition (disabled or not initialized).")
+    else:
+        jobspy_provider = providers["jobspy"]
+
+        # Reuse identical search queries generated for Naukri.
+        planner = SearchPlanner()
+        search_tracks = planner.generate_queries()
+        print("Calling fetch_jobspy_jobs()")
+        jobspy_jobs = fetch_jobspy_jobs(
+            provider=jobspy_provider,
+            search_tracks=search_tracks,
         )
-        return naukri_jobs, fetch_result
+        print(f"JobSpy returned {len(jobspy_jobs)} jobs")
 
-    if not jobspy_cfg.enabled:
-        return naukri_jobs, fetch_result
-
-    jobspy_provider = JobSpyProvider(jobspy_cfg)
-
-    # Reuse identical search queries generated for Naukri.
-    planner = SearchPlanner()
-    search_tracks = planner.generate_queries()
-    print(">>> RUNNING JOBSPY ACQUISITION")
-    jobspy_jobs = fetch_jobspy_jobs(
-        provider=jobspy_provider,
-        search_tracks=search_tracks,
-    )
+    for job in jobspy_jobs:
+        setattr(job, "provider_id", "jobspy")
 
     provider_priority = acq_config.get(
         "provider_priority",
@@ -1029,6 +1043,8 @@ def acquire_jobs(
         jobspy_jobs=jobspy_jobs,
         provider_priority=provider_priority,
     )
+
+    print(f"Merged {len(jobs)} jobs")
 
     logger.info(
         "Acquisition merge: naukri=%d jobspy=%d merged=%d",
@@ -1108,13 +1124,19 @@ def resolve_questionnaire(
     return answers, unresolved
 
 
-class JobApplicationClient(Protocol):
+class JobProvider(Protocol):
     """
-    Structural interface required by process_job_application().
+    Structural interface required by downstream pipeline stages.
 
-    NaukriJobClient and test doubles can satisfy this protocol
+    Providers (e.g. NaukriJobClient) and test doubles can satisfy this protocol
     without inheritance or concrete-type coupling.
     """
+
+    def get_job_details(self, job_id: str) -> dict | None: ...
+
+    def is_external_apply(self, job_id: str) -> bool: ...
+
+    def reconcile_history(self, ledger: Any) -> dict | None: ...
 
     def apply_job(
         self,
@@ -1204,7 +1226,7 @@ def execute_with_safe_retry(
 
 
 def process_job_application(
-    jc: JobApplicationClient,
+    jc: JobProvider,
     job: Any,
     meta: dict,
     questionnaire_resolver: QuestionnaireResolver,
@@ -1366,7 +1388,7 @@ def _extract_job_detail_description(detail: dict) -> str:
 
 
 def enrich_jobs_with_details(
-    jc,
+    providers: dict,
     jobs: list[dict],
     detail_cache: dict[str, dict],
     # Removed explorer
@@ -1396,9 +1418,10 @@ def enrich_jobs_with_details(
             enriched_jobs.append(job)
             continue
 
-        # JobSpy jobs carry their description from the adapter already.
-        # Skip Naukri detail enrichment to avoid spurious 404/auth errors.
-        if job_id.startswith("jobspy_"):
+        provider_id = job.get("provider_id", "naukri")
+        provider = providers.get(provider_id)
+        
+        if not provider:
             enriched_jobs.append(job)
             continue
 
@@ -1412,9 +1435,9 @@ def enrich_jobs_with_details(
             detail = detail_cache.get(job_id)
 
             if detail is None:
-                detail = jc.get_job_details(job_id)
-                detail_cache[job_id] = detail
-                pass
+                detail = provider.get_job_details(job_id)
+                if detail:
+                    detail_cache[job_id] = detail
 
             full_description = _extract_job_detail_description(detail)
 
@@ -1463,7 +1486,7 @@ def enrich_jobs_with_details(
 
 
 def run_application_batch(
-    jc,
+    providers: dict,
     jobs: list,
     score_map: dict,
     questionnaire_resolver: QuestionnaireResolver | None,
@@ -1674,11 +1697,10 @@ def run_application_batch(
         # ----------------------------------------------------------
 
         try:
-            # JobSpy jobs are always external applications.
-            # Never query the Naukri detail API using a JobSpy ID.
-            # JobSpy jobs are always external applications.
-            # Never query the Naukri detail API using a JobSpy ID.
-            if str(job.job_id).startswith("jobspy_"):
+            provider_id = job.get("provider_id", "naukri")
+            jc = providers.get(provider_id)
+
+            if not jc:
                 is_external = True
             else:
                 is_external = meta.get("is_external_apply")
@@ -2148,35 +2170,9 @@ def run_application_cycle(
     Returns structured run data for the orchestration layer.
     """
 
-    username = os.getenv("NAUKRI_USERNAME")
-    password = os.getenv("NAUKRI_PASSWORD")
-
-    # --------------------------------------------------------------------------
-    # Step 1: Authenticate and establish session
-    # --------------------------------------------------------------------------
-
-    print_section_title("logging in to naukri")
-
-    client = NaukriLoginClient(
-        username,
-        password,
-    )
-
-    client.login()
-
-    print(
-        f"  {Fore.GREEN}"
-        f"Logged in as "
-        f"{Fore.YELLOW}"
-        f"{username}"
-        f"{Style.RESET_ALL}"
-    )
-
     # --------------------------------------------------------------------------
     # Step 2: Construct application dependencies
     # --------------------------------------------------------------------------
-
-    jc = NaukriJobClient(client)
 
     omlx_client = OMLXClient(
         model="qwen3.5-4b",
@@ -2223,15 +2219,22 @@ def run_application_cycle(
     print("\n========== ACQUIRE_JOBS ==========")
     print("Entered acquire_jobs()")
 
+    from src.orchestration.provider_factory import initialize_providers
+    providers = initialize_providers()
+
     jobs, fetch_result = acquire_jobs(
-        jc=jc,
+        providers=providers,
         cache=job_cache,
         cooldown=search_cooldown,
     )
 
+    # Note: Naukri client (jc) is accessed from providers if needed for enrichment
+    jc = providers.get("naukri")
+
     print_acquisition_summary(
-        jobs=jobs,
-        fetch_result=fetch_result,
+        jobs,
+        fetch_result,
+        suppressed=(jc is not None and search_cooldown.is_active()),
     )
 
     if not jobs:

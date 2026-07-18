@@ -43,6 +43,7 @@ from src.application.policy import ApplicationPolicy
 from src.config.search_strategy import load_search_strategy
 from src.client.job_classifier import JobFilterPipeline2
 from src.client.job_client import NaukriJobClient
+from src.orchestration.provider_factory import initialize_providers
 
 from src.client.naukri_client import NaukriLoginClient
 from src.llm.client import OMLXClient
@@ -70,6 +71,7 @@ class CareerWorkflowPipeline:
         max_applications: int | None,
         acquisition_mode: str = "full",
         force_live: bool = False,
+        acquisition_provider: str = "all",
         artifacts_root: str | Path = "artifacts/runs",
     ) -> None:
         if max_applications is not None and max_applications < 0:
@@ -81,6 +83,7 @@ class CareerWorkflowPipeline:
             max_applications=max_applications,
             acquisition_mode=acquisition_mode,
             force_live=force_live,
+            acquisition_provider=acquisition_provider,
         )
 
         self.artifacts_root = Path(
@@ -439,20 +442,6 @@ class CareerWorkflowPipeline:
     # ------------------------------------------------------------------
 
     def acquire(self) -> None:
-        username = os.environ["NAUKRI_USERNAME"]
-
-        password = os.environ["NAUKRI_PASSWORD"]
-
-        login_client = NaukriLoginClient(
-            username,
-            password,
-        )
-
-        login_client.login()
-
-        job_client = NaukriJobClient(
-            login_client,
-        )
 
         job_cache = JobSearchCache(
             path=os.getenv(
@@ -480,17 +469,15 @@ class CareerWorkflowPipeline:
             ),
         )
 
+        self.context.providers = initialize_providers(self.context.acquisition_provider)
+
         jobs, fetch_result = acquire_jobs(
-            jc=job_client,
+            providers=self.context.providers,
             cache=job_cache,
             cooldown=search_cooldown,
             mode=self.context.acquisition_mode,
             force_live=self.context.force_live,
         )
-
-        self.context.login_client = login_client
-
-        self.context.job_client = job_client
 
         self.context.acquired_jobs = jobs
 
@@ -527,9 +514,6 @@ class CareerWorkflowPipeline:
     # ------------------------------------------------------------------
 
     def classify(self) -> None:
-        if self.context.job_client is None:
-            raise RuntimeError("Job client unavailable")
-
         jobs = self.context.acquired_jobs
         self.exec_context.start_stage("Classification", jobs)
 
@@ -602,7 +586,7 @@ class CareerWorkflowPipeline:
         )
 
         enriched_candidates = enrich_jobs_with_details(
-            jc=self.context.job_client,
+            providers=self.context.providers,
             jobs=candidates,
             detail_cache=(self.context.detail_cache),
         )
@@ -1137,7 +1121,7 @@ class CareerWorkflowPipeline:
         )
 
         summary = run_application_batch(
-            jc=self.context.job_client,
+            providers=self.context.providers,
             jobs=self.context.selected_jobs,
             score_map=self.context.score_map,
             questionnaire_resolver=(questionnaire_resolver),
@@ -1202,21 +1186,36 @@ class CareerWorkflowPipeline:
     # ------------------------------------------------------------------
 
     def reconcile(self) -> None:
-        if self.context.login_client is None:
-            raise RuntimeError("Authenticated login client unavailable")
+        fetched_total = 0
+        changed_total = 0
+        history_total = []
+        
+        executed = False
+        
+        for pid, provider in self.context.providers.items():
+            if hasattr(provider, "reconcile_history"):
+                res = provider.reconcile_history(self.context.ledger)
+                if res:
+                    fetched_total += res.get("fetched", 0)
+                    changed_total += res.get("changed", 0)
+                    history_total.extend(res.get("history", []))
+                executed = True
 
-        result = reconcile_application_history(
-            client=(self.context.login_client),
-            ledger=self.context.ledger,
-        )
+        if not executed:
+            self.context.stage_results["reconciliation"] = {
+                "server_applications_fetched": 0,
+                "new_or_changed_records": 0,
+                "status": "skipped (no provider supports reconciliation)",
+            }
+            return
 
-        self.context.server_history = result["history"]
+        self.context.server_history = history_total
 
-        self.context.reconciliation_changes = result["changed"]
+        self.context.reconciliation_changes = changed_total
 
         self.context.stage_results["reconciliation"] = {
-            "server_applications_fetched": (result["fetched"]),
-            "new_or_changed_records": (result["changed"]),
+            "server_applications_fetched": fetched_total,
+            "new_or_changed_records": changed_total,
         }
 
         self._write_artifact(

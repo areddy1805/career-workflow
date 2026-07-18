@@ -1178,6 +1178,34 @@ The system is designed for different execution modes rather than one permanently
 A normal operating cycle is:
 
 ```text
+1. Broad or incremental acquisition
+2. Classification and ranking
+3. Controlled application batch
+4. Persist local outcomes
+5. Reconcile server history
+6. Inspect lifecycle funnel
+7. Allow adaptive strategy only when evidence thresholds are met
+```
+
+The system does not assume every run should exhaust its configured application limit. Eligibility, diversity and available fresh supply determine the actual batch size.
+
+---
+
+### Provider Selection
+
+The pipeline supports multi-provider execution, allowing you to run Naukri and JobSpy independently or together.
+
+```bash
+# Run both providers (default if enabled in config)
+python run_pipeline.py --provider all
+
+# Run only Naukri
+python run_pipeline.py --provider naukri
+
+# Run only JobSpy
+python run_pipeline.py --provider jobspy
+```
+
 ### Acquisition Mode vs Cache Policy
 
 Acquisition depth is controlled by the mode (`full` or `incremental`).
@@ -1199,17 +1227,6 @@ python run_pipeline.py \
   --confirm-live APPLY_LIVE \
   --acquisition-mode full
 ```
-
-1. Broad or incremental acquisition
-2. Classification and ranking
-3. Controlled application batch
-4. Persist local outcomes
-5. Reconcile server history
-6. Inspect lifecycle funnel
-7. Allow adaptive strategy only when evidence thresholds are met
-
-
-The system does not assume every run should exhaust its configured application limit. Eligibility, diversity and available fresh supply determine the actual batch size.
 
 ---
 

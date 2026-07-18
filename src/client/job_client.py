@@ -126,6 +126,14 @@ class NaukriJobClient:
         ]
 
     # ----------------------------------------------------------------------------------
+    # Orchestration interfaces
+    # ----------------------------------------------------------------------------------
+
+    def reconcile_history(self, ledger: "Any") -> dict | None:
+        from monitor_applications import reconcile_application_history
+        return reconcile_application_history(self._client, ledger)
+
+    # ----------------------------------------------------------------------------------
     # Internal helpers
     # ----------------------------------------------------------------------------------
 

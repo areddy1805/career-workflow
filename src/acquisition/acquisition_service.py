@@ -61,6 +61,8 @@ def fetch_jobspy_jobs(
     all_jobs: list = []
     total_queries = len(search_tracks) * len(cfg.sites)
     done = 0
+    results_per_site: dict[str, int] = {site: 0 for site in cfg.sites}
+    duplicates_removed: int = 0
 
     _print_section_title(
         f"fetching JobSpy jobs  "
@@ -112,8 +114,10 @@ def fetch_jobspy_jobs(
             for job in jobs:
                 if job.job_id in seen_ids:
                     print(f"Duplicate skipped: {job.job_id}")
+                    duplicates_removed += 1
                     continue
                 seen_ids.add(job.job_id)
+                results_per_site[site] += 1
                 # Tag the acquisition metadata used by print_acquisition_summary
                 setattr(job, "acquisition_source", "live")
                 setattr(job, "search_track", query.get("track", ""))
@@ -141,11 +145,34 @@ def fetch_jobspy_jobs(
         f"{Style.BRIGHT}{len(all_jobs)}{Style.RESET_ALL}"
     )
 
-    print("\n========== JOBSPY SUMMARY ==========")
-    print(f"Queries      : {len(search_tracks)}")
-    print(f"Sites        : {len(cfg.sites)}")
-    print(f"API Calls    : {total_queries}")
-    print(f"Unique Jobs  : {len(all_jobs)}")
-    print("====================================")
+    planned_queries = len(cfg.sites) * len(search_tracks) if search_tracks else 0
+    executed_queries = sum(h.get("total_searches", 0) for h in provider.health_summary().values())
+    failures = sum(h.get("failed_searches", 0) for h in provider.health_summary().values())
+    
+    print("\n" + "=" * 57)
+    print("JOBSPY SUMMARY")
+    print("=" * 57)
+    print("Provider          JobSpy")
+    print("Sites")
+    for site in cfg.sites:
+        if provider.is_site_available(site):
+            print(f"  {site.capitalize()}")
+        else:
+            print(f"  {site.capitalize()} (cooldown)")
+
+    print(f"Queries Planned   {planned_queries}")
+    print(f"Queries Executed  {executed_queries}")
+    print("Results")
+    for site in cfg.sites:
+        print(f"  {site.capitalize():<14} {results_per_site[site]}")
+
+    print(f"Duplicates        {duplicates_removed}")
+    print(f"Failures          {failures}")
+    print(f"Final Jobs        {len(all_jobs)}")
+    
+    if executed_queries == 0:
+        print(f"Skipped reason    No valid sites or keywords configured")
+
+    print("=" * 57)
 
     return all_jobs
