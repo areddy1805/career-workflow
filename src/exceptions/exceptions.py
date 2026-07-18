@@ -48,3 +48,71 @@ class NaukriUploadError(NaukriClientError):
         if filename:
             msg += f" | File: {filename}"
         super().__init__(msg)
+
+
+# -----------------------------------------------------------------------
+# JobSpy exception hierarchy
+#
+# These mirror the Naukri taxonomy in spirit but are kept separate so
+# callers can distinguish provider origin without string inspection.
+#
+# JobSpyProviderError     — base class; always carries a `site` attribute
+#   JobSpyChallengeError  — CAPTCHA / WAF / 403 / 406 block → cooldown
+#   JobSpyNetworkError    — timeout / connection failure → skip + retry
+#   JobSpyParseError      — selector breakage / unexpected schema → log
+#   JobSpyConfigError     — invalid configuration detected at startup
+# -----------------------------------------------------------------------
+
+
+class JobSpyProviderError(Exception):
+    """Base exception for all JobSpy provider errors."""
+
+    def __init__(self, message: str, site: str = "unknown"):
+        self.site = site
+        super().__init__(f"[JOBSPY:{site.upper()}] {message}")
+
+
+class JobSpyChallengeError(JobSpyProviderError):
+    """
+    Raised when a provider returns a CAPTCHA, WAF block, 403, or 406.
+
+    Triggers a per-site cooldown via SearchChallengeCooldown. The provider
+    is skipped for the remainder of the acquisition run and the cooldown
+    duration (default 60 minutes) before it will be attempted again.
+    """
+
+    pass
+
+
+class JobSpyNetworkError(JobSpyProviderError):
+    """
+    Raised on connection timeouts or network-level failures.
+
+    The failed query is skipped. Acquisition continues with the next
+    query. No cooldown is applied — transient failures do not penalise
+    the provider.
+    """
+
+    pass
+
+
+class JobSpyParseError(JobSpyProviderError):
+    """
+    Raised when the JobSpy DataFrame is missing expected columns or
+    contains unexpected schema changes.
+
+    Logs a telemetry alert. Falls back to whatever fields are available.
+    Does not abort the provider.
+    """
+
+    pass
+
+
+class JobSpyConfigError(JobSpyProviderError):
+    """
+    Raised when JobSpy configuration is invalid (e.g. unknown site name,
+    out-of-range timeout). Detected at provider initialisation time.
+    """
+
+    pass
+

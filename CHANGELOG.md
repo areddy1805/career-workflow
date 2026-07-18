@@ -6,6 +6,27 @@ The format follows a project-oriented changelog rather than individual commit hi
 
 ---
 
+# [3.1.0]
+
+## Overview
+Version 3.1.0 introduces the JobSpy provider integration, provider-aware acquisition, multi-site job discovery (Indeed, LinkedIn, Google Jobs), interleaved benchmark budgeting, and real-time provider health tracking.
+
+---
+
+## Added
+- **JobSpy Provider Integration**: Implemented `JobSpyProvider` to enable unauthenticated guest-scraping from Indeed, LinkedIn, and Google Jobs.
+- **Provider Health Tracking**: Added automated health monitoring. If a provider site encounters 3 consecutive zero-yield or scraper failures, it is marked as `degraded` and subsequent queries are skipped for that run.
+- **Interleaved Benchmark Budgeting**: Developed provider-interleaving query allocation under `benchmarking_mode` to ensure a single degraded site cannot monopolize the benchmark run.
+- **Detailed Adapter & Service Logs**: Introduced clean structured logging indicating parameter values, raw scraper row counts, normalized jobs, and validation reasons for discards.
+- **JobSpy Telemetry**: Added provider health statistics directly into the final `stage_results` and `acquisition.json` run telemetry.
+
+## Fixed
+- **Reconciliation Keyword Mismatch**: Fixed a Python signature crash in `reconcile_history()` when calling `reconcile_application_history`.
+- **Stage Finished Metrics Projection Reset**: Resolved a bug in stage progression metrics where stage completion reset counts when `output_count` was missing in payloads.
+- **Search Requests Attempted Accumulation**: Resolved issues where JobSpy searches were not counted or added to total pipeline attempted query telemetry.
+
+---
+
 # [3.0 Phase 1.1]
 
 ## Overview

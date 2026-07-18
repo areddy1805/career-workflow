@@ -126,6 +126,14 @@ class NaukriJobClient:
         ]
 
     # ----------------------------------------------------------------------------------
+    # Orchestration interfaces
+    # ----------------------------------------------------------------------------------
+
+    def reconcile_history(self, ledger: "Any") -> dict | None:
+        from monitor_applications import reconcile_application_history
+        return reconcile_application_history(client=self._client, ledger=ledger)
+
+    # ----------------------------------------------------------------------------------
     # Internal helpers
     # ----------------------------------------------------------------------------------
 
@@ -139,8 +147,10 @@ class NaukriJobClient:
             ),
             "N/A",
         )
+        job_id = str(raw.get("jobId") or raw.get("id") or "")
+        apply_link = raw.get("jdURL") or f"https://www.naukri.com/job-listings-{job_id}"
         return Job(
-            job_id=str(raw.get("jobId") or raw.get("id") or ""),
+            job_id=job_id,
             title=raw.get("title") or raw.get("jobTitle") or "N/A",
             company=raw.get("companyName") or raw.get("company") or "N/A",
             location=location,
@@ -149,14 +159,18 @@ class NaukriJobClient:
             posted_date=raw.get("footerPlaceholderLabel")
             or raw.get("postedDate")
             or "N/A",
-            apply_link=raw.get("jdURL")
-            or f"https://www.naukri.com/job-listings-{raw.get('jobId', '')}",
+            apply_link=apply_link,
             description=raw.get("jobDescription") or "",
             tags=(
                 [t.strip() for t in raw.get("tagsAndSkills", "").split(",")]
                 if raw.get("tagsAndSkills")
                 else []
             ),
+            provider_id="naukri",
+            provider_name="Naukri",
+            provider_source="naukri",
+            provider_url=apply_link,
+            provider_job_id=job_id,
         )
 
     def _cluster_dates(self) -> dict:

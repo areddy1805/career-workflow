@@ -54,12 +54,22 @@ from src.exceptions.exceptions import (
 )
 from src.llm.client import OMLXClient
 from src.llm.question_resolver import LLMQuestionResolver
+from src.resolution.hybrid_resolver import HybridQuestionResolver
 
 from src.orchestration.runtime import CircuitBreaker
 from src.search.planner import SearchPlanner
 from src.search.challenge_cooldown import SearchChallengeCooldown
 from src.search.job_search_cache import JobSearchCache
 from src.utils.questionnaire_telemetry import log_unresolved_questions
+
+# JobSpy acquisition — additive, isolated from Naukri path.
+from src.acquisition.config import load_acquisition_config
+from src.acquisition.acquisition_service import fetch_jobspy_jobs
+from src.acquisition.merge import merge_jobs
+from src.acquisition.providers.jobspy_provider import (
+    JobSpyConfig,
+    JobSpyProvider,
+)
 
 load_dotenv()
 init(autoreset=True)
@@ -74,8 +84,6 @@ logger = logging.getLogger(__name__)
 # prevents the agent from applying to the same job on subsequent runs.
 # The file is appended to, never rewritten, so historical records are preserved.
 # ----------------------------------------------------------------------------------
-
-
 
 
 # ----------------------------------------------------------------------------------
@@ -238,12 +246,18 @@ def print_job_header(
         f"{Style.RESET_ALL}"
     )
 
+    url = (
+        getattr(job, "apply_link", None)
+        or getattr(job, "url", None)
+        or f"https://www.naukri.com/job-listings-{job.job_id}"
+    )
+
     print(
         f"  {Fore.WHITE}"
         f"URL     :"
         f"{Style.RESET_ALL}  "
         f"{Fore.BLUE}"
-        f"https://www.naukri.com/job-listings-{job.job_id}"
+        f"{url}"
         f"{Style.RESET_ALL}"
     )
 
@@ -537,6 +551,7 @@ class JobFetchResult:
     search_requests_attempted: int = 0
     pages_stopped_low_yield: int = 0
     stop_reasons: dict[str, int] = field(default_factory=dict)
+    jobspy_health: dict = field(default_factory=dict)
 
 
 def fetch_all_jobs(
@@ -548,9 +563,11 @@ def fetch_all_jobs(
     # Generate queries from configuration
     planner = SearchPlanner()
     SEARCH_TRACKS = planner.generate_queries()
-    
+
     if not SEARCH_TRACKS:
-        raise ValueError("SearchPlanner generated 0 queries. Check config/user_profile.yaml")
+        raise ValueError(
+            "SearchPlanner generated 0 queries. Check config/user_profile.yaml"
+        )
 
     def _env_int_list(name: str, default: str) -> list[int]:
         raw = os.getenv(name, default)
@@ -676,13 +693,13 @@ def fetch_all_jobs(
                             "search_query",
                             query["keyword"],
                         )
-                        
+
                         setattr(
                             job,
                             "search_profile",
                             query.get("search_profile", "unknown"),
                         )
-                        
+
                         setattr(
                             job,
                             "matched_technology",
@@ -919,7 +936,7 @@ def resolve_job_acquisition(
 
 
 def acquire_jobs(
-    jc: NaukriJobClient,
+    providers: dict,
     cache: JobSearchCache,
     cooldown: SearchChallengeCooldown,
     mode: str = "full",
@@ -928,37 +945,128 @@ def acquire_jobs(
     """
     Execute cooldown-aware job acquisition.
 
-    The cooldown prevents repeated search requests after a CAPTCHA
-    challenge while still allowing cache-backed pipeline execution.
-    If force_live is True, the cooldown check is bypassed.
+    Naukri acquisition is unchanged. If JobSpy is enabled in
+    config/search_strategy.yaml, its results are fetched independently
+    and merged into the final list.
+
+    Naukri CAPTCHA cooldown suppresses only live Naukri searches.
+    JobSpy acquisition continues to run so providers remain isolated.
     """
 
-    if not force_live and cooldown.is_active():
+    # Load configuration to get provider_priority
+    acq_config = load_acquisition_config()
+
+    run_naukri = "naukri" in providers
+    run_jobspy = "jobspy" in providers
+
+    print("Entered acquire_jobs()")
+    print(f"Running Naukri = {run_naukri}")
+    print(f"Running JobSpy = {run_jobspy}")
+
+    # ---------------------------------------------------------------
+    # Acquire Naukri jobs (live or cache)
+    # ---------------------------------------------------------------
+    if not run_naukri:
+        naukri_jobs = []
         fetch_result = JobFetchResult(
             jobs=[],
             challenge_encountered=False,
-            completed_normally=False,
-            search_skipped_due_to_cooldown=True,
-            search_requests_attempted=0,
+            completed_normally=True,
         )
+    else:
+        jc = providers["naukri"]
+        if not force_live and cooldown.is_active():
+            fetch_result = JobFetchResult(
+                jobs=[],
+                challenge_encountered=False,
+                completed_normally=False,
+                search_skipped_due_to_cooldown=True,
+                search_requests_attempted=0,
+            )
 
-        jobs = resolve_job_acquisition(
-            fetch_result=fetch_result,
-            cache=cache,
+            naukri_jobs = resolve_job_acquisition(
+                fetch_result=fetch_result,
+                cache=cache,
+            )
+
+        else:
+            print(">>> RUNNING NAUKRI ACQUISITION")
+            fetch_result = (
+                fetch_all_jobs(jc) if mode == "full" else fetch_all_jobs(jc, mode=mode)
+            )
+
+            if fetch_result.challenge_encountered:
+                cooldown.record_challenge()
+
+            naukri_jobs = resolve_job_acquisition(
+                fetch_result=fetch_result,
+                cache=cache,
+            )
+
+    for job in naukri_jobs:
+        setattr(job, "provider_id", "naukri")
+
+    # ---------------------------------------------------------------
+    # JobSpy additive acquisition
+    #
+    # Note: Does not mutate fetch_result since JobSpy does not run under
+    # the Naukri challenge constraints.
+    #
+    # Failure of JobSpy never affects Naukri.
+    # ---------------------------------------------------------------
+
+    jobspy_jobs = []
+    if not run_jobspy:
+        print("Skipping JobSpy acquisition (disabled or not initialized).")
+    else:
+        jobspy_provider = providers["jobspy"]
+
+        # Reuse identical search queries generated for Naukri.
+        planner = SearchPlanner()
+        search_tracks = planner.generate_queries()
+        print("Calling fetch_jobspy_jobs()")
+        jobspy_jobs = fetch_jobspy_jobs(
+            provider=jobspy_provider,
+            search_tracks=search_tracks,
         )
+        print(f"JobSpy returned {len(jobspy_jobs)} jobs")
+        jobspy_queries = sum(
+            h.get("total_searches", 0)
+            for h in jobspy_provider.health_summary().values()
+        )
+        fetch_result.search_requests_attempted += jobspy_queries
+        
+        health_summary = {}
+        degraded = getattr(jobspy_provider, "degraded_providers", set())
+        for site, h in jobspy_provider.health_summary().items():
+            site_status = "degraded" if site in degraded else "active"
+            health_summary[site] = {
+                "status": site_status,
+                **h
+            }
+        fetch_result.jobspy_health = health_summary
 
-        return jobs, fetch_result
+    for job in jobspy_jobs:
+        setattr(job, "provider_id", "jobspy")
 
-    fetch_result = (
-        fetch_all_jobs(jc) if mode == "full" else fetch_all_jobs(jc, mode=mode)
+    provider_priority = acq_config.get(
+        "provider_priority",
+        ["naukri", "indeed", "linkedin", "google"],
     )
 
-    if fetch_result.challenge_encountered:
-        cooldown.record_challenge()
+    jobs = merge_jobs(
+        naukri_jobs=naukri_jobs,
+        jobspy_jobs=jobspy_jobs,
+        provider_priority=provider_priority,
+    )
 
-    jobs = resolve_job_acquisition(
-        fetch_result=fetch_result,
-        cache=cache,
+    print(f"Merged {len(jobs)} jobs")
+
+    logger.info(
+        "Acquisition merge: naukri=%d jobspy=%d merged=%d",
+        len(naukri_jobs),
+        len(jobspy_jobs),
+        len(jobs),
     )
 
     return jobs, fetch_result
@@ -1032,13 +1140,19 @@ def resolve_questionnaire(
     return answers, unresolved
 
 
-class JobApplicationClient(Protocol):
+class JobProvider(Protocol):
     """
-    Structural interface required by process_job_application().
+    Structural interface required by downstream pipeline stages.
 
-    NaukriJobClient and test doubles can satisfy this protocol
+    Providers (e.g. NaukriJobClient) and test doubles can satisfy this protocol
     without inheritance or concrete-type coupling.
     """
+
+    def get_job_details(self, job_id: str) -> dict | None: ...
+
+    def is_external_apply(self, job_id: str) -> bool: ...
+
+    def reconcile_history(self, ledger: Any) -> dict | None: ...
 
     def apply_job(
         self,
@@ -1128,7 +1242,7 @@ def execute_with_safe_retry(
 
 
 def process_job_application(
-    jc: JobApplicationClient,
+    jc: JobProvider,
     job: Any,
     meta: dict,
     questionnaire_resolver: QuestionnaireResolver,
@@ -1290,7 +1404,7 @@ def _extract_job_detail_description(detail: dict) -> str:
 
 
 def enrich_jobs_with_details(
-    jc,
+    providers: dict,
     jobs: list[dict],
     detail_cache: dict[str, dict],
     # Removed explorer
@@ -1298,6 +1412,11 @@ def enrich_jobs_with_details(
     """
     Fetch each candidate's detail payload once and enrich the normalized
     classifier job with its full description.
+
+    JobSpy jobs (job_id starting with "jobspy_") are skipped for Naukri
+    detail enrichment because they use a different provider and the Naukri
+    detail API will simply 404 on their IDs.  They retain whatever
+    description the JobSpy adapter already extracted.
 
     Failed detail fetches are retained with their existing search-result
     description rather than silently deleting potentially valid candidates.
@@ -1315,6 +1434,17 @@ def enrich_jobs_with_details(
             enriched_jobs.append(job)
             continue
 
+        if job_id.startswith("jobspy_"):
+            enriched_jobs.append(job)
+            continue
+
+        provider_id = job.get("provider_id", "naukri")
+        provider = providers.get(provider_id)
+
+        if not provider:
+            enriched_jobs.append(job)
+            continue
+
         print(
             f"  [DETAIL {index}/{len(jobs)}] "
             f"{job.get('title')} @ "
@@ -1325,9 +1455,9 @@ def enrich_jobs_with_details(
             detail = detail_cache.get(job_id)
 
             if detail is None:
-                detail = jc.get_job_details(job_id)
-                detail_cache[job_id] = detail
-                pass
+                detail = provider.get_job_details(job_id)
+                if detail:
+                    detail_cache[job_id] = detail
 
             full_description = _extract_job_detail_description(detail)
 
@@ -1376,7 +1506,7 @@ def enrich_jobs_with_details(
 
 
 def run_application_batch(
-    jc,
+    providers: dict,
     jobs: list,
     score_map: dict,
     questionnaire_resolver: QuestionnaireResolver | None,
@@ -1389,7 +1519,7 @@ def run_application_batch(
     metrics: PipelineRunMetrics | None = None,
     rejected_jobs: list | None = None,
     # Removed explorer
-    exec_context = None,
+    exec_context=None,
 ) -> ApplicationRunSummary:
     """
     Execute the application workflow for a batch of filtered jobs.
@@ -1436,17 +1566,21 @@ def run_application_batch(
 
     total_candidates = len(jobs)
     rejected_jobs_list = rejected_jobs if rejected_jobs is not None else []
+
     def _record_app_reject(job, code, reason):
         from datetime import datetime, timezone
-        rejected_jobs_list.append({
-            "job_id": str(getattr(job, "job_id", "")),
-            "title": str(getattr(job, "title", "Unknown")),
-            "company": str(getattr(job, "company", "Unknown")),
-            "stage": "Application",
-            "code": code,
-            "reason": str(reason),
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        })
+
+        rejected_jobs_list.append(
+            {
+                "job_id": str(getattr(job, "job_id", "")),
+                "title": str(getattr(job, "title", "Unknown")),
+                "company": str(getattr(job, "company", "Unknown")),
+                "stage": "Application",
+                "code": code,
+                "reason": str(reason),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+        )
 
     manual_action_queue = ManualActionQueue(
         os.getenv(
@@ -1494,12 +1628,18 @@ def run_application_batch(
             )
 
             already_applied_count += 1
-            _record_app_reject(job, 'ALREADY_APPLIED', 'Previously applied in an earlier run.')
+            _record_app_reject(
+                job, "ALREADY_APPLIED", "Previously applied in an earlier run."
+            )
             if ledger is not None:
                 ledger.record(job, "already_applied", meta=meta)
-            
+
             if exec_context:
-                exec_context.reject(job, reason="Job is in ledger applied_job_ids", code="ALREADY_APPLIED")
+                exec_context.reject(
+                    job,
+                    reason="Job is in ledger applied_job_ids",
+                    code="ALREADY_APPLIED",
+                )
             continue
 
         # ----------------------------------------------------------
@@ -1520,7 +1660,9 @@ def run_application_batch(
             )
 
             policy_rejected_count += 1
-            _record_app_reject(job, policy_evaluation.reason.value, policy_evaluation.detail)
+            _record_app_reject(
+                job, policy_evaluation.reason.value, policy_evaluation.detail
+            )
             if ledger is not None:
                 ledger.record(
                     job,
@@ -1544,10 +1686,18 @@ def run_application_batch(
                 "Leaving %s queued candidate(s) for a later run.",
                 run_limit_reached_count,
             )
-            for remaining_job in jobs[index - 1:]:
-                _record_app_reject(remaining_job, 'APPLICATION_QUOTA', 'Per-run successful submission limit reached')
+            for remaining_job in jobs[index - 1 :]:
+                _record_app_reject(
+                    remaining_job,
+                    "APPLICATION_QUOTA",
+                    "Per-run successful submission limit reached",
+                )
                 if exec_context:
-                    exec_context.reject(remaining_job, 'Per-run successful submission limit reached', 'APPLICATION_QUOTA')
+                    exec_context.reject(
+                        remaining_job,
+                        "Per-run successful submission limit reached",
+                        "APPLICATION_QUOTA",
+                    )
             break
 
         if effective_policy.dry_run:
@@ -1567,6 +1717,15 @@ def run_application_batch(
         # ----------------------------------------------------------
 
         try:
+            provider_id = getattr(job, "provider_id", "naukri")
+            jc = providers.get(provider_id)
+
+            if not jc:
+                raise ValueError(
+                    f"Provider '{provider_id}' is not configured "
+                    "in providers dictionary"
+                )
+
             is_external = meta.get("is_external_apply")
             if is_external is None:
                 is_external = jc.is_external_apply(job.job_id)
@@ -1576,11 +1735,11 @@ def run_application_batch(
                 returns_external_url=True,
                 requires_authentication=True,
                 supports_resume_upload=True,
-                supports_questionnaires=True
+                supports_questionnaires=True,
             )
 
             external_url = getattr(job, "apply_link", None) if is_external else None
-            
+
             route_result = ApplicationRouter.route(job, capabilities, external_url)
 
             if route_result.strategy != RoutingStrategy.NATIVE_APPLY:
@@ -1593,19 +1752,30 @@ def run_application_batch(
                 elif route_result.strategy == RoutingStrategy.UNSUPPORTED:
                     unsupported_count += 1
 
-                _record_app_reject(job, route_result.strategy.name, route_result.reasoning)
+                _record_app_reject(
+                    job, route_result.strategy.name, route_result.reasoning
+                )
                 if exec_context:
-                    exec_context.route(job, strategy=route_result.strategy.name, reason=route_result.reasoning)
+                    exec_context.route(
+                        job,
+                        strategy=route_result.strategy.name,
+                        reason=route_result.reasoning,
+                    )
                 if ledger is not None:
                     ledger.record(job, route_result.strategy.name.lower(), meta=meta)
-                
+
                 # enqueue for manual review or future queue workers
                 job_id = str(job.job_id)
                 score_result = score_map.get(job_id, {})
                 manual_action_queue.enqueue_external_apply(
                     job=job,
-                    score=int(score_result.get("score", score_result.get("ai_score", 0)) or 0),
-                    reason=str(score_result.get("ai_detail", score_result.get("ai_reason", "")) or ""),
+                    score=int(
+                        score_result.get("score", score_result.get("ai_score", 0)) or 0
+                    ),
+                    reason=str(
+                        score_result.get("ai_detail", score_result.get("ai_reason", ""))
+                        or ""
+                    ),
                     run_id=run_id,
                 )
                 continue
@@ -1653,9 +1823,15 @@ def run_application_batch(
                 applied_jobs_set.add(job.job_id)
 
                 already_applied_count += 1
-                _record_app_reject(job, 'ALREADY_APPLIED', 'Server reports job already applied')
+                _record_app_reject(
+                    job, "ALREADY_APPLIED", "Server reports job already applied"
+                )
                 if exec_context:
-                    exec_context.reject(job, reason="Server reports job already applied", code="ALREADY_APPLIED")
+                    exec_context.reject(
+                        job,
+                        reason="Server reports job already applied",
+                        code="ALREADY_APPLIED",
+                    )
 
                 if ledger is not None:
                     ledger.record(job, "already_applied", meta=meta)
@@ -1679,9 +1855,13 @@ def run_application_batch(
             applied_jobs_list.append(job)
             successful_submissions += 1
             breaker.success()
-            
+
             if exec_context:
-                exec_context.apply(job, outcome="Applied", explanation={"cause": "Successfully processed application"})
+                exec_context.apply(
+                    job,
+                    outcome="Applied",
+                    explanation={"cause": "Successfully processed application"},
+                )
 
             if ledger is not None:
                 ledger.record(job, "applied", meta=meta)
@@ -1689,7 +1869,7 @@ def run_application_batch(
         except ManualReviewRequired as exc:
             print_status_manual_review(exc)
             manual_review_count += 1
-            _record_app_reject(job, 'MANUAL_REVIEW', str(exc))
+            _record_app_reject(job, "MANUAL_REVIEW", str(exc))
             if exec_context:
                 exec_context.route(job, strategy="MANUAL_REVIEW", reason=str(exc))
             breaker.success()
@@ -1741,7 +1921,7 @@ def run_application_batch(
             sleep_fn(3)
 
     # Removed explorer.finish_stage
-        
+
     if exec_context:
         exec_context.finish_stage()
 
@@ -2013,35 +2193,9 @@ def run_application_cycle(
     Returns structured run data for the orchestration layer.
     """
 
-    username = os.getenv("NAUKRI_USERNAME")
-    password = os.getenv("NAUKRI_PASSWORD")
-
-    # --------------------------------------------------------------------------
-    # Step 1: Authenticate and establish session
-    # --------------------------------------------------------------------------
-
-    print_section_title("logging in to naukri")
-
-    client = NaukriLoginClient(
-        username,
-        password,
-    )
-
-    client.login()
-
-    print(
-        f"  {Fore.GREEN}"
-        f"Logged in as "
-        f"{Fore.YELLOW}"
-        f"{username}"
-        f"{Style.RESET_ALL}"
-    )
-
     # --------------------------------------------------------------------------
     # Step 2: Construct application dependencies
     # --------------------------------------------------------------------------
-
-    jc = NaukriJobClient(client)
 
     omlx_client = OMLXClient(
         model="qwen3.5-4b",
@@ -2085,15 +2239,25 @@ def run_application_cycle(
         ),
     )
 
+    print("\n========== ACQUIRE_JOBS ==========")
+    print("Entered acquire_jobs()")
+
+    from src.orchestration.provider_factory import initialize_providers
+    providers = initialize_providers()
+
     jobs, fetch_result = acquire_jobs(
-        jc=jc,
+        providers=providers,
         cache=job_cache,
         cooldown=search_cooldown,
     )
 
+    # Note: Naukri client (jc) is accessed from providers if needed for enrichment
+    jc = providers.get("naukri")
+
     print_acquisition_summary(
-        jobs=jobs,
-        fetch_result=fetch_result,
+        jobs,
+        fetch_result,
+        suppressed=(jc is not None and search_cooldown.is_active()),
     )
 
     if not jobs:
@@ -2137,7 +2301,7 @@ def run_application_cycle(
     detail_cache: dict[str, dict] = {}
 
     enriched_candidates = enrich_jobs_with_details(
-        jc=jc,
+        providers=providers,
         jobs=candidates,
         detail_cache=detail_cache,
     )
@@ -2372,7 +2536,7 @@ def run_application_cycle(
     )
 
     run_summary = run_application_batch(
-        jc=jc,
+        providers=providers,
         jobs=allowed_jobs,
         score_map=score_map,
         questionnaire_resolver=questionnaire_resolver,

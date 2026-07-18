@@ -542,6 +542,11 @@ class JobFilterPipeline2:
                 raw_tags = re.split(r"[,;|]", raw_tags)
             tags = [t.strip().lower() for t in raw_tags if t.strip()]
 
+            # Preserve existing decision history if seeded, else seed it
+            decision_history = job.get("decision_history")
+            if not decision_history:
+                decision_history = [{"stage": "Acquisition"}]
+
             normalized.append(
                 {
                     "job_id": job.get("job_id"),
@@ -559,8 +564,13 @@ class JobFilterPipeline2:
                     "search_query": (job.get("search_query") or ""),
                     "search_profile": (job.get("search_profile") or "unknown"),
                     "matched_technology": (job.get("matched_technology") or ""),
-                    "decision_history": [{"stage": "Acquisition"}],
+                    "decision_history": decision_history,
                     "rejection_reason": "",
+                    "provider_id": job.get("provider_id", "unknown"),
+                    "provider_name": job.get("provider_name", "unknown"),
+                    "provider_source": job.get("provider_source", "unknown"),
+                    "provider_url": job.get("provider_url", ""),
+                    "provider_job_id": job.get("provider_job_id", ""),
                 }
             )
 

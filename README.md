@@ -268,6 +268,7 @@ flowchart TD
     subgraph Discovery
     S1[Naukri Search API] --> B[Acquisition Orchestrator]
     S2[Recommended Jobs] --> B
+    S3[JobSpy: Indeed / LinkedIn / Google] --> B
     B --> C{Search Healthy?}
     C -->|Yes| SR[Summary Ranking]
     C -->|Challenge| E[Challenge Cooldown]
@@ -1178,6 +1179,58 @@ The system is designed for different execution modes rather than one permanently
 A normal operating cycle is:
 
 ```text
+1. Broad or incremental acquisition
+2. Classification and ranking
+3. Controlled application batch
+4. Persist local outcomes
+5. Reconcile server history
+6. Inspect lifecycle funnel
+7. Allow adaptive strategy only when evidence thresholds are met
+```
+
+The system does not assume every run should exhaust its configured application limit. Eligibility, diversity and available fresh supply determine the actual batch size.
+
+---
+
+### Provider Selection
+
+The pipeline supports multi-provider execution, allowing you to run Naukri and JobSpy independently or together.
+
+```bash
+# Run both providers (default if enabled in config)
+python run_pipeline.py --provider all
+
+# Run only Naukri
+python run_pipeline.py --provider naukri
+
+# Run only JobSpy
+python run_pipeline.py --provider jobspy
+```
+
+#### Supported Providers & Prioritization
+
+The acquisition layer supports:
+- **Naukri**: Native authenticated API client (primary channel for direct apply flows).
+- **JobSpy**: Non-authenticated scraping provider (`python-jobspy` wrapper) supporting:
+  - **Indeed** (Priority 1: Stable, high yield, supports keyword exclusion queries)
+  - **LinkedIn** (Priority 2: Stable guest-scraping, moderate yield)
+  - **Google Jobs** (Priority 3: Best effort, prone to upstream parser/markup changes)
+
+You can configure the active providers and search priorities under `profiles` in `config/search_strategy.yaml`:
+```yaml
+profiles:
+  aggressive:
+    providers: ["indeed", "linkedin", "google"]
+```
+
+#### Provider Health & Degradation Safeguards
+
+To prevent unstable job boards from exhausting network resources or blocking the pipeline, the system tracks provider health at runtime:
+- **Degradation Detection**: If a site (such as Google Jobs) returns `0` results or raises scraper exceptions for **3 consecutive queries**, it is marked as `degraded` for the current execution.
+- **Resilient Execution**: The remaining queries for the degraded site are skipped, and the acquisition pipeline continues with other healthy sites (Indeed, LinkedIn) without raising terminal exceptions.
+- **Interleaved Budgeting**: In `benchmarking_mode`, queries are interleaved across providers (e.g. Indeed Q1 -> LinkedIn Q1 -> Google Q1 -> Indeed Q2 ...) to ensure a single degraded site cannot monopolize the benchmark quota.
+- **Telemetry Visibility**: Provider health statuses are written directly to `acquisition.json` and logged in pipeline runs.
+
 ### Acquisition Mode vs Cache Policy
 
 Acquisition depth is controlled by the mode (`full` or `incremental`).
@@ -1199,17 +1252,6 @@ python run_pipeline.py \
   --confirm-live APPLY_LIVE \
   --acquisition-mode full
 ```
-
-1. Broad or incremental acquisition
-2. Classification and ranking
-3. Controlled application batch
-4. Persist local outcomes
-5. Reconcile server history
-6. Inspect lifecycle funnel
-7. Allow adaptive strategy only when evidence thresholds are met
-
-
-The system does not assume every run should exhaust its configured application limit. Eligibility, diversity and available fresh supply determine the actual batch size.
 
 ---
 
