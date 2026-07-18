@@ -15,15 +15,16 @@
 
 <p align="center">
   <img alt="Python" src="https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white">
-  <img alt="Tests" src="https://img.shields.io/badge/tests-passing-brightgreen">
-  <img alt="Pipeline" src="https://img.shields.io/badge/pipeline-8%20stages-success">
-  <img alt="Architecture" src="https://img.shields.io/badge/architecture-modular-blueviolet">
-  <img alt="Core Flow" src="https://img.shields.io/badge/core%20flow-browserless-success">
+  <img alt="Tests" src="https://img.shields.io/badge/tests-481%20passing-brightgreen">
+  <img alt="Pipeline" src="https://img.shields.io/badge/pipeline-policy--driven-success">
+  <img alt="Architecture" src="https://img.shields.io/badge/architecture-layered-blueviolet">
+  <img alt="Providers" src="https://img.shields.io/badge/providers-Naukri%20%7C%20JobSpy-2E8B57">
   <img alt="Tracking" src="https://img.shields.io/badge/tracking-SQLite-003B57?logo=sqlite&logoColor=white">
   <img alt="LLM" src="https://img.shields.io/badge/LLM-local--first-orange">
-  <img alt="Status" src="https://img.shields.io/badge/status-active%20development-blue">
+  <img alt="Strategy" src="https://img.shields.io/badge/strategy-adaptive-orange">
+  <img alt="Observability" src="https://img.shields.io/badge/observability-built--in-8A2BE2">
   <img alt="Control Plane" src="https://img.shields.io/badge/control%20plane-React-61DAFB">
-  <img alt="UI" src="https://img.shields.io/badge/UI-enterprise%20console-7C83FD">
+  <img alt="UI" src="https://img.shields.io/badge/UI-Operations%20Console-7C83FD">
 </p>
 
 <p align="center">
@@ -126,7 +127,7 @@ Review Analytics
 | Monitoring | Server application-history reconciliation | ✅ |
 | Lifecycle | Submitted → Viewed → Shortlisted → Interview → Outcome | ✅ |
 | Analytics | Velocity, age, response time, funnel and segment performance | ✅ |
-| Control plane | NiceGUI operations console for execution, inspection and workflow management | ✅ |
+| Control plane | React Operations Console for execution, inspection and workflow management | ✅ |
 | Pipeline operations | Dry-run/live launch controls, bounded execution and runtime inspection | ✅ |
 | Run inspection | Immutable artifact history, stage state and diagnostic evidence | ✅ |
 | System health | Runtime, storage, configuration and integration diagnostics | ✅ |
@@ -297,7 +298,7 @@ flowchart TD
     M -->|Naukri Native| NAE[Naukri Engine]
     M -->|ATS Redirect| ATS[ATS Handler]
     M -->|External| EXT[External Engine]
-    
+
     NAE --> Q[Questionnaire Resolver]
     Q --> N[Application Ledger]
     end
@@ -923,6 +924,35 @@ The control plane provides the primary operational interface for pipeline execut
 
 The CLI entry points remain available for automation, debugging and direct operational use.
 
+---
+
+### Command Line Reference
+
+```bash
+run_pipeline.py
+
+--live
+    Enables real application submission.
+
+--confirm-live APPLY_LIVE
+    Required confirmation token for live execution.
+
+--provider
+    all | naukri | jobspy
+
+--acquisition-mode
+    full | incremental
+
+--force-live
+    Ignores recorded acquisition cooldowns and performs a live search.
+
+--max-applications
+    Optional execution ceiling.
+    Omit for unlimited policy-controlled execution.
+
+--canary
+    Automatically limits a live execution to one application.
+```
 
 ---
 
@@ -1012,10 +1042,24 @@ A full run is automatically performed when interactive mode starts.
 
 This eliminates waiting for the next scheduled execution during local development.
 
+### Full Live Run / Production Execution
+
+Executes a full live acquisition across all configured providers and applies to every job that survives ranking, policy, diversity and safety constraints. No artificial application limit is imposed.
+
+```bash
+python run_pipeline.py \
+  --live \
+  --confirm-live APPLY_LIVE \
+  --acquisition-mode full \
+  --provider all \
+  --force-live
+```
+
 ### Broad validation dry run
 
 ```bash
-APPLICATION_DRY_RUN=true python run_pipeline.py --max-applications 50
+python run_pipeline.py \
+    --max-applications 50
 ```
 
 A broad dry run exercises the complete staged pipeline without submitting applications:
@@ -1058,7 +1102,10 @@ The exact counts depend on live search results, cache state and configured searc
 ### Small live canary
 
 ```bash
-APPLICATION_DRY_RUN=false python run_pipeline.py --max-applications 3
+python run_pipeline.py \
+  --live \
+  --confirm-live APPLY_LIVE \
+  --max-applications 3
 ```
 
 Use small live batches while validating questionnaire handling, response interpretation, ledger writes and server reconciliation.
@@ -1066,7 +1113,10 @@ Use small live batches while validating questionnaire handling, response interpr
 ### Controlled live run
 
 ```bash
-APPLICATION_DRY_RUN=false python run_pipeline.py --max-applications 15
+python run_pipeline.py \
+  --live \
+  --confirm-live APPLY_LIVE \
+  --max-applications 15
 ```
 
 `--max-applications` is a safety ceiling, not an application target. The pipeline may select fewer jobs when fewer candidates survive qualification and policy.
@@ -1117,7 +1167,7 @@ git diff --check
 
 Current validation status:
 
-- 326 backend tests passing
+- 481 backend tests passing
 - Scheduler runtime tests passing
 - Interactive scheduler tests passing
 - Application tests passing
@@ -1198,13 +1248,17 @@ The pipeline supports multi-provider execution, allowing you to run Naukri and J
 
 ```bash
 # Run both providers (default if enabled in config)
-python run_pipeline.py --provider all
+python run_pipeline.py \
+    --acquisition-mode full \
+    --provider all
 
 # Run only Naukri
-python run_pipeline.py --provider naukri
+python run_pipeline.py \
+    --provider naukri
 
 # Run only JobSpy
-python run_pipeline.py --provider jobspy
+python run_pipeline.py \
+    --provider jobspy
 ```
 
 #### Supported Providers & Prioritization
@@ -1250,7 +1304,9 @@ python run_pipeline.py --acquisition-mode full --force-live
 python run_pipeline.py \
   --live \
   --confirm-live APPLY_LIVE \
-  --acquisition-mode full
+  --acquisition-mode full \
+  --provider all \
+  --force-live
 ```
 
 ---
