@@ -52,6 +52,11 @@ def fetch_jobspy_jobs(
         return []
 
     cfg = provider.config
+    print("\n=== JOBSPY CONFIG ===")
+    print(f"Enabled : {provider.is_enabled()}")
+    print(f"Sites   : {cfg.sites}")
+    print(f"Cooldown: {cfg.cooldown_seconds}")
+    print("=====================\n")
     seen_ids: set[str] = set()
     all_jobs: list = []
     total_queries = len(search_tracks) * len(cfg.sites)
@@ -61,6 +66,10 @@ def fetch_jobspy_jobs(
         f"fetching JobSpy jobs  "
         f"({len(search_tracks)} queries × {len(cfg.sites)} sites)"
     )
+
+    print(f"Search tracks: {len(search_tracks)}")
+    for i, q in enumerate(search_tracks, 1):
+        print(f"{i}. keyword='{q.get('keyword')}' " f"location='{q.get('location')}'")
 
     for site in cfg.sites:
         if not provider.is_site_available(site):
@@ -76,11 +85,19 @@ def fetch_jobspy_jobs(
             done += 1
 
             try:
+                print(
+                    f"\nCalling JobSpy:"
+                    f"\n  Site     : {site}"
+                    f"\n  Keyword  : {keyword}"
+                    f"\n  Location : {location}"
+                )
                 jobs = provider.search(
                     keyword=keyword,
                     location=location,
                     site=site,
                 )
+                for job in jobs[:3]:
+                    print(f"  -> {job.title} | " f"{job.company} | " f"{job.location}")
             except Exception as exc:
                 # Failure isolation: log and continue.  The exception type
                 # (challenge vs network vs parse) was already handled inside
@@ -94,6 +111,7 @@ def fetch_jobspy_jobs(
             new_jobs = []
             for job in jobs:
                 if job.job_id in seen_ids:
+                    print(f"Duplicate skipped: {job.job_id}")
                     continue
                 seen_ids.add(job.job_id)
                 # Tag the acquisition metadata used by print_acquisition_summary
@@ -122,5 +140,12 @@ def fetch_jobspy_jobs(
         f"JobSpy total unique jobs: "
         f"{Style.BRIGHT}{len(all_jobs)}{Style.RESET_ALL}"
     )
+
+    print("\n========== JOBSPY SUMMARY ==========")
+    print(f"Queries      : {len(search_tracks)}")
+    print(f"Sites        : {len(cfg.sites)}")
+    print(f"API Calls    : {total_queries}")
+    print(f"Unique Jobs  : {len(all_jobs)}")
+    print("====================================")
 
     return all_jobs
