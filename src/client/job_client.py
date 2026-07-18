@@ -1,5 +1,6 @@
 import logging
 from datetime import UTC, datetime
+from typing import Any
 
 from src.client.naukri_client import NaukriLoginClient
 from src.config.constants import (
