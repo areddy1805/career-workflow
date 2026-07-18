@@ -2,9 +2,20 @@ import { useQuery } from '@tanstack/react-query';
 import { fetchDashboard } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
-import { Activity, PlayCircle, CheckCircle2 } from 'lucide-react';
+import { Activity, PlayCircle, CheckCircle2, Globe } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { RelativeTime } from '@/components/RelativeTime';
+
+const STAGES = [
+  { key: 'preflight', label: 'Preflight', short: 'PF' },
+  { key: 'acquisition', label: 'Acquisition', short: 'ACQ' },
+  { key: 'classification', label: 'Classification', short: 'CLS' },
+  { key: 'selection', label: 'Selection', short: 'SEL' },
+  { key: 'application', label: 'Application', short: 'APP' },
+  { key: 'reconciliation', label: 'Reconciliation', short: 'REC' },
+  { key: 'strategy', label: 'Strategy', short: 'STR' },
+  { key: 'report', label: 'Report', short: 'REP' },
+];
 
 export default function Dashboard() {
   const { data: dashboard, isLoading } = useQuery({
@@ -25,10 +36,25 @@ export default function Dashboard() {
     );
   }
 
-  const { summary, lifecycle, latest_run, system_health, upcoming_executions, top_companies } = dashboard || {};
+  const { summary, lifecycle: rawLifecycle, latest_run, system_health, upcoming_executions, top_companies, provider_health } = dashboard || {};
   const totalJobs = summary?.total_jobs || 0;
   const totalApplied = summary?.total_applied || 0;
   const applicationRate = totalJobs > 0 ? ((totalApplied / totalJobs) * 100).toFixed(1) : '0';
+
+  // Map raw lifecycle stage names to human-readable labels for the chart
+  const LIFECYCLE_LABELS: Record<string, string> = {
+    UNKNOWN: 'Acquired',
+    SUBMITTED: 'Submitted',
+    VIEWED: 'Viewed',
+    SHORTLISTED: 'Shortlisted',
+    INTERVIEW: 'Interview',
+    REJECTED: 'Rejected',
+    OFFER: 'Offer',
+  };
+  const lifecycle = (rawLifecycle || []).map((d: any) => ({
+    ...d,
+    lifecycle_stage: LIFECYCLE_LABELS[d.lifecycle_stage] ?? d.lifecycle_stage,
+  }));
 
   return (
     <div className="h-full flex flex-col bg-background">
@@ -94,6 +120,55 @@ export default function Dashboard() {
           </Card>
         </div>
 
+        {/* Pipeline Stage Tracker */}
+        <Card className="shadow-none border-border/50 bg-card/50">
+          <CardHeader className="py-3">
+            <CardTitle className="text-xs uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+              <PlayCircle className="w-4 h-4 text-primary" />
+              Latest Run Stage Stepper ({latest_run?.run_id || 'No Run Active'})
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pb-4">
+            <div className="flex flex-col md:flex-row items-center justify-between gap-4 md:gap-2">
+              {STAGES.map((stage, idx) => {
+                const status = (latest_run?.stages?.[stage.key] || latest_run?.stage_results?.[stage.key] || 'PENDING').toUpperCase();
+                let color = 'bg-muted text-muted-foreground border-muted-foreground/20';
+                let statusLabel = 'Pending';
+                if (status === 'SUCCESS') {
+                  color = 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30 font-bold';
+                  statusLabel = 'Success';
+                } else if (status === 'FAILED') {
+                  color = 'bg-rose-500/10 text-rose-500 border-rose-500/30 font-bold';
+                  statusLabel = 'Failed';
+                } else if (status === 'RUNNING' || status === 'IN_PROGRESS') {
+                  color = 'bg-blue-500/10 text-blue-500 border-blue-500/30 font-bold animate-pulse';
+                  statusLabel = 'Running';
+                } else if (status === 'SKIPPED') {
+                  color = 'bg-orange-500/10 text-orange-500 border-orange-500/20';
+                  statusLabel = 'Skipped';
+                }
+
+                return (
+                  <div key={stage.key} className="flex-1 w-full flex items-center gap-2">
+                    <div className="flex flex-col items-center md:items-start flex-1">
+                      <div className={`w-full border rounded-md p-2 flex items-center justify-between ${color}`}>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 bg-background/50 rounded font-mono">{stage.short}</span>
+                          <span className="text-xs font-semibold">{stage.label}</span>
+                        </div>
+                        <span className="text-[10px] uppercase font-mono">{statusLabel}</span>
+                      </div>
+                    </div>
+                    {idx < STAGES.length - 1 && (
+                      <span className="hidden md:inline text-muted-foreground/30 text-lg">→</span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Funnel Chart */}
           <Card className="col-span-2 shadow-none border-border/50">
@@ -113,6 +188,57 @@ export default function Dashboard() {
                   <Bar dataKey="count" fill="hsl(var(--primary))" radius={[0, 2, 2, 0]} maxBarSize={30} />
                 </BarChart>
               </ResponsiveContainer>
+            </CardContent>
+          </Card>
+
+          {/* Provider Status & Health */}
+          <Card className="col-span-1 shadow-none border-border/50">
+            <CardHeader>
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                <Globe className="w-4 h-4 text-primary" />
+                Provider Status & Health
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {['indeed', 'linkedin', 'google'].map((provider) => {
+                const health = provider_health?.[provider] || { status: 'active', total_searches: 0, successful_searches: 0, success_rate: 1.0, average_latency_seconds: 0 };
+                const name = provider === 'google' ? 'Google Jobs' : provider === 'indeed' ? 'Indeed' : 'LinkedIn';
+                const status = (health.status || 'unknown').toLowerCase();
+                
+                let badgeColor = 'text-muted-foreground border-border bg-muted/20';
+                if (status === 'active') {
+                  badgeColor = 'text-green-500 border-green-500/20 bg-green-500/10';
+                } else if (status === 'degraded') {
+                  badgeColor = 'text-orange-500 border-orange-500/20 bg-orange-500/10';
+                } else if (status === 'disabled' || status === 'offline') {
+                  badgeColor = 'text-red-500 border-red-500/20 bg-red-500/10';
+                }
+
+                return (
+                  <div key={provider} className="flex flex-col gap-2 border-b border-border/20 last:border-0 pb-3 last:pb-0">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="font-semibold text-foreground capitalize">{name}</span>
+                      <Badge variant="outline" className={`font-mono text-[9px] uppercase rounded-sm px-1.5 ${badgeColor}`}>
+                        {status}
+                      </Badge>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 text-[10px] text-muted-foreground font-mono">
+                      <div>
+                        <span className="block text-[8px] uppercase tracking-wider text-muted-foreground/60">Searches</span>
+                        <span className="text-foreground font-medium">{health.total_searches || 0}</span>
+                      </div>
+                      <div>
+                        <span className="block text-[8px] uppercase tracking-wider text-muted-foreground/60">Success %</span>
+                        <span className="text-foreground font-medium">{Math.round((health.success_rate || 0) * 100)}%</span>
+                      </div>
+                      <div>
+                        <span className="block text-[8px] uppercase tracking-wider text-muted-foreground/60">Latency</span>
+                        <span className="text-foreground font-medium">{(health.average_latency_seconds || 0).toFixed(2)}s</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </CardContent>
           </Card>
 

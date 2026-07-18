@@ -59,7 +59,7 @@ def workflow_queue_transition(job_id: str, to_status: str, note: str = "") -> bo
         return False
 
 
-from control_center.run_inspector import read_json_artifact
+from control_center.run_inspector import inspect_run, read_json_artifact, read_text_artifact
 from api.schemas import (
     PipelineLaunchRequest,
     ManualJobRequest,
@@ -83,6 +83,15 @@ def get_dashboard() -> dict[str, Any]:
     upcoming = upcoming_executions()
     companies = top_companies()
 
+    # Get latest provider health from acquisition.json
+    provider_health = {}
+    latest_run_id = latest.get("run_id")
+    if latest_run_id:
+        try:
+            provider_health = read_json_artifact(latest_run_id, "acquisition.json").get("jobspy_health", {})
+        except Exception:
+            pass
+
     return {
         "summary": summary,
         "lifecycle": lifecycle,
@@ -90,6 +99,7 @@ def get_dashboard() -> dict[str, Any]:
         "system_health": health,
         "upcoming_executions": upcoming,
         "top_companies": companies,
+        "provider_health": provider_health,
     }
 
 
@@ -140,11 +150,43 @@ def get_runtime() -> dict[str, Any]:
     pipeline = get_pipeline_runtime()
     ui = get_ui_runtime()
     latest = get_latest_run_runtime()
+
+    # Enrich with detailed metrics and errors of the latest run
+    from control_center.data import latest_run
+
+    latest_run_info = latest_run()
+    latest_run_id = latest_run_info.get("run_id")
+
+    acquisition_metrics = {}
+    classification_metrics = {}
+    selection_metrics = {}
+    application_metrics = {}
+    errors = []
+
+    if latest_run_id:
+        acquisition_metrics = read_json_artifact(latest_run_id, "acquisition.json")
+        classification_metrics = read_json_artifact(latest_run_id, "classification_summary.json")
+        selection_metrics = read_json_artifact(latest_run_id, "selection.json")
+        application_metrics = read_json_artifact(latest_run_id, "application.json")
+        errors = latest_run_info.get("errors", [])
+
     return {
         "scheduler": scheduler,
         "pipeline": pipeline,
         "ui": ui,
         "latest_run": latest,
+        "latest_run_details": {
+            "run_id": latest_run_id,
+            "status": latest_run_info.get("status"),
+            "started_at": latest_run_info.get("started_at"),
+            "completed_at": latest_run_info.get("completed_at"),
+            "stages": latest_run_info.get("stages", {}),
+            "errors": errors,
+            "acquisition": acquisition_metrics,
+            "classification": classification_metrics,
+            "selection": selection_metrics,
+            "application": application_metrics,
+        }
     }
 
 
@@ -296,3 +338,16 @@ def api_get_search_intelligence() -> dict[str, Any]:
         "total_queries": len(queries),
         "queries": queries,
     }
+
+
+@router.get("/runs/{run_id}/artifacts")
+def get_run_artifacts_list(run_id: str) -> dict[str, Any]:
+    return inspect_run(run_id)
+
+
+@router.get("/runs/{run_id}/artifacts/{file_name}")
+def get_run_artifact_content(run_id: str, file_name: str) -> Any:
+    if file_name.lower().endswith(".json"):
+        return read_json_artifact(run_id, file_name)
+    else:
+        return {"content": read_text_artifact(run_id, file_name)}
