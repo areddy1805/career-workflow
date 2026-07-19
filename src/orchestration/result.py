@@ -36,6 +36,8 @@ class PipelineResult:
     started_at: datetime | None = None
     completed_at: datetime | None = None
 
+    cache_metrics: dict[str, Any] = field(default_factory=dict)
+
     stage_results: dict[str, Any] = field(default_factory=dict)
     errors: list[dict[str, Any]] = field(default_factory=list)
 

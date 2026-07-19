@@ -22,6 +22,18 @@ class PipelineRunMetrics:
     filtering_time: float = 0.0
     application_time: float = 0.0
 
+    # Cache Metrics
+    llm_cache_hits: int = 0
+    llm_cache_misses: int = 0
+    embedding_cache_hits: int = 0
+    embedding_cache_misses: int = 0
+    detail_cache_hits: int = 0
+    detail_cache_misses: int = 0
+    http_cache_hits: int = 0
+    http_cache_misses: int = 0
+    total_cache_lookup_time_ms: float = 0.0
+    total_cache_save_time_ms: float = 0.0
+
     def record_rejection(self, reason: str):
         self.skipped_reasons[reason] = self.skipped_reasons.get(reason, 0) + 1
 

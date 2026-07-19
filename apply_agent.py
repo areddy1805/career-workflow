@@ -61,6 +61,8 @@ from src.search.planner import SearchPlanner
 from src.search.challenge_cooldown import SearchChallengeCooldown
 from src.search.job_search_cache import JobSearchCache
 from src.utils.questionnaire_telemetry import log_unresolved_questions
+from src.cache.cache_manager import CacheManager
+from src.cache.fingerprint import compute_detail_fetch_fingerprint
 
 # JobSpy acquisition — additive, isolated from Naukri path.
 from src.acquisition.config import load_acquisition_config
@@ -1403,8 +1405,8 @@ def _extract_job_detail_description(detail: dict) -> str:
 def enrich_jobs_with_details(
     providers: dict,
     jobs: list[dict],
-    detail_cache: dict[str, dict],
-    # Removed explorer
+    detail_cache: dict[str, dict] | None = None,
+    cache_manager: CacheManager | None = None,
 ) -> list[dict]:
     """
     Fetch each candidate's detail payload once and enrich the normalized
@@ -1449,12 +1451,42 @@ def enrich_jobs_with_details(
         )
 
         try:
-            detail = detail_cache.get(job_id)
+            detail = None
+            fingerprint = None
+            
+            if cache_manager:
+                fingerprint = compute_detail_fetch_fingerprint(provider_id, job_id, "")
+                start_time = time.perf_counter()
+                record = cache_manager.detail.get(fingerprint)
+                cache_manager.track_lookup((time.perf_counter() - start_time) * 1000)
+                
+                if record:
+                    import json
+                    try:
+                        detail = json.loads(record["content"])
+                        cache_manager.metrics["detail_hits"] += 1
+                    except json.JSONDecodeError:
+                        pass
+                else:
+                    cache_manager.metrics["detail_misses"] += 1
+            elif detail_cache is not None:
+                detail = detail_cache.get(job_id)
 
             if detail is None:
                 detail = provider.get_job_details(job_id)
                 if detail:
-                    detail_cache[job_id] = detail
+                    if cache_manager and fingerprint:
+                        import json
+                        start_time = time.perf_counter()
+                        cache_manager.detail.set(
+                            fingerprint=fingerprint,
+                            provider=provider_id,
+                            job_id=job_id,
+                            content=json.dumps(detail)
+                        )
+                        cache_manager.track_save((time.perf_counter() - start_time) * 1000)
+                    elif detail_cache is not None:
+                        detail_cache[job_id] = detail
 
             full_description = _extract_job_detail_description(detail)
 

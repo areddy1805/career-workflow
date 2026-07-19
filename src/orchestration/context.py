@@ -25,6 +25,7 @@ class PipelineContext:
     providers: dict[str, Any] = field(default_factory=dict)
     questionnaire_resolver: Any | None = None
     ledger: Any | None = None
+    cache_manager: Any | None = None
 
     acquisition_mode: str = "full"
     force_live: bool = False

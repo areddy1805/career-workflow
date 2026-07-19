@@ -23,8 +23,10 @@ class OMLXClient:
         self.model = model or os.getenv("OMLX_MODEL") or "qwen3.5-4b"
 
         self.api_key = api_key or os.getenv("OMLX_API_KEY")
-
         self.timeout_seconds = timeout_seconds
+
+        limits = httpx.Limits(max_keepalive_connections=20, max_connections=100)
+        self.client = httpx.Client(timeout=self.timeout_seconds, limits=limits)
 
     def _headers(self) -> dict[str, str]:
         headers = {
@@ -38,7 +40,7 @@ class OMLXClient:
 
     def health_check(self) -> dict[str, Any]:
         try:
-            response = httpx.get(
+            response = self.client.get(
                 f"{self.base_url}/models",
                 headers=self._headers(),
                 timeout=10.0,
@@ -88,7 +90,7 @@ class OMLXClient:
         }
 
         try:
-            response = httpx.post(
+            response = self.client.post(
                 f"{self.base_url}/chat/completions",
                 headers=self._headers(),
                 json=payload,

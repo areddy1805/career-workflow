@@ -59,6 +59,7 @@ from src.orchestration.stages import (
 from src.resolution.hybrid_resolver import HybridQuestionResolver
 from src.search.challenge_cooldown import SearchChallengeCooldown
 from src.search.job_search_cache import JobSearchCache
+from src.cache.cache_manager import CacheManager
 
 load_dotenv()
 
@@ -369,6 +370,8 @@ class CareerWorkflowPipeline:
             ledger_path,
         )
 
+        self.context.cache_manager = CacheManager()
+
         self.context.stage_results["preflight"] = {
             "credentials_present": True,
             "candidate_profile_loaded": bool(CANDIDATE_PROFILE),
@@ -519,7 +522,9 @@ class CareerWorkflowPipeline:
         self.exec_context.start_stage("Classification", jobs)
 
         classifier = JobFilterPipeline2(
-            metrics=self.context.metrics, exec_context=self.exec_context
+            metrics=self.context.metrics,
+            exec_context=self.exec_context,
+            cache_manager=self.context.cache_manager,
         )
 
         jobs = classifier.normalize_jobs(jobs)
@@ -585,6 +590,7 @@ class CareerWorkflowPipeline:
             providers=self.context.providers,
             jobs=candidates,
             detail_cache=(self.context.detail_cache),
+            cache_manager=self.context.cache_manager,
         )
 
         enriched_before_dedup = len(enriched_candidates)
@@ -1381,8 +1387,11 @@ class CareerWorkflowPipeline:
         self.trace_proj.flush(self.run_dir)
 
         counts = self.metrics_proj.get_metrics()
-
         c_res = self.context.stage_results.get("classification", {})
+        
+        cache_metrics = {}
+        if self.context.cache_manager:
+            cache_metrics = self.context.cache_manager.metrics.copy()
 
         return PipelineResult(
             run_id=self.context.run_id,
@@ -1409,6 +1418,7 @@ class CareerWorkflowPipeline:
             pre_app_rejected=counts["pre_app_rejected"],
             started_at=self.context.started_at,
             completed_at=completed_at,
+            cache_metrics=cache_metrics,
             stage_results={
                 name: status.value for name, status in self.stage_statuses.items()
             },
