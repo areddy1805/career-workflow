@@ -11,6 +11,8 @@ and repository assets.
 import os
 import shutil
 import glob
+import argparse
+import sys
 from pathlib import Path
 
 # Always resolve paths relative to the project root
@@ -94,7 +96,30 @@ def clear_directory(dir_path: Path) -> int:
     return deleted_count
 
 def main():
-    print("Executing Factory Reset...\n")
+    parser = argparse.ArgumentParser(description="Factory Reset Utility for Career Workflow.")
+    parser.add_argument("--yes", action="store_true", help="Skip confirmation and execute immediately")
+    args = parser.parse_args()
+
+    if not args.yes:
+        print("⚠️  WARNING\n")
+        print("This operation will permanently delete all generated runtime state, caches,")
+        print("application history, logs, runtime artifacts, and other local runtime data.\n")
+        print("Source code and configuration will NOT be modified.\n")
+        print("To continue, type:\n")
+        print("YES\n")
+        print("or press Ctrl+C to abort.")
+        
+        try:
+            response = input("> ")
+        except (KeyboardInterrupt, EOFError):
+            print("\nAborted.")
+            sys.exit(0)
+
+        if response != "YES":
+            print("Aborted. Factory reset canceled.")
+            sys.exit(0)
+
+    print("\nExecuting Factory Reset...\n")
     
     deleted_items = []
     

@@ -879,7 +879,8 @@ Current validation status:
 Use this command to remove all generated runtime state and begin with a fresh local portfolio.
 
 ```bash
-python tools/factory_reset.py
+python tools/factory_reset.py        # Interactive (recommended)
+python tools/factory_reset.py --yes  # Skip confirmation
 ```
 
 The reset utility:
