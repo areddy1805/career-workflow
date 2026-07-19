@@ -13,7 +13,7 @@ def make_job(job_id: str) -> Job:
         experience="5-8 Yrs",
         salary="Not disclosed",
         posted_date="1 day ago",
-        apply_link=f"/job-listings-{job_id}",
+        apply_url=f"/job-listings-{job_id}",
         description="Build production RAG systems.",
         tags=["Python", "LLM", "RAG"],
     )

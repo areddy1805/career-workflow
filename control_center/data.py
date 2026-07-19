@@ -152,20 +152,25 @@ def _effective_run_status(
     if result_status:
         return result_status
 
-    state_status = str(state.get("status") or "UNKNOWN").upper()
-    if state_status != "RUNNING":
-        return state_status
+    state_status = str(state.get("status") or "").upper()
 
+    is_alive = False
     if newest:
         try:
             from control_center.runner import pipeline_is_running
-
-            if pipeline_is_running():
-                return "RUNNING"
+            is_alive = pipeline_is_running()
         except Exception:
             pass
 
-    return "ORPHANED"
+    if is_alive:
+        return "RUNNING"
+
+    if state_status in {"SUCCESS", "FAILED", "CANCELLED", "PARTIAL"}:
+        return state_status
+
+    # If the process is dead and we don't have a valid terminal state, 
+    # it means the artifact is empty, partially written, corrupted, or crashed mid-run.
+    return "FAILED"
 
 
 def latest_run() -> dict[str, Any]:

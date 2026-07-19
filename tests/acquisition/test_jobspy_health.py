@@ -45,7 +45,7 @@ def _job(job_id: str) -> Job:
         experience="N/A",
         salary="N/A",
         posted_date="2025-07-10",
-        apply_link="",
+        apply_url="",
     )
 
 

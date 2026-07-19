@@ -77,7 +77,7 @@ class TestApplicationRouter:
             experience="3-5",
             salary="100k",
             posted_date="2023-01-01",
-            apply_link="https://naukri.com/apply/123",
+            apply_url="https://naukri.com/apply/123",
         )
 
     def test_native_apply(self, basic_job):
@@ -116,7 +116,7 @@ class TestApplicationRouter:
             supports_resume_upload=False,
             supports_questionnaires=False,
         )
-        basic_job.apply_link = "https://jobs.lever.co/techcorp/123"
+        basic_job.apply_url = "https://jobs.lever.co/techcorp/123"
 
         result = ApplicationRouter.route(basic_job, caps)
         assert result.strategy == RoutingStrategy.EXTERNAL_ATS
@@ -130,7 +130,7 @@ class TestApplicationRouter:
             supports_resume_upload=False,
             supports_questionnaires=False,
         )
-        basic_job.apply_link = "https://techcorp.com/careers/123"
+        basic_job.apply_url = "https://techcorp.com/careers/123"
 
         result = ApplicationRouter.route(basic_job, caps)
         assert result.strategy == RoutingStrategy.GENERIC_CAREER_SITE
@@ -144,7 +144,7 @@ class TestApplicationRouter:
             supports_resume_upload=False,
             supports_questionnaires=False,
         )
-        basic_job.apply_link = (
+        basic_job.apply_url = (
             "https://techcorp.com/apply/123"  # missing "careers" or "jobs"
         )
 
@@ -160,7 +160,7 @@ class TestApplicationRouter:
             supports_resume_upload=False,
             supports_questionnaires=False,
         )
-        basic_job.apply_link = None
+        basic_job.apply_url = None
 
         result = ApplicationRouter.route(basic_job, caps)
         assert result.strategy == RoutingStrategy.MANUAL_REVIEW

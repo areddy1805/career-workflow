@@ -26,3 +26,6 @@ class WorkflowTransitionRequest(BaseModel):
 
 class WorkflowNoteRequest(BaseModel):
     text: str
+
+class WorkflowMoveQueueRequest(BaseModel):
+    queue: str

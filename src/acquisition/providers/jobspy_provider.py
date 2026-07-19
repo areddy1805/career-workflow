@@ -707,10 +707,30 @@ class JobSpyProvider:
         posted_date = self._format_date(raw_date)
 
         # ------------------------------------------------------------------
-        # apply_link  — canonicalize URL to strip tracking params
+        # apply_url  — canonicalize URL to strip tracking params
         # ------------------------------------------------------------------
         raw_url = _get("job_url", "") or ""
-        apply_link = canonicalize_url(str(raw_url)) if raw_url else ""
+        
+        # Ensure raw_url is absolute before canonicalizing
+        if raw_url and not str(raw_url).startswith("http"):
+            path = str(raw_url)
+            if not path.startswith("/"):
+                path = f"/{path}"
+                
+            if site == "naukri":
+                raw_url = f"https://www.naukri.com{path}"
+            elif site == "indeed":
+                raw_url = f"https://www.indeed.com{path}"
+            elif site == "linkedin":
+                raw_url = f"https://www.linkedin.com{path}"
+            elif site == "glassdoor":
+                raw_url = f"https://www.glassdoor.com{path}"
+            elif site == "ziprecruiter":
+                raw_url = f"https://www.ziprecruiter.com{path}"
+            else:
+                raw_url = f"https://{site}.com{path}"
+
+        apply_url = canonicalize_url(str(raw_url)) if raw_url else ""
 
         # ------------------------------------------------------------------
         # description
@@ -738,14 +758,13 @@ class JobSpyProvider:
             experience=experience,
             salary=salary,
             posted_date=posted_date,
-            apply_link=apply_link,
+            apply_url=apply_url,
             description=description,
             tags=tags,
             decision_history=decision_history,
             provider_id="jobspy",
             provider_name=site.capitalize(),
             provider_source=site,
-            provider_url=str(raw_url).strip() if raw_url else "",
             provider_job_id=str(raw_id).strip() if raw_id else "",
         )
 

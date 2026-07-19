@@ -343,6 +343,43 @@ class WorkflowQueue:
             )
         return True
 
+    def set_source(self, job_id: str, source: str) -> bool:
+        """Move a job to a different queue by changing its source."""
+        job_id = str(job_id)
+        now = _now()
+        
+        # 1. Update MAQ
+        updated_maq = False
+        rows = self._maq._load()
+        for row in rows:
+            if str(row.get("job_id")) == job_id:
+                row["source"] = source
+                row["updated_at"] = now
+                updated_maq = True
+                break
+        if updated_maq:
+            self._maq._save(rows)
+            
+        # 2. Update SQLite
+        with self._connect() as conn:
+            existing = self._get_item(conn, job_id)
+            if existing is None:
+                return False
+            conn.execute(
+                "UPDATE workflow_items SET source = ?, updated_at = ? WHERE job_id = ?",
+                (source, now, job_id),
+            )
+            self._record_history(
+                conn,
+                job_id,
+                from_status=existing["source"] or "unknown",
+                to_status=source,
+                actor="system",
+                note=f"Moved to queue: {source}"
+            )
+            
+        return updated_maq
+
     def retry(self, job_id: str, *, actor: str = "system") -> bool:
         """
         Increment retry_count and transition back to PENDING if under max_retries.

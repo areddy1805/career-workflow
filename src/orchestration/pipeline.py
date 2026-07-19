@@ -571,11 +571,6 @@ class CareerWorkflowPipeline:
                     "BUDGET_EXCEEDED",
                     "Job fell below summary rank cutoff for detail fetching",
                 )
-                self.exec_context.reject(
-                    j,
-                    "Job fell below summary rank cutoff for detail fetching",
-                    "BUDGET_EXCEEDED",
-                )
 
         candidates_before_suppression = len(candidates)
 
@@ -1330,12 +1325,15 @@ class CareerWorkflowPipeline:
                     self._skip_remaining_pending_stages()
                     break
 
+            result = self._build_result()
+
+            self._validate_artifacts(result)
+
             if self.status == PipelineStatus.RUNNING:
                 self.status = PipelineStatus.SUCCESS
+                result.status = PipelineStatus.SUCCESS.value
 
             self._persist_state()
-
-            result = self._build_result()
 
             self._write_artifact(
                 "result.json",
@@ -1345,7 +1343,6 @@ class CareerWorkflowPipeline:
             # Removed EXPORT OBSERVABILITY ARTIFACTS for explorer
 
             self._generate_dedicated_artifacts(result)
-            self._validate_artifacts(result)
 
             return result
         finally:
@@ -1409,6 +1406,7 @@ class CareerWorkflowPipeline:
             dry_run_skipped=counts["dry_run_skipped"],
             run_limit_reached=counts["run_limit_reached"],
             manual_review=counts["manual_review"],
+            pre_app_rejected=counts["pre_app_rejected"],
             started_at=self.context.started_at,
             completed_at=completed_at,
             stage_results={
@@ -1518,14 +1516,27 @@ class CareerWorkflowPipeline:
                 )
             )
 
+        # Artifact cross-validation
+        # Count rejections that happened before application routing
+        pre_app_rejections_in_artifact = [
+            j for j in self.context.rejected_jobs 
+            if j.get("stage") != "Application" and j.get("rejection_stage") != "Application"
+        ]
+        
+        pre_app_rejections_from_events = result.pre_app_rejected
+        if len(pre_app_rejections_in_artifact) != pre_app_rejections_from_events:
+            diagnostics.append(
+                f"Artifact mismatch: Found {len(pre_app_rejections_in_artifact)} pre-application rejections "
+                f"in rejected_jobs, but expected {pre_app_rejections_from_events} from events."
+            )
+
         if diagnostics:
-            print()
-            print("[DIAGNOSTICS] Pipeline artifact validation issues found:")
+            print("\n[DIAGNOSTICS] Pipeline artifact validation issues found:")
             for item in diagnostics:
                 print(f"  - {item}")
+            raise RuntimeError("Terminal Accounting Validation Failed:\n" + "\n".join(diagnostics))
         else:
-            print()
-            print("[DIAGNOSTICS] Artifact accounting validated successfully.")
+            print("\n[DIAGNOSTICS] Artifact accounting validated successfully.")
 
     def print_observability_report(self, result: PipelineResult) -> None:
         projection = self.metrics_proj.get_metrics()

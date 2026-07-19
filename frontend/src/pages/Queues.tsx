@@ -8,7 +8,8 @@ import {
 import { cn, formatSalary } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { JobDrawer } from '@/components/JobDrawer';
-import { ExternalLink, Search, Clock, ListChecks } from 'lucide-react';
+import { ExternalLink, Search, Clock, ListChecks, CheckCircle } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 export default function Queues() {
   const [activeTab, setActiveTab] = useState<'manual-review' | 'external-apply' | 'other-action'>('manual-review');
@@ -118,6 +119,7 @@ function QueueView({ type, onRowClick }: { type: 'manual-review' | 'external-app
             <th className="px-4 py-3 font-medium w-24">Score</th>
             <th className="px-4 py-3 font-medium">Context / Reason</th>
             <th className="px-4 py-3 font-medium w-32 text-right">Status</th>
+            <th className="px-4 py-3 font-medium w-16"></th>
           </tr>
         </thead>
         <tbody>
@@ -157,6 +159,23 @@ function QueueView({ type, onRowClick }: { type: 'manual-review' | 'external-app
                   {new Date(item.updated_at || item.created_at).toLocaleDateString()}
                 </div>
               </td>
+              <td className="px-4 py-3 align-top text-center" onClick={(e) => e.stopPropagation()}>
+                {(() => {
+                  const url = item.apply_url;
+                  if (!url) return null;
+                  return (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-muted-foreground hover:text-primary"
+                      onClick={() => window.open(url, '_blank')}
+                      title="Open External"
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                    </Button>
+                  );
+                })()}
+              </td>
             </tr>
           ))}
         </tbody>
@@ -165,5 +184,3 @@ function QueueView({ type, onRowClick }: { type: 'manual-review' | 'external-app
   );
 }
 
-// Just an inline import to fix missing icon checkcircle in the empty state
-import { CheckCircle } from 'lucide-react';

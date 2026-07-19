@@ -65,6 +65,7 @@ from api.schemas import (
     ManualJobRequest,
     WorkflowTransitionRequest,
     WorkflowNoteRequest,
+    WorkflowMoveQueueRequest,
 )
 
 router = APIRouter()
@@ -72,6 +73,50 @@ router = APIRouter()
 
 def df_to_dict(df: pd.DataFrame) -> list[dict[str, Any]]:
     return df.fillna("").to_dict(orient="records")
+
+
+def _ensure_api_contract(job: dict[str, Any]) -> None:
+    raw_url = str(
+        job.get("apply_url")
+        or job.get("apply_link")
+        or job.get("url")
+        or job.get("source_url")
+        or job.get("job_url")
+        or job.get("provider_url")
+        or ""
+    ).strip()
+
+    source = str(
+        job.get("provider_id")
+        or job.get("source")
+        or job.get("provider_source")
+        or ""
+    ).lower()
+
+    if raw_url and not raw_url.startswith("http"):
+        path = raw_url
+        if not path.startswith("/"):
+            path = f"/{path}"
+
+        if "naukri" in source:
+            raw_url = f"https://www.naukri.com{path}"
+        elif "indeed" in source:
+            raw_url = f"https://www.indeed.com{path}"
+        elif "linkedin" in source:
+            raw_url = f"https://www.linkedin.com{path}"
+        elif "glassdoor" in source:
+            raw_url = f"https://www.glassdoor.com{path}"
+        elif "ziprecruiter" in source:
+            raw_url = f"https://www.ziprecruiter.com{path}"
+        else:
+            raw_url = f"https://{source}.com{path}"
+
+    job["apply_url"] = raw_url
+    job["provider"] = job.get("provider_name") or job.get("provider_id") or job.get("source") or ""
+    job["provider_job_id"] = job.get("provider_job_id") or job.get("job_id") or ""
+    
+    from src.acquisition.providers.jobspy_provider import canonicalize_url
+    job["canonical_url"] = canonicalize_url(raw_url) if raw_url else ""
 
 
 @router.get("/dashboard")
@@ -106,7 +151,19 @@ def get_dashboard() -> dict[str, Any]:
 @router.get("/jobs")
 def get_jobs() -> list[dict[str, Any]]:
     df = read_applications()
-    return df_to_dict(df)
+    jobs = df_to_dict(df)
+    
+    cache_dict = get_job_cache_dict()
+    for job in jobs:
+        jid = job.get("job_id")
+        if jid in cache_dict:
+            for k, v in cache_dict[jid].items():
+                if k not in job or not job[k]:
+                    job[k] = v
+                    
+        _ensure_api_contract(job)
+                    
+    return jobs
 
 
 @router.get("/jobs/{job_id}")
@@ -124,6 +181,8 @@ def get_job_details(job_id: str) -> dict[str, Any]:
         for k, v in cache_dict[job_id].items():
             if k not in enriched_job or not enriched_job[k]:
                 enriched_job[k] = v
+
+    _ensure_api_contract(enriched_job)
 
     return {"overview": enriched_job, "events": df_to_dict(events_df)}
 
@@ -251,6 +310,7 @@ def _enrich_queue_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
             for k, v in cache[jid].items():
                 if k not in item or not item[k]:
                     item[k] = v
+        _ensure_api_contract(item)
     return items
 
 
@@ -301,6 +361,15 @@ def api_queue_transition(job_id: str, req: WorkflowTransitionRequest) -> dict[st
     if not success:
         raise HTTPException(status_code=400, detail="Failed to transition job")
     return {"status": "Transitioned"}
+
+
+@router.post("/queues/{job_id}/move")
+def api_queue_move(job_id: str, req: WorkflowMoveQueueRequest) -> dict[str, str]:
+    wq = get_workflow_queue()
+    success = wq.set_source(job_id, req.queue)
+    if not success:
+        raise HTTPException(status_code=400, detail="Failed to move job to queue")
+    return {"status": f"Moved to {req.queue}"}
 
 
 @router.post("/queues/manual")

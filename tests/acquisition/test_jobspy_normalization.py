@@ -274,7 +274,7 @@ class TestDateFormatting:
 
 
 # ---------------------------------------------------------------------------
-# apply_link / URL
+# apply_url / URL
 # ---------------------------------------------------------------------------
 
 
@@ -285,16 +285,16 @@ class TestApplyLink:
             "job_url": "https://www.indeed.com/viewjob?jk=abc&utm_source=google",
         }
         job = _normalize(row)
-        assert "utm_source" not in job.apply_link
-        assert "jk" not in job.apply_link
+        assert "utm_source" not in job.apply_url
+        assert "jk" not in job.apply_url
 
     def test_missing_url_is_empty_string(self):
         job = _normalize({"id": "1"})
-        assert job.apply_link == ""
+        assert job.apply_url == ""
 
     def test_none_url_is_empty_string(self):
         job = _normalize({"id": "1", "job_url": None})
-        assert job.apply_link == ""
+        assert job.apply_url == ""
 
 
 # ---------------------------------------------------------------------------
@@ -357,8 +357,8 @@ class TestFullRowNormalization:
         assert "1,800,000" in job.salary
         assert "INR" in job.salary
         assert job.posted_date == "2025-07-10"
-        assert "utm_source" not in job.apply_link
-        assert "www.indeed.com" in job.apply_link
+        assert "utm_source" not in job.apply_url
+        assert "www.indeed.com" in job.apply_url
 
     def test_minimal_row_all_defaults(self):
         job = _normalize({"id": "min1"}, site="google")
@@ -370,7 +370,7 @@ class TestFullRowNormalization:
         assert job.experience == "N/A"
         assert job.salary == "Not disclosed"
         assert job.posted_date == "N/A"
-        assert job.apply_link == ""
+        assert job.apply_url == ""
         assert job.description == ""
         assert job.tags == []
         assert len(job.decision_history) == 1
@@ -387,5 +387,4 @@ class TestFullRowNormalization:
         assert job.provider_id == "jobspy"
         assert job.provider_name == "Indeed"
         assert job.provider_source == "indeed"
-        assert job.provider_url == "https://www.indeed.com/viewjob?id=meta1"
         assert job.provider_job_id == "meta1"

@@ -67,7 +67,7 @@ def merge_jobs(
             return len(provider_priority)
 
     def _canonical_url(job) -> str:
-        url = str(getattr(job, "apply_link", "") or "")
+        url = str(getattr(job, "apply_url", "") or "")
         return canonicalize_url(url) if url else ""
 
     def _identity_key(job) -> tuple[str, str, str]:

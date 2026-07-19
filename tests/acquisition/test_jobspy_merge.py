@@ -32,7 +32,7 @@ def _job(
     title: str = "Engineer",
     company: str = "Acme",
     location: str = "Pune",
-    apply_link: str = "",
+    apply_url: str = "",
     tags: list | None = None,
 ) -> Job:
     return Job(
@@ -43,7 +43,7 @@ def _job(
         experience="N/A",
         salary="Not disclosed",
         posted_date="2025-07-10",
-        apply_link=apply_link,
+        apply_url=apply_url,
         tags=list(tags or []),
     )
 
@@ -129,12 +129,12 @@ class TestMergeJobsNoDuplicates:
 class TestMergeJobsUrlDedup:
     def test_same_canonical_url_deduplicates(self):
         url = "https://www.indeed.com/viewjob?jk=abc123"
-        naukri = [_job("N1", apply_link=url)]
+        naukri = [_job("N1", apply_url=url)]
         # Same URL with tracking params
         jobspy = [
             _job(
                 "jobspy_indeed_abc123",
-                apply_link=f"{url}&utm_source=google&ref=jobsearch",
+                apply_url=f"{url}&utm_source=google&ref=jobsearch",
             )
         ]
         result = merge_jobs(naukri, jobspy, ["naukri", "indeed"])
@@ -143,15 +143,15 @@ class TestMergeJobsUrlDedup:
 
     def test_naukri_wins_url_dedup_when_highest_priority(self):
         url = "https://www.indeed.com/viewjob?jk=abc"
-        naukri = [_job("N1", title="Senior Engineer", apply_link=url)]
-        jobspy = [_job("jobspy_indeed_abc", title="Sr Engineer", apply_link=url)]
+        naukri = [_job("N1", title="Senior Engineer", apply_url=url)]
+        jobspy = [_job("jobspy_indeed_abc", title="Sr Engineer", apply_url=url)]
         result = merge_jobs(naukri, jobspy, ["naukri", "indeed"])
         assert result[0].job_id == "N1"
 
     def test_source_tags_merged_on_dedup(self):
         url = "https://www.indeed.com/viewjob?jk=abc"
-        naukri = [_job("N1", apply_link=url)]
-        jobspy = [_job("jobspy_indeed_abc", apply_link=url)]
+        naukri = [_job("N1", apply_url=url)]
+        jobspy = [_job("jobspy_indeed_abc", apply_url=url)]
         result = merge_jobs(naukri, jobspy, ["naukri", "indeed"])
         tags = result[0].tags
         assert any("naukri" in t for t in tags)
@@ -160,8 +160,8 @@ class TestMergeJobsUrlDedup:
     def test_indeed_wins_when_higher_priority_than_google(self):
         url = "https://www.indeed.com/viewjob?jk=abc"
         # indeed has priority 1, google has priority 3
-        indeed_job = _job("jobspy_indeed_abc", title="Senior Engineer", apply_link=url)
-        google_job = _job("jobspy_google_abc", title="Senior Engineer", apply_link=url)
+        indeed_job = _job("jobspy_indeed_abc", title="Senior Engineer", apply_url=url)
+        google_job = _job("jobspy_google_abc", title="Senior Engineer", apply_url=url)
         # Start with google in naukri_jobs slot to simulate re-order
         result = merge_jobs(
             [google_job], [indeed_job], ["naukri", "indeed", "linkedin", "google"]

@@ -38,7 +38,7 @@ def _compute_job_hash(job: Job) -> str:
     title = (job.title or "").lower().strip()
     company = (job.company or "").lower().strip()
     loc = (job.location or "").lower().strip()
-    link = (job.apply_link or "").lower().strip()
+    link = (job.apply_url or "").lower().strip()
     base_str = f"{title}::{company}::{loc}::{link}"
     return hashlib.md5(base_str.encode("utf-8")).hexdigest()
 
