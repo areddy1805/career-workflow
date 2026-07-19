@@ -161,7 +161,7 @@ function QueueView({ type, onRowClick }: { type: 'manual-review' | 'external-app
               </td>
               <td className="px-4 py-3 align-top text-center" onClick={(e) => e.stopPropagation()}>
                 {(() => {
-                  const url = item.apply_url || item.apply_link || item.url || item.source_url;
+                  const url = item.apply_url;
                   if (!url) return null;
                   return (
                     <Button

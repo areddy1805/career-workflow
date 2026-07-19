@@ -710,6 +710,26 @@ class JobSpyProvider:
         # apply_url  — canonicalize URL to strip tracking params
         # ------------------------------------------------------------------
         raw_url = _get("job_url", "") or ""
+        
+        # Ensure raw_url is absolute before canonicalizing
+        if raw_url and not str(raw_url).startswith("http"):
+            path = str(raw_url)
+            if not path.startswith("/"):
+                path = f"/{path}"
+                
+            if site == "naukri":
+                raw_url = f"https://www.naukri.com{path}"
+            elif site == "indeed":
+                raw_url = f"https://www.indeed.com{path}"
+            elif site == "linkedin":
+                raw_url = f"https://www.linkedin.com{path}"
+            elif site == "glassdoor":
+                raw_url = f"https://www.glassdoor.com{path}"
+            elif site == "ziprecruiter":
+                raw_url = f"https://www.ziprecruiter.com{path}"
+            else:
+                raw_url = f"https://{site}.com{path}"
+
         apply_url = canonicalize_url(str(raw_url)) if raw_url else ""
 
         # ------------------------------------------------------------------

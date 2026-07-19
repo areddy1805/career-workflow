@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { fetchJobs, fetchJobDetails } from '@/lib/api';
+import { fetchJobs, fetchJobDetails, transitionQueueJob, moveQueueJob } from '@/lib/api';
 import {
   useReactTable,
   getCoreRowModel,
@@ -17,14 +17,22 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger, ContextMenuSeparator, ContextMenuSub, ContextMenuSubTrigger, ContextMenuSubContent } from '@/components/ui/context-menu';
-import { Copy, X, Settings2, EyeOff, LayoutTemplate, ExternalLink } from 'lucide-react';
+import { Copy, X, Settings2, EyeOff, LayoutTemplate, ExternalLink, CheckCircle, SkipForward, FolderOpen } from 'lucide-react';
 import { useJobStore } from '@/store/jobs';
 import { Checkbox } from '@/components/ui/checkbox';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuCheckboxItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuCheckboxItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { CopyButton } from '@/components/CopyButton';
 import { RelativeTime } from '@/components/RelativeTime';
 
+import { useQueryClient } from '@tanstack/react-query';
+
+const openExternalUrl = (url: string | undefined) => {
+  if (!url) return;
+  window.open(url, '_blank', 'noopener,noreferrer');
+};
+
 export default function Jobs() {
+  const queryClient = useQueryClient();
   const { data: jobs = [], isLoading } = useQuery({ queryKey: ['jobs'], queryFn: fetchJobs });
   
   // Persisted state
@@ -95,14 +103,14 @@ export default function Jobs() {
       enableSorting: false,
       enableResizing: false,
       cell: ({ row }: any) => {
-        const url = (row.original as any).apply_url || (row.original as any).apply_link || (row.original as any).url || (row.original as any).source_url;
+        const url = (row.original as any).apply_url;
         if (!url) return null;
         return (
           <Button
             variant="ghost"
             size="icon"
             className="h-6 w-6 text-muted-foreground hover:text-primary"
-            onClick={(e) => { e.stopPropagation(); window.open(url, '_blank'); }}
+            onClick={(e) => { e.stopPropagation(); openExternalUrl(url); }}
             title="Open External"
           >
             <ExternalLink className="h-3.5 w-3.5" />
@@ -156,43 +164,94 @@ export default function Jobs() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedJobId, rows]);
 
+  const handleBulkAction = async (action: string) => {
+    const selectedIds = Object.keys(rowSelection).filter(k => rowSelection[k]).map(idx => (rows[idx as any].original as any).job_id);
+    if (!selectedIds.length) return;
+    
+    // Process actions sequentially for simplicity, or use Promise.all
+    for (const jobId of selectedIds) {
+      if (action === 'APPLIED' || action === 'REJECTED') {
+        await transitionQueueJob(jobId, action, 'Bulk Action');
+      } else if (action === 'MANUAL_REVIEW') {
+        await moveQueueJob(jobId, 'manual_review');
+      } else if (action === 'ATS_QUEUE') {
+        await moveQueueJob(jobId, 'external_apply');
+      } else if (action === 'GENERIC_QUEUE') {
+        await moveQueueJob(jobId, '');
+      }
+    }
+    
+    setRowSelection({});
+    queryClient.invalidateQueries({ queryKey: ['jobs'] });
+  };
+
+  const selectedCount = Object.keys(rowSelection).filter(k => rowSelection[k]).length;
+
   return (
     <div className="h-full flex flex-col bg-background text-sm">
       {/* Top Action Bar */}
-      <div className="flex justify-between items-center px-4 py-2 border-b shrink-0 bg-background/95 backdrop-blur z-10">
-        <div className="flex items-center gap-4">
-          <h2 className="font-semibold tracking-tight">Job Explorer</h2>
-          <Input
-            placeholder="Filter jobs..."
-            value={globalFilter ?? ''}
-            onChange={(e) => setGlobalFilter(e.target.value)}
-            className="h-7 w-64 text-xs bg-muted/50 focus-visible:bg-background"
-          />
-        </div>
-        <div className="flex items-center gap-2">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="h-7 text-xs gap-2">
-                <Settings2 className="h-3 w-3" /> View
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48 text-xs">
-              {table.getAllLeafColumns().map(column => {
-                if (column.id === 'select') return null;
-                return (
-                  <DropdownMenuCheckboxItem
-                    key={column.id}
-                    checked={column.getIsVisible()}
-                    onCheckedChange={(value) => column.toggleVisibility(!!value)}
-                    className="text-xs"
-                  >
-                    {column.id}
-                  </DropdownMenuCheckboxItem>
-                );
-              })}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+      <div className="flex justify-between items-center px-4 py-2 border-b shrink-0 bg-background/95 backdrop-blur z-10 h-[52px]">
+        {selectedCount > 0 ? (
+          <>
+            <div className="flex items-center gap-4">
+              <Badge variant="secondary">{selectedCount} Selected</Badge>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" className="h-7 text-xs bg-green-500/10 text-green-600 hover:bg-green-500/20 hover:text-green-700" onClick={() => handleBulkAction('APPLIED')}><CheckCircle className="w-3 h-3 mr-1" /> Mark Applied</Button>
+                <Button variant="outline" size="sm" className="h-7 text-xs text-orange-500 hover:bg-orange-500/10 hover:text-orange-600" onClick={() => handleBulkAction('REJECTED')}><SkipForward className="w-3 h-3 mr-1" /> Skip/Reject</Button>
+                
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm" className="h-7 text-xs"><FolderOpen className="w-3 h-3 mr-1" /> Move To...</Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-40 text-xs">
+                    <ContextMenuItem onSelect={() => handleBulkAction('MANUAL_REVIEW')}>Manual Review Queue</ContextMenuItem>
+                    <ContextMenuItem onSelect={() => handleBulkAction('ATS_QUEUE')}>ATS Queue</ContextMenuItem>
+                    <ContextMenuItem onSelect={() => handleBulkAction('GENERIC_QUEUE')}>Generic Queue</ContextMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="sm" className="h-7 text-xs text-muted-foreground" onClick={() => setRowSelection({})}>Cancel</Button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="flex items-center gap-4">
+              <h2 className="font-semibold tracking-tight">Job Explorer</h2>
+              <Input
+                placeholder="Filter jobs..."
+                value={globalFilter ?? ''}
+                onChange={(e) => setGlobalFilter(e.target.value)}
+                className="h-7 w-64 text-xs bg-muted/50 focus-visible:bg-background"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-7 text-xs gap-2">
+                    <Settings2 className="h-3 w-3" /> View
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48 text-xs">
+                  {table.getAllLeafColumns().map(column => {
+                    if (column.id === 'select') return null;
+                    return (
+                      <DropdownMenuCheckboxItem
+                        key={column.id}
+                        checked={column.getIsVisible()}
+                        onCheckedChange={(value) => column.toggleVisibility(!!value)}
+                        className="text-xs"
+                      >
+                        {column.id}
+                      </DropdownMenuCheckboxItem>
+                    );
+                  })}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </>
+        )}
       </div>
 
       <div className="flex-1 overflow-hidden">
@@ -271,8 +330,8 @@ export default function Jobs() {
                           <Copy className="w-3 h-3 mr-2" /> Copy Job ID
                         </ContextMenuItem>
                         <ContextMenuItem onClick={() => {
-                          const url = (row.original as any).apply_url || (row.original as any).apply_link || (row.original as any).url || (row.original as any).source_url;
-                          if (url) window.open(url, '_blank');
+                          const url = (row.original as any).apply_url;
+                          if (url) openExternalUrl(url);
                         }}>
                           Open External
                         </ContextMenuItem>
@@ -280,9 +339,17 @@ export default function Jobs() {
                         <ContextMenuSub>
                           <ContextMenuSubTrigger>Change Status</ContextMenuSubTrigger>
                           <ContextMenuSubContent className="w-32">
-                            <ContextMenuItem>Set APPLIED</ContextMenuItem>
-                            <ContextMenuItem>Set REJECTED</ContextMenuItem>
-                            <ContextMenuItem>Set VIEWED</ContextMenuItem>
+                            <ContextMenuItem onSelect={() => { transitionQueueJob((row.original as any).job_id, 'APPLIED', 'From Context Menu'); queryClient.invalidateQueries({ queryKey: ['jobs'] }); }}>Set APPLIED</ContextMenuItem>
+                            <ContextMenuItem onSelect={() => { transitionQueueJob((row.original as any).job_id, 'REJECTED', 'From Context Menu'); queryClient.invalidateQueries({ queryKey: ['jobs'] }); }}>Set REJECTED</ContextMenuItem>
+                            <ContextMenuItem onSelect={() => { transitionQueueJob((row.original as any).job_id, 'OPENED', 'From Context Menu'); queryClient.invalidateQueries({ queryKey: ['jobs'] }); }}>Set OPENED</ContextMenuItem>
+                          </ContextMenuSubContent>
+                        </ContextMenuSub>
+                        <ContextMenuSub>
+                          <ContextMenuSubTrigger>Move Queue</ContextMenuSubTrigger>
+                          <ContextMenuSubContent className="w-40">
+                            <ContextMenuItem onSelect={() => { moveQueueJob((row.original as any).job_id, 'manual_review'); queryClient.invalidateQueries({ queryKey: ['jobs'] }); }}>Manual Review Queue</ContextMenuItem>
+                            <ContextMenuItem onSelect={() => { moveQueueJob((row.original as any).job_id, 'external_apply'); queryClient.invalidateQueries({ queryKey: ['jobs'] }); }}>ATS Queue</ContextMenuItem>
+                            <ContextMenuItem onSelect={() => { moveQueueJob((row.original as any).job_id, ''); queryClient.invalidateQueries({ queryKey: ['jobs'] }); }}>Generic Queue</ContextMenuItem>
                           </ContextMenuSubContent>
                         </ContextMenuSub>
                         <ContextMenuSeparator />
@@ -368,6 +435,46 @@ export default function Jobs() {
                           <p className="text-sm">{jobDetails.overview.source}</p>
                         </div>
                       </div>
+
+                      {/* Management Actions */}
+                      <div className="flex flex-wrap gap-2">
+                        <Button variant="default" size="sm" className="h-8 text-xs bg-green-600 hover:bg-green-700 text-white" onClick={async () => { await transitionQueueJob(selectedJobId, 'APPLIED', 'Manual APPLIED'); queryClient.invalidateQueries({ queryKey: ['jobs'] }); }}>
+                          Mark Applied
+                        </Button>
+                        <Button variant="outline" size="sm" className="h-8 text-xs text-orange-600 hover:bg-orange-50 hover:text-orange-700" onClick={async () => { await transitionQueueJob(selectedJobId, 'REJECTED', 'Manual REJECTED'); queryClient.invalidateQueries({ queryKey: ['jobs'] }); }}>
+                          Reject
+                        </Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="outline" size="sm" className="h-8 text-xs"><FolderOpen className="w-3 h-3 mr-1" /> Move To...</Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="start" className="w-48 text-xs">
+                            <DropdownMenuItem onSelect={async () => { await moveQueueJob(selectedJobId, 'manual_review'); queryClient.invalidateQueries({ queryKey: ['jobs'] }); }}>Manual Review Queue</DropdownMenuItem>
+                            <DropdownMenuItem onSelect={async () => { await moveQueueJob(selectedJobId, 'external_apply'); queryClient.invalidateQueries({ queryKey: ['jobs'] }); }}>ATS Queue</DropdownMenuItem>
+                            <DropdownMenuItem onSelect={async () => { await moveQueueJob(selectedJobId, ''); queryClient.invalidateQueries({ queryKey: ['jobs'] }); }}>Generic Queue</DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                        <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => {
+                          const url = jobDetails.overview.apply_url;
+                          if (url) openExternalUrl(url);
+                        }}>
+                          <ExternalLink className="w-3 h-3 mr-1" /> Open Job
+                        </Button>
+                        <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => {
+                          console.log(JSON.stringify(jobDetails.overview, null, 2));
+                          alert("Job JSON printed to console.");
+                        }}>
+                          View JSON
+                        </Button>
+                      </div>
+
+                      {/* AI Reasoning */}
+                      {(jobDetails.overview.reasoning || jobDetails.overview.notes) && (
+                        <div className="bg-muted/20 p-4 rounded-md border border-border/50 text-xs">
+                           <h4 className="font-semibold text-primary mb-2 flex items-center gap-2"><Settings2 className="w-3 h-3" /> AI Reasoning & Notes</h4>
+                           <p className="text-muted-foreground whitespace-pre-wrap">{jobDetails.overview.reasoning || jobDetails.overview.notes}</p>
+                        </div>
+                      )}
 
                       {/* Timeline Events */}
                       <div>
