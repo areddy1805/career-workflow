@@ -43,6 +43,17 @@ ENV/
 
 
 # ==============================================================================
+# Node & Frontend build outputs
+# ==============================================================================
+
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/test-results/
+tsconfig.tsbuildinfo
+
+
+# ==============================================================================
 # Python build and packaging
 # ==============================================================================
 
@@ -87,21 +98,24 @@ pytestdebug.log
 
 *.log
 logs/
+scheduler_logs/
+frontend/frontend.log
 
 
 # ==============================================================================
-# Generated application pipeline data
-#
-# Runtime job data, application history, questionnaire telemetry,
-# platform responses, exports, and generated reports are private.
+# Generated application pipeline data & databases
 # ==============================================================================
 
 data/*
 !data/.gitkeep
 
+*.db
+*.sqlite
+*.sqlite3
+
 
 # ==============================================================================
-# Application runtime state
+# Application runtime state & caches
 # ==============================================================================
 
 score_cache.json
@@ -114,11 +128,21 @@ nkPool.txt
 # ==============================================================================
 
 artifacts/runs/*
+artifacts/dry_runs/*
+artifacts/live_runs/*
+artifacts/cli_logs/*
+artifacts/performance/*
+artifacts/provider_logs/*
+artifacts/stacktraces/*
+artifacts/network/*
+artifacts/screenshots/*
+artifacts/videos/*
+!artifacts/.gitkeep
 !artifacts/runs/.gitkeep
 
 
 # ==============================================================================
-# Temporary files
+# Temporary files & Dev agent metadata
 # ==============================================================================
 
 *.tmp
@@ -129,14 +153,9 @@ scratch/
 tmp/
 temp/
 
-
-# ==============================================================================
-# Local databases
-# ==============================================================================
-
-*.db
-*.sqlite
-*.sqlite3
+.kilo/
+.playwright-mcp/
+review_bundle/
 
 
 # ==============================================================================
@@ -174,7 +193,3 @@ Desktop.ini
 .Spotlight-V100
 .Trashes
 .fseventsd
-
-.playwright-mcp/**
-
-artifacts

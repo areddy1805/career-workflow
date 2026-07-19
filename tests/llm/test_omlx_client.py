@@ -48,7 +48,7 @@ def test_health_check_returns_configured_model(
         )
 
     monkeypatch.setattr(
-        httpx,
+        httpx.Client,
         "get",
         fake_get,
     )
@@ -83,7 +83,7 @@ def test_health_check_rejects_missing_model(
         )
 
     monkeypatch.setattr(
-        httpx,
+        httpx.Client,
         "get",
         fake_get,
     )
@@ -117,7 +117,7 @@ def test_chat_returns_completion_content(
         )
 
     monkeypatch.setattr(
-        httpx,
+        httpx.Client,
         "post",
         fake_post,
     )
@@ -152,7 +152,7 @@ def test_chat_rejects_unexpected_response_structure(
         )
 
     monkeypatch.setattr(
-        httpx,
+        httpx.Client,
         "post",
         fake_post,
     )

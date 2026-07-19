@@ -1,3 +1,8 @@
+[project]
+name = "career-workflow"
+version = "1.0.0-rc1"
+description = "Policy-Driven AI Job Discovery, Qualification, and Application Orchestration Engine"
+
 [tool.ruff]
 target-version = "py313"
 
