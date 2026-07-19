@@ -1515,7 +1515,6 @@ def run_application_batch(
     run_id: str = "",
     metrics: PipelineRunMetrics | None = None,
     rejected_jobs: list | None = None,
-    # Removed explorer
     exec_context=None,
 ) -> ApplicationRunSummary:
     """
@@ -1634,7 +1633,7 @@ def run_application_batch(
             if exec_context:
                 exec_context.reject(
                     job,
-                    reason="Job is in ledger applied_job_ids",
+                    reason="Previously applied in an earlier run.",
                     code="ALREADY_APPLIED",
                 )
             continue
@@ -1660,6 +1659,14 @@ def run_application_batch(
             _record_app_reject(
                 job, policy_evaluation.reason.value, policy_evaluation.detail
             )
+            
+            if exec_context:
+                exec_context.reject(
+                    job,
+                    reason=policy_evaluation.detail,
+                    code=policy_evaluation.reason.value,
+                )
+                
             if ledger is not None:
                 ledger.record(
                     job,

@@ -31,6 +31,7 @@ class PipelineResult:
     run_limit_reached: int = 0
     failed: int = 0
     manual_review: int = 0
+    pre_app_rejected: int = 0
 
     started_at: datetime | None = None
     completed_at: datetime | None = None

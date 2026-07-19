@@ -26,6 +26,7 @@ class MetricsProjection:
             "run_limit_reached": 0,
             "failed": 0,
             "manual_review": 0,
+            "pre_app_rejected": 0,
         }
 
     def __call__(self, event: PipelineEvent):
@@ -43,6 +44,9 @@ class MetricsProjection:
             self.metrics["native_applied"] += 1
             self.metrics["attempted"] += 1
         elif t == "JobRejected":
+            if stage != "Application":
+                self.metrics["pre_app_rejected"] += 1
+                
             if code == "ALREADY_APPLIED":
                 self.metrics["already_applied"] += 1
             elif code == "POLICY_REJECTED":
