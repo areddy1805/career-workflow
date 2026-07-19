@@ -1,10 +1,13 @@
 import json
 import os
 import re
-
 import requests
 import time
+import psutil
+
 from src.orchestration.metrics import PipelineRunMetrics
+from src.cache.cache_manager import CacheManager
+from src.cache.fingerprint import compute_llm_fingerprint
 
 
 class JobFilterPipeline2:
@@ -344,10 +347,17 @@ class JobFilterPipeline2:
         batch_size: int = 5,
         metrics: PipelineRunMetrics | None = None,
         exec_context=None,
+        cache_manager: CacheManager | None = None,
     ):
         self.metrics = metrics
         self.exec_context = exec_context
+        self.cache_manager = cache_manager
         self.api_key = api_key or os.getenv("OMLX_API_KEY")
+        
+        self.session = requests.Session()
+        adapter = requests.adapters.HTTPAdapter(pool_connections=10, pool_maxsize=100)
+        self.session.mount("http://", adapter)
+        self.session.mount("https://", adapter)
 
         if not self.api_key:
             raise ValueError("OMLX_API_KEY is not configured")
@@ -1141,6 +1151,16 @@ class JobFilterPipeline2:
     def ai_score_batch(self, jobs):
         result = []
 
+        # Adaptive concurrency
+        try:
+            cpu_usage = psutil.cpu_percent(interval=0.1)
+            if cpu_usage > 85.0:
+                self.batch_size = max(1, self.batch_size // 2)
+            elif cpu_usage < 40.0:
+                self.batch_size = min(10, self.batch_size + 1)
+        except Exception:
+            pass
+
         for i in range(
             0,
             len(jobs),
@@ -1153,17 +1173,55 @@ class JobFilterPipeline2:
             for job in batch:
                 jid = str(job.get("job_id") or "").strip()
 
-                if jid and jid in self.cache:
-                    cached = self.cache[jid]
-
-                    job["ai_score"] = cached.get("score", 0)
-                    job["ai_reason"] = cached.get(
-                        "reason",
-                        "cached",
+                cached_data = None
+                
+                # Check CacheManager
+                if self.cache_manager and jid:
+                    provider = job.get("provider_id", "naukri")
+                    title = job.get("title", "")
+                    company = job.get("company", "")
+                    desc = job.get("description", "")
+                    
+                    fingerprint = compute_llm_fingerprint(
+                        provider=provider,
+                        job_id=jid,
+                        title=title,
+                        company=company,
+                        normalized_description=desc,
+                        model_name=self.model,
+                        prompt_version="1",
+                        classifier_version="1",
+                        pipeline_version="1",
+                        search_strategy_version="1",
+                        ranking_version="1"
                     )
+                    job["_llm_fingerprint"] = fingerprint
+                    
+                    start_lookup = time.perf_counter()
+                    llm_record = self.cache_manager.llm.get(fingerprint)
+                    self.cache_manager.track_lookup((time.perf_counter() - start_lookup) * 1000)
+                    
+                    if llm_record:
+                        self.cache_manager.metrics["llm_hits"] += 1
+                        self.cache_manager.metrics["llm_tokens_saved"] += llm_record.get("tokens", 0)
+                        self.cache_manager.metrics["llm_time_saved_ms"] += llm_record.get("latency_ms", 0)
+                        
+                        try:
+                            parsed = json.loads(llm_record["parsed_response"])
+                            if isinstance(parsed, dict) and "score" in parsed:
+                                cached_data = parsed
+                        except Exception:
+                            pass
+                    else:
+                        self.cache_manager.metrics["llm_misses"] += 1
 
+                if not cached_data and jid and jid in self.cache:
+                    cached_data = self.cache[jid]
+
+                if cached_data:
+                    job["ai_score"] = cached_data.get("score", 0)
+                    job["ai_reason"] = cached_data.get("reason", "cached")
                     result.append(job)
-
                 else:
                     uncached_jobs.append(job)
 
@@ -1171,6 +1229,12 @@ class JobFilterPipeline2:
                 continue
 
             scores = self._call_ai(uncached_jobs)
+            
+            raw_response = ""
+            duration_ms = 0
+            tokens = 0
+            if isinstance(scores, tuple) and len(scores) == 4:
+                scores, raw_response, duration_ms, tokens = scores
 
             submitted_ids = {
                 str(job.get("job_id") or "").strip()
@@ -1220,6 +1284,19 @@ class JobFilterPipeline2:
 
                 if jid:
                     self.cache[jid] = normalized_data
+                    if self.cache_manager and "_llm_fingerprint" in job:
+                        start_save = time.perf_counter()
+                        self.cache_manager.llm.set(
+                            fingerprint=job["_llm_fingerprint"],
+                            provider=job.get("provider_id", "naukri"),
+                            job_id=jid,
+                            raw_response=raw_response,
+                            parsed_response=json.dumps(normalized_data),
+                            model=self.model,
+                            latency_ms=duration_ms,
+                            tokens=tokens
+                        )
+                        self.cache_manager.track_save((time.perf_counter() - start_save) * 1000)
 
                 result.append(job)
 
@@ -1362,7 +1439,7 @@ Jobs:
 
         try:
             start_time = time.perf_counter()
-            res = requests.post(
+            res = self.session.post(
                 self.url,
                 headers={
                     "Authorization": f"Bearer {self.api_key}",
@@ -1444,13 +1521,14 @@ Jobs:
 
             if not isinstance(results, list):
                 print("AI CONTRACT ERROR — " "'results' must be a list")
-                return []
+                return ([], "", 0, 0)
 
-            return results
+            tokens = response_json.get("usage", {}).get("total_tokens", 0)
+            return (results, content, duration * 1000, tokens)
 
         except Exception as e:
             print("AI call error:", e)
-            return []
+            return ([], "", 0, 0)
 
     def post_score_guard(self, jobs):
         """

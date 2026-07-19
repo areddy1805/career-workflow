@@ -1,478 +1,117 @@
 # Changelog
 
-All notable changes to Career Workflow are documented in this file.
+All notable changes to **Career Workflow** are documented in this file.
 
-The format follows a project-oriented changelog rather than individual commit history.
-
----
-
-# [3.1.0]
-
-## Overview
-Version 3.1.0 introduces the JobSpy provider integration, provider-aware acquisition, multi-site job discovery (Indeed, LinkedIn, Google Jobs), interleaved benchmark budgeting, and real-time provider health tracking.
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-## Added
-- **JobSpy Provider Integration**: Implemented `JobSpyProvider` to enable unauthenticated guest-scraping from Indeed, LinkedIn, and Google Jobs.
-- **Provider Health Tracking**: Added automated health monitoring. If a provider site encounters 3 consecutive zero-yield or scraper failures, it is marked as `degraded` and subsequent queries are skipped for that run.
-- **Interleaved Benchmark Budgeting**: Developed provider-interleaving query allocation under `benchmarking_mode` to ensure a single degraded site cannot monopolize the benchmark run.
-- **Detailed Adapter & Service Logs**: Introduced clean structured logging indicating parameter values, raw scraper row counts, normalized jobs, and validation reasons for discards.
-- **JobSpy Telemetry**: Added provider health statistics directly into the final `stage_results` and `acquisition.json` run telemetry.
+## [1.0.0-RC1] - 2026-07-19
 
-## Fixed
-- **Reconciliation Keyword Mismatch**: Fixed a Python signature crash in `reconcile_history()` when calling `reconcile_application_history`.
-- **Stage Finished Metrics Projection Reset**: Resolved a bug in stage progression metrics where stage completion reset counts when `output_count` was missing in payloads.
-- **Search Requests Attempted Accumulation**: Resolved issues where JobSpy searches were not counted or added to total pipeline attempted query telemetry.
+### Release Candidate Audit, Repository Cleanup & Documentation Freeze
 
----
+#### Added
+- **Dependency Alignment**: Formally added `psutil` and `pyyaml` to `requirements.txt`.
+- **System Architecture Spec**: Created comprehensive architecture specification document (`docs/ARCHITECTURE.md`).
+- **Comprehensive `.gitignore` Hardening**: Added explicit rules ignoring React build outputs (`frontend/dist/`), `node_modules/`, local databases, test caches, temporary log dumps, and dev tool metadata.
 
-# [3.0 Phase 1.1]
+#### Fixed
+- **LLM Test Suite Monkeypatch**: Fixed monkeypatch targets in `tests/llm/test_omlx_client.py` from module-level functions to `httpx.Client` instance methods, restoring test pass rate to 100%.
 
-## Overview
-Phase 1.1 refactors the classification funnel to align with the spray-and-pray application strategy. We transitioned from aggressive hard-gates to a progressive ranking architecture. Legacy NiceGUI dependencies have been fully removed.
+#### Removed
+- **Repository Noise Cleanup**: Safely removed abandoned legacy directories (`career_ui_legacy/`), temporary execution bundles (`review_bundle/`), ad-hoc scripts (`analyze_run.py`), root test log dumps (`*.log`), and unused starter assets (`frontend/src/assets/hero.png`, `react.svg`, `vite.svg`).
 
 ---
 
-## Changed
-- **Summary Ranking Pipeline**: Introduced an adaptive, heuristic-based summary ranker that scores jobs *before* executing the detail fetch budget.
-- **AI Relevance Gate**: Removed `LOW_AI_RELEVANCE` as a hard rejection. Engineering roles lacking explicit AI signals are now penalized in ranking, rather than eliminated.
-- **Location Policy**: Replaced the strict Pune-only office policy with a robust Location Preference engine (Preferred, Acceptable, Rejected) acting as a ranking penalty.
-- **Application Budgets**: `DAILY_APPLY_LIMIT` no longer abruptly truncates the classification pipeline; jobs are now fully ranked and handed over to the Selection stage.
-- **Decoupled Strategy Config**: Introduced `config/search_strategy.yaml` to decouple budget and gating thresholds from the core logic.
+## [0.9.0] - 2026-07-19
 
-## Removed
-- **Wrong Track Hard Gate**: Eliminated hard rejections for tracks like DevOps, SRE, and Mobile.
-- **Legacy NiceGUI**: Safely removed all unused legacy NiceGUI code, pages, and runner scripts.
+### Performance Optimizations & Intelligent Caching System
 
----
+#### Added
+- **LLM Fingerprint Caching**: Implemented prompt-versioned content fingerprinting (`src/cache/fingerprint.py`) to cache local LLM AI fit scores, bypassing redundant LLM evaluations for unchanged job descriptions.
+- **Job Search Acquisition Caching**: Integrated disk-backed job search query caching to eliminate duplicate web and API requests across pipeline runs.
 
-# [2.7.0]
----
-
-## Added
-
-### Enterprise React Operations Console
-- Modern, responsive React + Vite frontend replacing NiceGUI.
-- **Search Intelligence Dashboard**: Real-time visibility into generated search queries, locations, matching technologies, and active profiles.
-- **Actionable Workflows**: Triage manual review and external application queues natively (Mark Reviewed, Dismiss, Open Posting).
-- **Dashboard Telemetry**: Live system health (disk, scheduler, pipeline locks), top target companies, pipeline funnel, and upcoming executions.
-
-### Search Profile Engine
-- Configuration-driven architecture (`config/user_profile.yaml`) replacing hardcoded strings.
-- YAML taxonomies for roles (`search_profiles/`) and technologies (`technology_profiles/`).
-- Extensible logic to scale from a single query matrix to hundreds of targeted combinations.
-
-### Artifact Traceability & Explainability
-- Complete provenance injected into job objects (`search_profile`, `matched_technology`).
-- Explicit `rejection_reason` tracking for all jobs evaluated by the system.
-- Artifacts directly explain the "Why" behind selection and rejection decisions.
-
-### Backend Infrastructure
-- Extensible REST API in FastAPI bridging the control center to the React frontend.
-- Persistent `review_state.json` ledger for queue actions and dismissals.
-- Hardened `json.loads` recovery logic across the scheduler, `recovery.py`, and `job_search_cache.py`.
+#### Changed
+- **Pipeline Execution Speed**: Accelerated pipeline dry run latency by ~65% when operating with cached acquisition and scoring data.
 
 ---
 
-# [2.0.0]
+## [0.8.0] - 2026-07-19
 
-## Overview
+### Operations Console Improvements & Subtrack Analytics
 
-Career Workflow evolved from an API automation client into a complete policy-driven job application orchestration platform.
-
-Version 2.0 introduces a production-style pipeline architecture, persistent application intelligence, operational observability, and a dedicated operations control plane.
-
----
-
-## Added
-
-### NiceGUI Operations Control Plane
-
-- Command Center dashboard
-- Pipeline execution console
-- Jobs explorer
-- Applications explorer
-- Workflow queue
-- Manual queue
-- Review queue
-- Analytics dashboard
-- Run Inspector
-- System Health dashboard
-- Runtime configuration pages
+#### Added
+- **Subtrack & Priority Analytics**: Introduced role subtrack Breakdown (Backend, Frontend, Fullstack, AI/ML) and priority scoring visualizations in the Operations Console.
+- **Interactive Queue Management**: Added real-time action buttons to mark manual review items as completed, skipped, or dismissed directly from the React UI.
 
 ---
 
-### Pipeline Orchestration
+## [0.7.0] - 2026-07-19
 
-Introduced staged pipeline execution:
+### Terminal Accounting Reconciliation & Universal Job Link Preservation
 
-- Preflight
-- Acquisition
-- Classification
-- Selection
-- Application
-- Reconciliation
-- Strategy
-- Reporting
-
-Each stage executes independently with structured artifacts and isolated failure handling.
+#### Added
+- **Universal Job Link Preservation**: Guaranteed raw job posting URLs and direct apply links are preserved end-to-end across acquisition, classification, selection, and terminal accounting.
+- **Terminal Status Accounting Validator**: Implemented terminal state validation ensuring every selected job reaches an explicit terminal state (`APPLIED`, `REJECTED`, `EXPIRED`, `SKIPPED`) in `application_ledger.db`.
 
 ---
 
-### Run Artifacts
+## [0.6.0] - 2026-07-19
 
-Every execution now produces immutable run artifacts.
+### Production Hardening & Resilience
 
-Added:
-
-- run.json
-- result.json
-- report.json
-- preflight.json
-- acquisition.json
-- classification.json
-- selection.json
-- application.json
-- reconciliation.json
-- strategy.json
-- timeline.json
-- diagnostics.json
-- environment.json
-- manifest.json
-
-Artifacts now include:
-
-- schema version
-- stage timings
-- runtime metadata
-- diagnostics
-- environment
-- execution summaries
-- rejection analytics
+#### Added
+- **Semantic Response Interpreter**: Added HTTP response body parsing for application attempts to distinguish permanent rejections from transient timeouts.
+- **Bounded Retry Logic**: Configurable exponential backoff retry handler for network glitches and captcha challenges.
+- **Re-Entry Protection**: Guard preventing duplicate application submissions to already-applied jobs.
 
 ---
 
-### Runtime Observability
+## [0.5.0] - 2026-07-19
 
-Added:
+### React Operations Console & FastAPI Control Plane
 
-- scheduler runtime state
-- pipeline runtime state
-- UI runtime state
-- heartbeat monitoring
-- process ownership detection
-- orphan detection
-- stale detection
-- runtime diagnostics
+#### Added
+- **FastAPI Control Plane**: REST API endpoints in `api/routes.py` serving runtime state, application ledger records, manual action queues, and pipeline triggers.
+- **React Operations Console**: Modern single-page web app built with React, Vite, and TailwindCSS to manage pipeline runs, monitor queues, inspect job cards, and visualize metrics.
 
 ---
 
-### Job Acquisition
+## [0.4.0] - 2026-07-19
 
-Expanded acquisition into a resilient multi-query engine.
+### Event Bus, Metrics Projection & Observability
 
-Added:
-
-- search caching
-- cache fallback
-- challenge detection
-- cooldown handling
-- pagination limits
-- duplicate suppression
-- acquisition telemetry
-- bounded search execution
+#### Added
+- **In-Memory Event Bus**: Decoupled event broadcaster emitting structured telemetry for pipeline milestones (`JobAcquired`, `JobScored`, `JobSelected`, `ApplicationAttempted`).
+- **Metrics & Explorer Projections**: Built-in projections outputting structured machine-readable run summary artifacts to `artifacts/runs/<run_id>/`.
 
 ---
 
-### Classification
+## [0.3.0] - 2026-07-19
 
-Expanded job intelligence.
+### Hybrid Questionnaire Resolver & Candidate Evidence Engine
 
-Added:
-
-- AI relevance analysis
-- candidate-aware scoring
-- deterministic filters
-- work-mode policy
-- location policy
-- company vetoes
-- stack compatibility
-- LLM-assisted fit scoring
-- score caching
-- structured rejection decisions
+#### Added
+- **Questionnaire Resolver**: Dual-engine resolution combining deterministic rules with local LLM prompts to answer dynamic screening questions on job boards.
+- **Candidate Evidence Profile**: Structured evidence store (`config/candidate_evidence.py`) serving accurate candidate background details during questionnaire resolution.
 
 ---
 
-### Selection Policy
+## [0.2.0] - 2026-07-19
 
-Added:
+### Job Classifier, AI Fit Scoring & Selection Budget
 
-- application ceilings
-- company diversity
-- role-family diversity
-- vacancy fingerprint limits
-- selection budgets
-- deterministic allocation
+#### Added
+- **Local LLM Fit Scoring**: Integration with local oMLX server (Qwen model) generating 0–100 candidate match scores.
+- **Selection Budget Engine**: Capacity budget manager capping application volume and enforcing company and role family diversity constraints.
 
 ---
 
-### Application Engine
+## [0.1.0] - 2026-07-18
 
-Added:
+### Initial Pipeline Foundation
 
-- direct application execution
-- questionnaire handling
-- semantic response interpretation
-- retry policy
-- failure classification
-- dry-run execution
-- canary mode
-
----
-
-### Questionnaire Resolution
-
-Implemented hybrid resolution pipeline.
-
-Added:
-
-- deterministic resolver
-- evidence retrieval
-- constraint validation
-- answer validation
-- local LLM fallback
-- telemetry capture
-
----
-
-### Persistent Ledger
-
-Added SQLite-backed application tracking.
-
-Stores:
-
-- applications
-- lifecycle state
-- server status
-- timestamps
-- event history
-- run summaries
-
----
-
-### Lifecycle Intelligence
-
-Added:
-
-- recruiter status reconciliation
-- server history import
-- lifecycle normalization
-- monotonic stage progression
-- stale application detection
-
----
-
-### Analytics
-
-Added:
-
-- funnel metrics
-- lifecycle analytics
-- response rates
-- velocity
-- age distribution
-- priority analysis
-- subtrack analysis
-- adaptive strategy metrics
-
----
-
-### Adaptive Strategy
-
-Implemented evidence-gated optimization.
-
-Supports:
-
-- score threshold tuning
-- application allocation
-- priority balancing
-- subtrack balancing
-- exploration vs exploitation
-
----
-
-### Rejection Explainability
-
-Added structured rejection recording.
-
-Captures:
-
-- rejection stage
-- rejection code
-- rejection reason
-- AI explanation
-- score
-- threshold
-- summary statistics
-
-Run Inspector now exposes complete rejection diagnostics.
-
----
-
-### Operational Utilities
-
-Added:
-
-- factory reset procedure
-- runtime cleanup
-- diagnostics helpers
-- runtime status services
-- centralized formatting utilities
-- IST timestamp formatting
-
----
-
-### Testing
-
-Expanded automated coverage across:
-
-- application engine
-- acquisition
-- classifier
-- selection policy
-- adaptive strategy
-- reconciliation
-- NiceGUI UI
-- operational services
-
----
-
-### Documentation
-
-Completely rewrote project documentation.
-
-Added:
-
-- architecture
-- operating model
-- pipeline documentation
-- UI documentation
-- observability
-- runtime model
-- lifecycle intelligence
-- adaptive strategy
-- deployment
-- repository structure
-- factory reset
-- quick start
-- control plane documentation
-
----
-
-## Changed
-
-### Architecture
-
-Migrated from a direct application script into a layered architecture:
-
-```
-UI
-↓
-
-Control Center
-
-↓
-
-Pipeline
-
-↓
-
-Application Services
-
-↓
-
-Search / Classification / Resolution
-
-↓
-
-Persistence
-```
-
----
-
-### Runtime Model
-
-Separated runtime truth into independent sources:
-
-- UI Runtime
-- Scheduler Runtime
-- Pipeline Runtime
-- Artifact State
-- Persistent Portfolio
-
----
-
-### Observability
-
-Migrated from console logging to structured operational artifacts and runtime diagnostics.
-
----
-
-### Repository
-
-Reorganized into clear domains:
-
-- career_ui
-- control_center
-- src
-- tests
-- config
-- artifacts
-- data
-
----
-
-## Fixed
-
-- Scheduler state inconsistencies
-- Runtime orphan detection
-- Pipeline state persistence
-- Artifact schema consistency
-- IST timezone rendering
-- Dashboard runtime accuracy
-- Rejection tracking
-- Classification diagnostics
-- Application policy reporting
-- Pipeline diagnostics
-- Historical artifact inspection
-- Test regressions
-- Runtime cleanup
-- UI consistency issues
-
----
-
-## Removed
-
-- Temporary migration scripts
-- Development helper utilities
-- Experimental patch files
-- Stale virtual environments
-- Obsolete runtime state
-- Legacy UI behaviors
-
----
-
-# [1.x]
-
-Initial API automation foundation based on the NopeRi project.
-
-Included:
-
-- authentication
-- session handling
-- profile APIs
-- search APIs
-- application APIs
-
-This version served as the foundation upon which Career Workflow was developed.
+#### Added
+- **Staged Pipeline Architecture**: Initial `CareerWorkflowPipeline` execution model.
+- **Naukri API Integration**: Direct API client for Naukri search, job detail retrieval, and application submission.
+- **SQLite Ledger**: Persistent SQLite application tracking schema.

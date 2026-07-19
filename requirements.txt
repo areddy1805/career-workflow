@@ -1,17 +1,21 @@
+# Core & HTTP
 requests
 urllib3
 httpcloak
 python-dotenv
+httpx>=0.27,<1.0
+pydantic>=2.0,<3.0
+pyyaml
+psutil
+
+# Scraping & Automation
 selenium
 pycryptodome
 colorama
-httpx>=0.27,<1.0
-pydantic>=2.0,<3.0
 
+# API Control Plane
 fastapi
 uvicorn
 
 # JobSpy — unauthenticated scraping for Google Jobs, Indeed, LinkedIn.
-# Internal DataFrame is converted immediately inside JobSpyProvider; pandas
-# never leaks into downstream Career Workflow code.
 python-jobspy>=1.1.82,<2.0

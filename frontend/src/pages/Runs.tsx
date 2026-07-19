@@ -121,6 +121,37 @@ export default function Runs() {
                     <p className={`font-mono ${selectedRun.failed > 0 ? 'text-red-500 font-semibold' : ''}`}>{selectedRun.failed}</p>
                   </div>
                 </div>
+                {selectedRun.cache_metrics && Object.keys(selectedRun.cache_metrics).length > 0 && (
+                  <div className="bg-muted/30 p-4 rounded-md border border-border/50">
+                    <p className="text-[10px] uppercase font-semibold text-muted-foreground mb-3 tracking-wider">Cache Performance</p>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-[10px] text-muted-foreground mb-1">LLM Hits / Misses</p>
+                        <p className="font-mono text-xs">{selectedRun.cache_metrics.llm_hits} / {selectedRun.cache_metrics.llm_misses}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-muted-foreground mb-1">Embedding Hits / Misses</p>
+                        <p className="font-mono text-xs">{selectedRun.cache_metrics.embedding_hits} / {selectedRun.cache_metrics.embedding_misses}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-muted-foreground mb-1">Detail Hits / Misses</p>
+                        <p className="font-mono text-xs">{selectedRun.cache_metrics.detail_hits} / {selectedRun.cache_metrics.detail_misses}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-muted-foreground mb-1">HTTP Hits / Misses</p>
+                        <p className="font-mono text-xs">{selectedRun.cache_metrics.http_hits} / {selectedRun.cache_metrics.http_misses}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-muted-foreground mb-1">Lookup Time</p>
+                        <p className="font-mono text-xs">{selectedRun.cache_metrics.total_lookup_time_ms?.toFixed(1)}ms</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-muted-foreground mb-1">Save Time</p>
+                        <p className="font-mono text-xs">{selectedRun.cache_metrics.total_save_time_ms?.toFixed(1)}ms</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </ScrollArea>
