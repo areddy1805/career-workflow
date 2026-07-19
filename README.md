@@ -11,12 +11,13 @@
 <p align="center">
   <img alt="Python" src="https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white">
   <img alt="React" src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black">
-  <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5.0-3178C6?logo=typescript&logoColor=white">
+  <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white">
   <img alt="FastAPI" src="https://img.shields.io/badge/FastAPI-0.100%2B-009688?logo=fastapi&logoColor=white">
   <img alt="Playwright" src="https://img.shields.io/badge/Playwright-1.40%2B-2EAD33?logo=playwright&logoColor=white">
   <img alt="SQLite" src="https://img.shields.io/badge/SQLite-3-003B57?logo=sqlite&logoColor=white">
   <img alt="AI" src="https://img.shields.io/badge/AI-Gemini%20%7C%20Ollama-orange">
-  <img alt="Tests" src="https://img.shields.io/badge/tests-481%20passing-brightgreen">
+  <img alt="Platform" src="https://img.shields.io/badge/Platform-AI%20Job%20Operations-blueviolet">
+  <img alt="Tests" src="https://img.shields.io/badge/Tests-480%2B%20Passing-brightgreen">
 </p>
 
 <p align="center">
@@ -296,43 +297,58 @@ Current adaptive controls include:
 
 ## Why This Is Different From a Basic Auto-Apply Bot
 
-A basic bot:
-```text
-search → keyword match → apply → repeat
+Most "auto-apply" tools optimize for **application volume**. They search for jobs, perform basic keyword matching, submit applications, and repeat the process with little understanding of candidate fit or application outcomes.
+
+Career Workflow takes a fundamentally different approach. It treats job searching as a **closed-loop decision system** that combines AI-assisted evaluation, policy-controlled execution, persistent operational state, and continuous learning from recruiter outcomes.
+
+### At a Glance
+
+| Typical Auto-Apply Bot | Career Workflow |
+|-------------------------|-----------------|
+| Keyword matching | Candidate-aware AI evaluation |
+| Maximizes application count | Optimizes application quality |
+| Stateless execution | Persistent application ledger |
+| Fixed rules | Evidence-gated adaptive strategy |
+| Simple apply loop | Multi-stage decision pipeline |
+| Minimal visibility | Full Operations Console |
+| Basic logging | End-to-end observability |
+| No feedback loop | Closed-loop continuous improvement |
+
+### Decision Pipeline Comparison
+
+```mermaid
+flowchart LR
+
+subgraph Basic["Typical Auto-Apply Bot"]
+    A1["Search Jobs"]
+    A2["Keyword Match"]
+    A3["Apply"]
+    A4["Repeat"]
+
+    A1 --> A2 --> A3 --> A4
+end
+
+subgraph CW["Career Workflow"]
+    B1["Resilient Acquisition"]
+    B2["Candidate-Aware Classification"]
+    B3["AI Fit Scoring"]
+    B4["Policy & Diversity Controls"]
+    B5["Safe Application Execution"]
+    B6["Hybrid Questionnaire Resolution"]
+    B7["Lifecycle Tracking"]
+    B8["Analytics & Strategy"]
+    B9["Continuous Feedback"]
+
+    B1 --> B2 --> B3 --> B4 --> B5 --> B6 --> B7 --> B8 --> B9
+    B9 -. Evidence-Driven Optimization .-> B1
+end
 ```
 
-Career Workflow:
-```text
-resilient acquisition
-        ↓
-candidate-aware classification
-        ↓
-fit scoring + AI relevance gates
-        ↓
-application policy
-        ↓
-company + role-family diversity
-        ↓
-adaptive strategy
-        ↓
-safe execution
-        ↓
-questionnaire intelligence
-        ↓
-response interpretation
-        ↓
-failure classification + retry
-        ↓
-persistent application ledger
-        ↓
-server lifecycle reconciliation
-        ↓
-funnel analytics
-        ↓
-outcome-driven strategy feedback
-```
+Instead of maximizing the number of applications submitted, Career Workflow focuses on maximizing the **quality, safety, and effectiveness** of every application.
 
-This distinction matters. The system treats job application as a decision pipeline with state and feedback, not a loop over search results.
+Each execution contributes new operational evidence through lifecycle tracking, analytics, and recruiter outcomes. That evidence is used to refine future search strategies, scoring thresholds, application allocation, and policy decisions. The result is a system that continuously improves over time rather than repeatedly executing the same static workflow.
+
+In short, Career Workflow is **not an auto-click application bot**—it is an **AI-assisted Job Operations Platform** designed to discover broadly, evaluate intelligently, execute safely, and adapt from evidence.
 
 ---
 
@@ -844,6 +860,7 @@ tests/
 └── search/         acquisition, cache, challenge handling, cooldown
 ```
 
+
 Complete validation:
 ```bash
 python -m pytest
@@ -857,35 +874,31 @@ Current validation status:
 
 ---
 
-## Factory Reset (Fresh Start)
+## Factory Reset
 
-Use this procedure when you want to discard all runtime state and begin with a completely fresh portfolio.
-
-> **Warning**
-> This permanently removes local application history, cached search results, runtime state, run artifacts, logs, and generated data. Only use it when intentionally starting from scratch.
+Use this command to remove all generated runtime state and begin with a fresh local portfolio.
 
 ```bash
-# Stop the UI and scheduler first.
-
-rm -rf artifacts/runs/*
-rm -rf logs/*
-rm -f data/application_ledger.db
-rm -f data/job_search_cache.json
-rm -f data/score_cache.json
-rm -f data/manual_jobs.db
-rm -f data/manual_action_queue.json
-rm -f data/search_challenge_state.json
-rm -f data/runtime_state.json
-rm -f data/scheduler_state.json
-rm -f data/pipeline_state.json
-rm -f data/heartbeat.json
-rm -rf data/ui_runtime/*
-rm -rf data/responses/*
-
-mkdir -p artifacts/runs logs data/responses data/ui_runtime
-echo "Factory reset complete."
+python tools/factory_reset.py
 ```
 
+The reset utility:
+- removes runtime artifacts
+- removes caches
+- removes scheduler state
+- removes generated reports
+- removes runtime telemetry
+- removes local application history
+- recreates required runtime directories
+
+This command preserves:
+- source code
+- configuration
+- candidate profile
+- search strategies
+- documentation
+- environment files
+- repository assets
 ---
 
 ## Provider Selection
