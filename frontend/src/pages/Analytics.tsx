@@ -14,10 +14,7 @@ import {
   Cell,
   ReferenceLine,
 } from 'recharts';
-import {
-  BarChart2, TrendingUp, TrendingDown, Activity,
-  CheckCircle2, XCircle, Clock, Layers, Target,
-} from 'lucide-react';
+import { TrendingUp, Activity, CheckCircle2, Layers, Target } from 'lucide-react';
 
 // ─── Label Maps ──────────────────────────────────────────────────────────────
 
@@ -31,14 +28,15 @@ const LIFECYCLE_LABELS: Record<string, string> = {
   OFFER: 'Offer',
 };
 
+// All chart colors derive from CSS tokens — adapts correctly to light/dark mode
 const LIFECYCLE_COLORS: Record<string, string> = {
-  Acquired: 'hsl(var(--primary))',
-  Submitted: '#34d399',
-  Viewed: '#60a5fa',
-  Shortlisted: '#a78bfa',
-  Interview: '#f59e0b',
-  Rejected: '#f87171',
-  Offer: '#10b981',
+  Acquired:    'hsl(var(--chart-1))',
+  Submitted:   'hsl(var(--chart-2))',
+  Viewed:      'hsl(var(--chart-3))',
+  Shortlisted: 'hsl(var(--chart-4))',
+  Interview:   'hsl(var(--chart-6))',
+  Rejected:    'hsl(var(--chart-5))',
+  Offer:       'hsl(var(--chart-2))',
 };
 
 const TOOLTIP_STYLE = {
@@ -63,56 +61,6 @@ function KpiCard({
         <p className="text-[9px] uppercase tracking-wider font-semibold text-muted-foreground mb-0.5">{label}</p>
         <p className={`text-2xl font-bold tracking-tight ${color}`}>{value}</p>
         {sub && <p className="text-[10px] text-muted-foreground mt-0.5">{sub}</p>}
-      </div>
-    </div>
-  );
-}
-
-// ─── Runs Table ───────────────────────────────────────────────────────────────
-
-function RunsTable({ runs }: { runs: any[] }) {
-  return (
-    <div className="bg-card border border-border/50 rounded-lg overflow-hidden">
-      <div className="px-4 py-2.5 border-b bg-secondary/20 flex items-center gap-2">
-        <Activity className="w-3.5 h-3.5 text-muted-foreground" />
-        <span className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Recent Runs Summary</span>
-      </div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-xs">
-          <thead className="border-b bg-muted/20">
-            <tr>
-              {['Run ID', 'Status', 'Acquired', 'Classified', 'Selected', 'Submitted', 'Failed', 'Mode', 'Started'].map(h => (
-                <th key={h} className="px-3 py-2 text-left text-[9px] uppercase tracking-wider text-muted-foreground font-medium">{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {runs.slice(0, 15).map((run: any, i: number) => {
-              const statusColor = run.status === 'SUCCESS' ? 'text-green-500' : run.status === 'FAILED' ? 'text-red-500' : 'text-muted-foreground';
-              return (
-                <tr key={run.run_id} className={`border-b border-border/20 transition-colors hover:bg-muted/20 ${i % 2 === 0 ? '' : 'bg-muted/5'}`}>
-                  <td className="px-3 py-2 font-mono text-[10px] text-muted-foreground">{(run.run_id || '').slice(-14)}</td>
-                  <td className="px-3 py-2">
-                    <span className={`text-[9px] font-bold uppercase ${statusColor}`}>{run.status}</span>
-                  </td>
-                  <td className="px-3 py-2 font-mono">{run.acquired ?? 0}</td>
-                  <td className="px-3 py-2 font-mono">{run.classified ?? 0}</td>
-                  <td className="px-3 py-2 font-mono">{run.selected ?? 0}</td>
-                  <td className="px-3 py-2 font-mono text-green-500">{run.submitted ?? 0}</td>
-                  <td className="px-3 py-2 font-mono text-red-400">{run.failed ?? 0}</td>
-                  <td className="px-3 py-2">
-                    <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded ${run.dry_run ? 'bg-amber-500/10 text-amber-500' : 'bg-green-500/10 text-green-500'}`}>
-                      {run.dry_run ? 'DRY' : 'LIVE'}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2 text-muted-foreground text-[10px]">
-                    {run.started_at ? new Date(run.started_at).toLocaleString([], { month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
       </div>
     </div>
   );
@@ -191,13 +139,15 @@ export default function Analytics() {
 
   return (
     <div className="h-full flex flex-col bg-background text-sm">
-      {/* Header */}
-      <div className="flex items-center gap-2 px-6 py-3 border-b shrink-0 bg-background/95 backdrop-blur z-10">
-        <BarChart2 className="w-4 h-4 text-primary" />
-        <h2 className="font-semibold tracking-tight">Analytics Engine</h2>
-        <span className="ml-2 text-[10px] text-muted-foreground font-mono bg-muted/50 px-1.5 py-0.5 rounded">
-          {totalRuns} runs · {totalJobs.toLocaleString()} total jobs
-        </span>
+      {/* Page Header */}
+      <div className="flex items-center justify-between px-6 py-4 border-b border-border/50 shrink-0 bg-background/95 backdrop-blur z-10">
+        <div>
+          <h1 className="text-base font-semibold tracking-tight">Analytics</h1>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Pipeline performance, application lifecycle, and outcome trends.
+            <span className="ml-1 text-muted-foreground/60">{totalRuns} runs · {totalJobs.toLocaleString()} jobs</span>
+          </p>
+        </div>
       </div>
 
       <div className="flex-1 overflow-auto p-5 space-y-5">
@@ -242,7 +192,7 @@ export default function Analytics() {
                     <Tooltip
                       cursor={{ fill: 'hsl(var(--muted) / 0.4)' }}
                       contentStyle={TOOLTIP_STYLE}
-                      formatter={(value: any, name: any, props: any) => [value.toLocaleString(), props.payload.lifecycle_stage]}
+                      formatter={(value: any, _: any, props: any) => [value.toLocaleString(), props.payload.lifecycle_stage]}
                     />
                     <Bar dataKey="count" radius={[0, 4, 4, 0]} maxBarSize={26}>
                       {lifecycle.map((entry: any) => (
@@ -281,9 +231,9 @@ export default function Analytics() {
                     <YAxis tick={{ fontSize: 9, fill: 'hsl(var(--muted-foreground))' }} tickLine={false} axisLine={false} />
                     <Tooltip contentStyle={TOOLTIP_STYLE} />
                     <Legend iconSize={8} wrapperStyle={{ fontSize: '10px', paddingTop: '8px' }} />
-                    <Line type="monotone" dataKey="Acquired" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} activeDot={{ r: 3 }} />
-                    <Line type="monotone" dataKey="Classified" stroke="#60a5fa" strokeWidth={2} dot={false} activeDot={{ r: 3 }} />
-                    <Line type="monotone" dataKey="Selected" stroke="#34d399" strokeWidth={2} dot={false} activeDot={{ r: 3 }} />
+                    <Line type="monotone" dataKey="Acquired" stroke="hsl(var(--chart-1))" strokeWidth={2} dot={false} activeDot={{ r: 3 }} />
+                    <Line type="monotone" dataKey="Classified" stroke="hsl(var(--chart-3))" strokeWidth={2} dot={false} activeDot={{ r: 3 }} />
+                    <Line type="monotone" dataKey="Selected" stroke="hsl(var(--chart-2))" strokeWidth={2} dot={false} activeDot={{ r: 3 }} />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
@@ -308,9 +258,9 @@ export default function Analytics() {
                   <Tooltip contentStyle={TOOLTIP_STYLE} />
                   <Legend iconSize={8} wrapperStyle={{ fontSize: '10px' }} />
                   <ReferenceLine y={0} stroke="hsl(var(--border))" />
-                  <Bar dataKey="Submitted" fill="#34d399" radius={[2, 2, 0, 0]} maxBarSize={18} />
-                  <Bar dataKey="ManualReview" fill="#f59e0b" radius={[2, 2, 0, 0]} maxBarSize={18} />
-                  <Bar dataKey="Failed" fill="#f87171" radius={[2, 2, 0, 0]} maxBarSize={18} />
+                  <Bar dataKey="Submitted" fill="hsl(var(--chart-2))" radius={[2, 2, 0, 0]} maxBarSize={18} />
+                  <Bar dataKey="ManualReview" fill="hsl(var(--chart-4))" radius={[2, 2, 0, 0]} maxBarSize={18} />
+                  <Bar dataKey="Failed" fill="hsl(var(--chart-5))" radius={[2, 2, 0, 0]} maxBarSize={18} />
                   <Bar dataKey="DryRun" fill="hsl(var(--muted-foreground) / 0.4)" radius={[2, 2, 0, 0]} maxBarSize={18} />
                 </BarChart>
               </ResponsiveContainer>
@@ -319,9 +269,6 @@ export default function Analytics() {
             <div className="h-[200px] flex items-center justify-center text-muted-foreground text-xs">No outcome data.</div>
           )}
         </div>
-
-        {/* Runs Table */}
-        <RunsTable runs={runs as any[]} />
       </div>
     </div>
   );
