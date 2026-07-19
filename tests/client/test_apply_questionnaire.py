@@ -40,7 +40,7 @@ def load_job(job_id: str) -> Job:
         experience=row.get("experience", ""),
         salary=row.get("salary", ""),
         posted_date=row.get("posted_date", ""),
-        apply_link=row.get("apply_link", ""),
+        apply_url=row.get("apply_url", ""),
         description=row.get("description", ""),
         tags=tags,
     )

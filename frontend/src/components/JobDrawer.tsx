@@ -58,7 +58,7 @@ export function JobDrawer({ jobId, open, onOpenChange, onTransitioned }: JobDraw
   };
 
   const getJobUrl = () => {
-    const url = data?.overview?.apply_link || data?.overview?.url || data?.overview?.source_url;
+    const url = data?.overview?.apply_url || data?.overview?.apply_link || data?.overview?.url || data?.overview?.source_url;
     if (!url) return null;
     if (url.startsWith('http')) return url;
     if (url.startsWith('job-listings-') || url.startsWith('/job-listings-')) {
@@ -95,7 +95,7 @@ export function JobDrawer({ jobId, open, onOpenChange, onTransitioned }: JobDraw
             <div className="flex flex-wrap gap-2 border-b pb-4">
                {jobUrl ? (
                  <Button variant="outline" size="sm" onClick={() => window.open(jobUrl, '_blank')}>
-                   <ExternalLink className="w-4 h-4 mr-2" /> Open Job
+                   <ExternalLink className="w-4 h-4 mr-2" /> Open External
                  </Button>
                ) : null}
                {/* APPLIED is valid from: IN_PROGRESS, OPENED states */}

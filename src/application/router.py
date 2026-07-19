@@ -28,7 +28,7 @@ class ApplicationRouter:
                 reasoning="Provider supports native application and no external override was provided.",
             )
 
-        url_to_check = external_url or getattr(job, "apply_link", None)
+        url_to_check = external_url or getattr(job, "apply_url", None)
 
         if not url_to_check:
             return RoutingResult(

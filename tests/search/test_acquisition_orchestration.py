@@ -15,7 +15,7 @@ def make_job(
         experience="5-8 Yrs",
         salary="Not disclosed",
         posted_date="1 day ago",
-        apply_link="/job-listings-test",
+        apply_url="/job-listings-test",
         description="Build RAG systems.",
         tags=[
             "Python",

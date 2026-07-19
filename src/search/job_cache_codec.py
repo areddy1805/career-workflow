@@ -14,7 +14,7 @@ class JobCacheCodec:
         "experience",
         "salary",
         "posted_date",
-        "apply_link",
+        "posted_date",
     }
 
     @classmethod
@@ -33,7 +33,7 @@ class JobCacheCodec:
             "experience": job.experience,
             "salary": job.salary,
             "posted_date": job.posted_date,
-            "apply_link": job.apply_link,
+            "apply_url": job.apply_url,
             "description": job.description,
             "tags": list(job.tags),
             "acquisition_source": getattr(
@@ -44,7 +44,6 @@ class JobCacheCodec:
             "provider_id": getattr(job, "provider_id", "unknown"),
             "provider_name": getattr(job, "provider_name", "unknown"),
             "provider_source": getattr(job, "provider_source", "unknown"),
-            "provider_url": getattr(job, "provider_url", ""),
             "provider_job_id": getattr(job, "provider_job_id", ""),
         }
 
@@ -76,13 +75,12 @@ class JobCacheCodec:
             experience=str(payload["experience"]),
             salary=str(payload["salary"]),
             posted_date=str(payload["posted_date"]),
-            apply_link=str(payload["apply_link"]),
+            apply_url=str(payload.get("apply_url") or payload.get("apply_link") or ""),
             description=str(payload.get("description") or ""),
             tags=list(tags),
             provider_id=str(payload.get("provider_id") or "unknown"),
             provider_name=str(payload.get("provider_name") or "unknown"),
             provider_source=str(payload.get("provider_source") or "unknown"),
-            provider_url=str(payload.get("provider_url") or ""),
             provider_job_id=str(payload.get("provider_job_id") or ""),
         )
 

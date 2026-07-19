@@ -372,6 +372,8 @@ class JobFilterPipeline2:
     # STATE TRACKING
     # =========================================================
 
+    def record_decision(self, job: dict, stage: str, code: str, reason: str) -> None:
+
         job_copy = job.copy()
         job_copy["rejection_stage"] = stage
         job_copy["rejection_code"] = code
@@ -568,7 +570,6 @@ class JobFilterPipeline2:
                     "provider_id": job.get("provider_id", "unknown"),
                     "provider_name": job.get("provider_name", "unknown"),
                     "provider_source": job.get("provider_source", "unknown"),
-                    "provider_url": job.get("provider_url", ""),
                     "provider_job_id": job.get("provider_job_id", ""),
                 }
             )

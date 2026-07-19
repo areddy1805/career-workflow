@@ -1331,6 +1331,7 @@ class CareerWorkflowPipeline:
 
             if self.status == PipelineStatus.RUNNING:
                 self.status = PipelineStatus.SUCCESS
+                result.status = PipelineStatus.SUCCESS.value
 
             self._persist_state()
 

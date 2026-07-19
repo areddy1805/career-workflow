@@ -17,7 +17,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger, ContextMenuSeparator, ContextMenuSub, ContextMenuSubTrigger, ContextMenuSubContent } from '@/components/ui/context-menu';
-import { Copy, X, Settings2, EyeOff, LayoutTemplate } from 'lucide-react';
+import { Copy, X, Settings2, EyeOff, LayoutTemplate, ExternalLink } from 'lucide-react';
 import { useJobStore } from '@/store/jobs';
 import { Checkbox } from '@/components/ui/checkbox';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuCheckboxItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -87,6 +87,28 @@ export default function Jobs() {
       header: 'Updated', 
       size: 150, 
       cell: ({ row }: any) => <RelativeTime date={row.getValue('last_updated_at')} className="text-muted-foreground text-xs" /> 
+    },
+    {
+      id: 'actions',
+      header: '',
+      size: 60,
+      enableSorting: false,
+      enableResizing: false,
+      cell: ({ row }: any) => {
+        const url = (row.original as any).apply_url || (row.original as any).apply_link || (row.original as any).url || (row.original as any).source_url;
+        if (!url) return null;
+        return (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 text-muted-foreground hover:text-primary"
+            onClick={(e) => { e.stopPropagation(); window.open(url, '_blank'); }}
+            title="Open External"
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+          </Button>
+        );
+      }
     },
   ], []);
 
@@ -248,8 +270,11 @@ export default function Jobs() {
                         <ContextMenuItem onClick={() => navigator.clipboard.writeText((row.original as any).job_id)}>
                           <Copy className="w-3 h-3 mr-2" /> Copy Job ID
                         </ContextMenuItem>
-                        <ContextMenuItem onClick={() => window.open((row.original as any).url, '_blank')}>
-                          Open Original URL
+                        <ContextMenuItem onClick={() => {
+                          const url = (row.original as any).apply_url || (row.original as any).apply_link || (row.original as any).url || (row.original as any).source_url;
+                          if (url) window.open(url, '_blank');
+                        }}>
+                          Open External
                         </ContextMenuItem>
                         <ContextMenuSeparator />
                         <ContextMenuSub>

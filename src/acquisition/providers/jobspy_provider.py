@@ -707,10 +707,10 @@ class JobSpyProvider:
         posted_date = self._format_date(raw_date)
 
         # ------------------------------------------------------------------
-        # apply_link  — canonicalize URL to strip tracking params
+        # apply_url  — canonicalize URL to strip tracking params
         # ------------------------------------------------------------------
         raw_url = _get("job_url", "") or ""
-        apply_link = canonicalize_url(str(raw_url)) if raw_url else ""
+        apply_url = canonicalize_url(str(raw_url)) if raw_url else ""
 
         # ------------------------------------------------------------------
         # description
@@ -738,14 +738,13 @@ class JobSpyProvider:
             experience=experience,
             salary=salary,
             posted_date=posted_date,
-            apply_link=apply_link,
+            apply_url=apply_url,
             description=description,
             tags=tags,
             decision_history=decision_history,
             provider_id="jobspy",
             provider_name=site.capitalize(),
             provider_source=site,
-            provider_url=str(raw_url).strip() if raw_url else "",
             provider_job_id=str(raw_id).strip() if raw_id else "",
         )
 

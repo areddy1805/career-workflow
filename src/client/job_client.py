@@ -150,7 +150,7 @@ class NaukriJobClient:
             "N/A",
         )
         job_id = str(raw.get("jobId") or raw.get("id") or "")
-        apply_link = raw.get("jdURL") or f"https://www.naukri.com/job-listings-{job_id}"
+        apply_url = raw.get("jdURL") or f"https://www.naukri.com/job-listings-{job_id}"
         return Job(
             job_id=job_id,
             title=raw.get("title") or raw.get("jobTitle") or "N/A",
@@ -161,7 +161,7 @@ class NaukriJobClient:
             posted_date=raw.get("footerPlaceholderLabel")
             or raw.get("postedDate")
             or "N/A",
-            apply_link=apply_link,
+            apply_url=apply_url,
             description=raw.get("jobDescription") or "",
             tags=(
                 [t.strip() for t in raw.get("tagsAndSkills", "").split(",")]
@@ -171,7 +171,6 @@ class NaukriJobClient:
             provider_id="naukri",
             provider_name="Naukri",
             provider_source="naukri",
-            provider_url=apply_link,
             provider_job_id=job_id,
         )
 

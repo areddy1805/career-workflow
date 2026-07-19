@@ -48,7 +48,7 @@ def _job(
         experience="N/A",
         salary="Not disclosed",
         posted_date="2025-07-10",
-        apply_link=f"https://example.com/job/{job_id}",
+        apply_url=f"https://example.com/job/{job_id}",
     )
 
 
@@ -128,7 +128,7 @@ class TestFullAdapterPipeline:
                     experience="4+ years",
                     salary="1,500,000-2,500,000 INR (yearly)",
                     posted_date="2025-07-10",
-                    apply_link="https://www.indeed.com/viewjob",
+                    apply_url="https://www.indeed.com/viewjob",
                     description="Build RAG systems with 4+ years experience.",
                 )
             ],
@@ -150,7 +150,7 @@ class TestFullAdapterPipeline:
             experience="N/A",
             salary="Not disclosed",
             posted_date="2025-07-10",
-            apply_link="",
+            apply_url="",
         )
 
         with patch.object(provider, "_invoke_jobspy", return_value=[fake_job]):
@@ -160,7 +160,7 @@ class TestFullAdapterPipeline:
 
     def test_adapter_strips_tracking_from_url(self, tmp_path):
         """URL canonicalization is tested via the normalization tests; this confirms
-        the apply_link field is always a plain str."""
+        the apply_url field is always a plain str."""
         cfg = JobSpyConfig(
             enabled=True, sites=["indeed"], challenge_state_dir=str(tmp_path)
         )
@@ -175,13 +175,13 @@ class TestFullAdapterPipeline:
             experience="N/A",
             salary="Not disclosed",
             posted_date="2025-07-10",
-            apply_link="https://www.indeed.com/viewjob",  # already canonical
+            apply_url="https://www.indeed.com/viewjob",  # already canonical
         )
 
         with patch.object(provider, "_invoke_jobspy", return_value=[clean_job]):
             jobs = provider.search("ai", "Pune", "indeed")
 
-        assert "utm_source" not in jobs[0].apply_link
+        assert "utm_source" not in jobs[0].apply_url
 
     def test_adapter_canonicalises_indeed_regional_url(self, tmp_path):
         """Verifies URL canonicalization is applied inside _normalize_row;
@@ -216,7 +216,7 @@ class TestFullAdapterPipeline:
             experience="4+ years",
             salary="1,500,000-2,500,000 INR (yearly)",
             posted_date="2025-07-10",
-            apply_link="https://www.indeed.com/viewjob",
+            apply_url="https://www.indeed.com/viewjob",
             description="Build RAG systems with 4+ years experience.",
         )
 
@@ -232,7 +232,7 @@ class TestFullAdapterPipeline:
                 "experience",
                 "salary",
                 "posted_date",
-                "apply_link",
+                "apply_url",
                 "description",
             ):
                 val = getattr(job, field_name)
@@ -313,10 +313,10 @@ class TestProviderEnabledEndToEnd:
     def test_duplicate_job_resolved_to_naukri(self, tmp_path):
         shared_url = "https://www.indeed.com/viewjob?id=shared"
         naukri_job = _job("N1", title="LLM Engineer")
-        naukri_job.apply_link = shared_url
+        naukri_job.apply_url = shared_url
 
         jobspy_job = _job("jobspy_indeed_S", title="LLM Engineer")
-        jobspy_job.apply_link = shared_url
+        jobspy_job.apply_url = shared_url
 
         result = merge_jobs([naukri_job], [jobspy_job], ["naukri", "indeed"])
         assert len(result) == 1
@@ -325,9 +325,9 @@ class TestProviderEnabledEndToEnd:
     def test_source_tags_added_on_duplicate(self, tmp_path):
         shared_url = "https://www.indeed.com/viewjob?id=dup"
         naukri_job = _job("N1")
-        naukri_job.apply_link = shared_url
+        naukri_job.apply_url = shared_url
         jobspy_job = _job("jobspy_indeed_D")
-        jobspy_job.apply_link = shared_url
+        jobspy_job.apply_url = shared_url
 
         result = merge_jobs([naukri_job], [jobspy_job], ["naukri", "indeed"])
         tags = result[0].tags
