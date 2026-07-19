@@ -11,8 +11,8 @@ interface JobsState {
   sorting: SortingState;
   columnVisibility: VisibilityState;
   filters: JobFilters;
-  setSorting: (sorting: SortingState) => void;
-  setColumnVisibility: (visibility: VisibilityState) => void;
+  setSorting: (updater: SortingState | ((old: SortingState) => SortingState)) => void;
+  setColumnVisibility: (updater: VisibilityState | ((old: VisibilityState) => VisibilityState)) => void;
   setFilters: (filters: JobFilters) => void;
   updateFilters: (updates: Partial<JobFilters>) => void;
 }
@@ -23,8 +23,12 @@ export const useJobStore = create<JobsState>()(
       sorting: [{ id: 'last_updated_at', desc: true }],
       columnVisibility: {},
       filters: {},
-      setSorting: (sorting) => set({ sorting }),
-      setColumnVisibility: (columnVisibility) => set({ columnVisibility }),
+      setSorting: (updater) => set((state) => ({ 
+        sorting: typeof updater === 'function' ? updater(state.sorting) : updater 
+      })),
+      setColumnVisibility: (updater) => set((state) => ({ 
+        columnVisibility: typeof updater === 'function' ? updater(state.columnVisibility) : updater 
+      })),
       setFilters: (filters) => set({ filters }),
       updateFilters: (updates) => set((state) => ({ filters: { ...state.filters, ...updates } })),
     }),

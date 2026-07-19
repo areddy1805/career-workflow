@@ -1,15 +1,20 @@
-import React, { useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, NavLink, useLocation } from 'react-router-dom';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import React, { useEffect, useState, useCallback } from 'react';
+import { BrowserRouter as Router, Routes, Route, NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import {
-  LayoutDashboard, Briefcase, Activity, BarChart2, Settings,
-  FileJson, PlaySquare, PanelLeftClose, PanelLeftOpen,
-  Search, Play, ListTodo, Zap,
+  LayoutDashboard, Briefcase,
+  Play, Inbox, Zap, Server, Search, ChevronRight,
+  Settings, PlaySquare, BarChart2, FileJson,
+  PanelLeftClose, PanelLeftOpen,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { usePreferences } from '@/store/preferences';
-import { CommandMenu } from '@/components/CommandMenu';
 import { GlobalErrorBoundary } from '@/components/ErrorBoundary';
+import {
+  CommandDialog, CommandEmpty, CommandGroup, CommandInput,
+  CommandItem, CommandList, CommandSeparator,
+} from '@/components/ui/command';
+import { fetchManualReviewQueue, fetchExternalApplyQueue } from '@/lib/api';
 
 import Dashboard from '@/pages/Dashboard';
 import Jobs from '@/pages/Jobs';
@@ -26,22 +31,62 @@ const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, refetchOnWindowFocus: false } },
 });
 
-const NAV_ITEMS = [
-  { name: 'Dashboard',  path: '/',          icon: LayoutDashboard, group: 'main' },
-  { name: 'Search',     path: '/search',    icon: Search,           group: 'main' },
-  { name: 'Queues',     path: '/queues',    icon: ListTodo,         group: 'main', badge: true },
-  { name: 'Jobs',       path: '/jobs',      icon: Briefcase,        group: 'main' },
-  { name: 'Pipeline',   path: '/pipeline',  icon: Play,             group: 'ops' },
-  { name: 'Runs',       path: '/runs',      icon: PlaySquare,       group: 'ops' },
-  { name: 'Runtime',    path: '/runtime',   icon: Activity,         group: 'ops' },
-  { name: 'Artifacts',  path: '/artifacts', icon: FileJson,         group: 'ops' },
-  { name: 'Analytics',  path: '/analytics', icon: BarChart2,        group: 'ops' },
+// ─── Navigation Structure ─────────────────────────────────────────────────────
+// Order: Overview → Jobs → Inbox → Pipeline → Runs → Runtime →
+//        Analytics → Search Intelligence → Artifacts → Settings
+// ─────────────────────────────────────────────────────────────────────────────
+
+const NAV_GROUPS = [
+  {
+    label: 'Workspace',
+    items: [
+      { name: 'Overview',   path: '/',          icon: LayoutDashboard },
+      { name: 'Jobs',       path: '/jobs',      icon: Briefcase       },
+      { name: 'Inbox',      path: '/queues',    icon: Inbox, badge: true },
+    ],
+  },
+  {
+    label: 'Pipeline',
+    items: [
+      { name: 'Pipeline',   path: '/pipeline',  icon: Play    },
+      { name: 'Runs',       path: '/runs',      icon: PlaySquare },
+      { name: 'Runtime',    path: '/runtime',   icon: Server  },
+    ],
+  },
+  {
+    label: 'Intelligence',
+    items: [
+      { name: 'Analytics',          path: '/analytics', icon: BarChart2 },
+      { name: 'Search Intelligence', path: '/search',    icon: Search    },
+      { name: 'Artifacts',          path: '/artifacts', icon: FileJson  },
+    ],
+  },
 ];
+
+const ALL_NAV_ITEMS = NAV_GROUPS.flatMap(g => g.items);
+
+// ─── Inbox badge count ────────────────────────────────────────────────────────
+
+function useInboxCount() {
+  const { data: manual } = useQuery({
+    queryKey: ['queue', 'manual-review'],
+    queryFn: fetchManualReviewQueue,
+    staleTime: 60_000,
+  });
+  const { data: external } = useQuery({
+    queryKey: ['queue', 'external-apply'],
+    queryFn: fetchExternalApplyQueue,
+    staleTime: 60_000,
+  });
+  const count = (manual?.items?.length ?? 0) + (external?.items?.length ?? 0);
+  return count > 0 ? count : null;
+}
+
+// ─── Sidebar ─────────────────────────────────────────────────────────────────
 
 function Sidebar() {
   const { sidebarOpen, toggleSidebar } = usePreferences();
-  const mainItems = NAV_ITEMS.filter(i => i.group === 'main');
-  const opsItems  = NAV_ITEMS.filter(i => i.group === 'ops');
+  const inboxCount = useInboxCount();
 
   return (
     <div className={cn(
@@ -49,37 +94,45 @@ function Sidebar() {
       sidebarOpen ? 'w-[220px]' : 'w-[58px]'
     )}>
       {/* Logo */}
-      <div className="h-14 border-b border-border/60 flex items-center px-3 shrink-0">
+      <div className="h-12 border-b border-border/40 flex items-center px-3 shrink-0">
         {sidebarOpen ? (
           <div className="flex items-center gap-2.5 overflow-hidden whitespace-nowrap">
-            <div className="w-7 h-7 rounded-lg bg-primary flex items-center justify-center shrink-0 glow-amber">
-              <Zap className="w-4 h-4 text-primary-foreground" />
+            <div className="w-6 h-6 rounded-md bg-foreground flex items-center justify-center shrink-0">
+              <Zap className="w-3.5 h-3.5 text-background" />
             </div>
             <div>
-              <p className="text-sm font-bold tracking-tight leading-none text-gradient-amber">CareerFlow</p>
+              <p className="text-sm font-semibold tracking-tight leading-none text-foreground">CareerFlow</p>
               <p className="text-[9px] text-muted-foreground font-mono tracking-widest mt-0.5">OPERATIONS</p>
             </div>
           </div>
         ) : (
-          <div className="w-7 h-7 rounded-lg bg-primary flex items-center justify-center shrink-0 mx-auto glow-amber">
-            <Zap className="w-4 h-4 text-primary-foreground" />
+          <div className="w-6 h-6 rounded-md bg-foreground flex items-center justify-center shrink-0 mx-auto">
+            <Zap className="w-3.5 h-3.5 text-background" />
           </div>
         )}
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-2 py-3 flex flex-col gap-0.5 overflow-y-auto overflow-x-hidden">
-        {sidebarOpen && (
-          <p className="text-[9px] font-semibold text-muted-foreground/60 uppercase tracking-widest px-2 mb-1">Workspace</p>
-        )}
-        {mainItems.map(item => <NavItem key={item.path} item={item} collapsed={!sidebarOpen} />)}
-
-        <div className="my-2 border-t border-border/40" />
-
-        {sidebarOpen && (
-          <p className="text-[9px] font-semibold text-muted-foreground/60 uppercase tracking-widest px-2 mb-1">Operations</p>
-        )}
-        {opsItems.map(item => <NavItem key={item.path} item={item} collapsed={!sidebarOpen} />)}
+      <nav className="flex-1 px-2 py-3 flex flex-col gap-3 overflow-y-auto overflow-x-hidden" aria-label="Main navigation">
+        {NAV_GROUPS.map((group) => (
+          <div key={group.label}>
+            {sidebarOpen && (
+              <p className="text-[9px] font-semibold text-muted-foreground/50 uppercase tracking-widest px-2 mb-1">
+                {group.label}
+              </p>
+            )}
+            <div className="flex flex-col gap-0.5">
+              {group.items.map(item => (
+                <NavItem
+                  key={item.path}
+                  item={item}
+                  collapsed={!sidebarOpen}
+                  badge={item.badge ? inboxCount : null}
+                />
+              ))}
+            </div>
+          </div>
+        ))}
       </nav>
 
       {/* Footer */}
@@ -88,10 +141,10 @@ function Sidebar() {
           to="/settings"
           title={!sidebarOpen ? 'Settings' : undefined}
           className={({ isActive }) => cn(
-            'flex items-center gap-3 px-2.5 py-2 rounded-md text-xs font-medium transition-all duration-150 whitespace-nowrap group',
+            'flex items-center gap-3 px-2.5 py-2 rounded-md text-xs font-medium transition-all duration-150 whitespace-nowrap',
             isActive
-              ? 'bg-primary/15 text-primary'
-              : 'text-muted-foreground hover:bg-secondary/80 hover:text-foreground'
+              ? 'bg-secondary text-foreground'
+              : 'text-muted-foreground hover:bg-secondary/60 hover:text-foreground'
           )}
         >
           <Settings className="w-4 h-4 shrink-0" />
@@ -99,6 +152,7 @@ function Sidebar() {
         </NavLink>
         <button
           onClick={toggleSidebar}
+          aria-label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
           className="flex items-center gap-3 px-2.5 py-2 rounded-md text-xs text-muted-foreground hover:bg-secondary/80 hover:text-foreground transition-all duration-150 whitespace-nowrap"
         >
           {sidebarOpen
@@ -111,7 +165,15 @@ function Sidebar() {
   );
 }
 
-function NavItem({ item, collapsed }: { item: typeof NAV_ITEMS[0]; collapsed: boolean }) {
+function NavItem({
+  item,
+  collapsed,
+  badge,
+}: {
+  item: typeof ALL_NAV_ITEMS[0];
+  collapsed: boolean;
+  badge?: number | null;
+}) {
   return (
     <NavLink
       to={item.path}
@@ -120,52 +182,158 @@ function NavItem({ item, collapsed }: { item: typeof NAV_ITEMS[0]; collapsed: bo
       className={({ isActive }) => cn(
         'flex items-center gap-3 px-2.5 py-2 rounded-md text-xs font-medium transition-all duration-150 whitespace-nowrap group relative',
         isActive
-          ? 'bg-primary/15 text-primary shadow-sm'
+          ? 'bg-secondary text-foreground'
           : 'text-muted-foreground hover:bg-secondary/60 hover:text-foreground'
       )}
     >
       {({ isActive }) => (
         <>
           {isActive && (
-            <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-primary rounded-r-full" />
+            <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-4 bg-primary rounded-r-full" aria-hidden="true" />
           )}
-          <item.icon className={cn('w-4 h-4 shrink-0', isActive ? 'text-primary' : 'group-hover:text-foreground')} />
-          {!collapsed && <span>{item.name}</span>}
+          <item.icon className={cn('w-4 h-4 shrink-0', isActive ? 'text-foreground' : 'group-hover:text-foreground')} />
+          {!collapsed && <span className="flex-1">{item.name}</span>}
+          {!collapsed && badge != null && (
+            <span className="ml-auto text-[9px] font-bold bg-muted-foreground/10 text-foreground px-1.5 py-0.5 rounded-full min-w-[18px] text-center leading-none">
+              {badge > 99 ? '99+' : badge}
+            </span>
+          )}
+          {collapsed && badge != null && (
+            <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 bg-foreground rounded-full" aria-label={`${badge} items`} />
+          )}
         </>
       )}
     </NavLink>
   );
 }
 
+// ─── Topbar ──────────────────────────────────────────────────────────────────
+
 function Topbar() {
   const location = useLocation();
-  const pageLabel = [...NAV_ITEMS, { path: '/settings', name: 'Settings', icon: Settings, group: '' }]
-    .find(i => i.path === location.pathname || (i.path === '/' && location.pathname === '/'))?.name ?? '';
+  const crumbs = buildBreadcrumb(location.pathname);
 
   return (
-    <header className="h-12 border-b border-border/60 bg-background/80 backdrop-blur-sm flex items-center px-5 justify-between shrink-0 z-30 sticky top-0">
-      <div className="flex items-center gap-2">
-        <span className="text-xs text-muted-foreground/60">/</span>
-        <span className="text-xs font-semibold text-foreground">{pageLabel}</span>
-      </div>
+    <header
+      className="h-11 border-b border-border/40 bg-background flex items-center px-4 justify-between shrink-0 z-30 sticky top-0"
+      role="banner"
+    >
+      {/* Breadcrumb */}
+      <nav aria-label="Breadcrumb">
+        <ol className="flex items-center gap-1 text-xs">
+          {crumbs.map((crumb, i) => (
+            <li key={crumb.label} className="flex items-center gap-1">
+              {i > 0 && <ChevronRight className="w-3 h-3 text-muted-foreground/40" aria-hidden="true" />}
+              <span className={cn(
+                i === crumbs.length - 1
+                  ? 'font-semibold text-foreground'
+                  : 'text-muted-foreground/60'
+              )}>
+                {crumb.label}
+              </span>
+            </li>
+          ))}
+        </ol>
+      </nav>
+
+      {/* Right side */}
       <div className="flex items-center gap-3">
-        {/* Live indicator */}
-        <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 pulse-green" />
+        <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground" aria-label="Live data">
+          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 pulse-green" aria-hidden="true" />
           <span className="font-mono">LIVE</span>
         </div>
-        <button
-          className="flex items-center gap-2 text-xs text-muted-foreground bg-secondary/40 hover:bg-secondary border border-border/60 px-3 py-1.5 rounded-lg transition-all duration-150 hover:border-border"
-          onClick={() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }))}
-        >
-          <Search className="w-3 h-3" />
-          <span>Search…</span>
-          <kbd className="font-mono text-[9px] bg-background px-1.5 py-0.5 rounded border border-border/60 ml-1">⌘K</kbd>
-        </button>
+        <CommandTrigger />
       </div>
     </header>
   );
 }
+
+function buildBreadcrumb(pathname: string) {
+  const match = [...ALL_NAV_ITEMS, { path: '/settings', name: 'Settings' }]
+    .find(i => i.path === pathname || (i.path === '/' && pathname === '/'));
+  return [
+    { label: 'CareerFlow' },
+    { label: match?.name ?? (pathname.slice(1) || 'Overview') },
+  ];
+}
+
+function CommandTrigger() {
+  return (
+    <button
+      className="flex items-center gap-2 text-xs text-muted-foreground bg-secondary/40 hover:bg-secondary border border-border/40 px-3 py-1.5 rounded-md transition-all duration-150"
+      onClick={() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }))}
+      aria-label="Open command palette (⌘K)"
+    >
+      <Search className="w-3 h-3" aria-hidden="true" />
+      <span>Search…</span>
+      <kbd className="font-mono text-[9px] bg-background px-1.5 py-0.5 rounded border border-border/60 ml-1" aria-hidden="true">⌘K</kbd>
+    </button>
+  );
+}
+
+// ─── Command Palette ──────────────────────────────────────────────────────────
+
+function CommandMenu() {
+  const [open, setOpen] = useState(false);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => {
+      if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        setOpen(prev => !prev);
+      }
+    };
+    document.addEventListener('keydown', down);
+    return () => document.removeEventListener('keydown', down);
+  }, []);
+
+  const run = useCallback((fn: () => void) => {
+    setOpen(false);
+    fn();
+  }, []);
+
+  return (
+    <CommandDialog open={open} onOpenChange={setOpen}>
+      <CommandInput placeholder="Search pages, jobs, runs…" />
+      <CommandList>
+        <CommandEmpty>No results found.</CommandEmpty>
+
+        <CommandGroup heading="Navigate">
+          {ALL_NAV_ITEMS.map(item => (
+            <CommandItem key={item.path} onSelect={() => run(() => navigate(item.path))}>
+              <item.icon className="mr-2 h-4 w-4 text-muted-foreground" />
+              <span>{item.name}</span>
+            </CommandItem>
+          ))}
+          <CommandItem onSelect={() => run(() => navigate('/settings'))}>
+            <Settings className="mr-2 h-4 w-4 text-muted-foreground" />
+            <span>Settings</span>
+          </CommandItem>
+        </CommandGroup>
+
+        <CommandSeparator />
+
+        <CommandGroup heading="Actions">
+          <CommandItem onSelect={() => run(() => navigate('/pipeline'))}>
+            <Play className="mr-2 h-4 w-4 text-muted-foreground" />
+            <span>Open Pipeline Control</span>
+          </CommandItem>
+          <CommandItem onSelect={() => run(() => navigate('/queues'))}>
+            <Inbox className="mr-2 h-4 w-4 text-muted-foreground" />
+            <span>Open Inbox</span>
+          </CommandItem>
+          <CommandItem onSelect={() => run(() => navigate('/jobs'))}>
+            <Briefcase className="mr-2 h-4 w-4 text-muted-foreground" />
+            <span>Browse Jobs</span>
+          </CommandItem>
+        </CommandGroup>
+      </CommandList>
+    </CommandDialog>
+  );
+}
+
+// ─── Layout ───────────────────────────────────────────────────────────────────
 
 function Layout({ children }: { children: React.ReactNode }) {
   return (
@@ -173,7 +341,7 @@ function Layout({ children }: { children: React.ReactNode }) {
       <Sidebar />
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         <Topbar />
-        <main className="flex-1 overflow-auto relative">
+        <main className="flex-1 overflow-auto relative" id="main-content">
           {children}
         </main>
       </div>
@@ -190,6 +358,8 @@ function ThemeProvider({ children }: { children: React.ReactNode }) {
   }, [theme]);
   return <>{children}</>;
 }
+
+// ─── App ──────────────────────────────────────────────────────────────────────
 
 function App() {
   return (

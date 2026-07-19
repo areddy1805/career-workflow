@@ -1,337 +1,437 @@
 import { useQuery } from '@tanstack/react-query';
 import { fetchDashboard } from '@/lib/api';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
-import { Activity, PlayCircle, CheckCircle2, Globe } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
+import { StatusBadge } from '@/components/StatusBadge';
 import { RelativeTime } from '@/components/RelativeTime';
+import {
+  ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid,
+} from 'recharts';
+import {
+  Briefcase, CheckCircle2, TrendingUp, Globe, Activity, Clock,
+  AlertCircle, CheckCircle, Play, ArrowRight, Cpu,
+} from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { cn } from '@/lib/utils';
 
-const STAGES = [
-  { key: 'preflight', label: 'Preflight', short: 'PF' },
-  { key: 'acquisition', label: 'Acquisition', short: 'ACQ' },
-  { key: 'classification', label: 'Classification', short: 'CLS' },
-  { key: 'selection', label: 'Selection', short: 'SEL' },
-  { key: 'application', label: 'Application', short: 'APP' },
-  { key: 'reconciliation', label: 'Reconciliation', short: 'REC' },
-  { key: 'strategy', label: 'Strategy', short: 'STR' },
-  { key: 'report', label: 'Report', short: 'REP' },
+// ─── Lifecycle label map ──────────────────────────────────────────────────────
+const LIFECYCLE_LABELS: Record<string, string> = {
+  UNKNOWN:     'Acquired',
+  SUBMITTED:   'Submitted',
+  VIEWED:      'Viewed',
+  SHORTLISTED: 'Shortlisted',
+  INTERVIEW:   'Interview',
+  REJECTED:    'Rejected',
+  OFFER:       'Offer',
+};
+
+const PIPELINE_STAGES = [
+  { key: 'preflight',      label: 'Preflight'       },
+  { key: 'acquisition',   label: 'Acquisition'     },
+  { key: 'classification',label: 'Classification'  },
+  { key: 'selection',     label: 'Selection'       },
+  { key: 'application',   label: 'Application'     },
+  { key: 'reconciliation',label: 'Reconciliation'  },
+  { key: 'strategy',      label: 'Strategy'        },
+  { key: 'report',        label: 'Report'          },
 ];
 
-export default function Dashboard() {
-  const { data: dashboard, isLoading } = useQuery({
-    queryKey: ['dashboard'],
-    queryFn: fetchDashboard,
-  });
+// ─── Metric Strip ─────────────────────────────────────────────────────────────
 
-  if (isLoading) {
-    return (
-      <div className="h-full flex flex-col bg-background p-6">
-        <div className="animate-pulse space-y-6">
-          <div className="h-8 bg-muted w-1/4 rounded" />
-          <div className="grid grid-cols-4 gap-4">
-            {[1, 2, 3, 4].map(i => <div key={i} className="h-24 bg-muted rounded-md" />)}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  const { summary, lifecycle: rawLifecycle, latest_run, system_health, upcoming_executions, top_companies, provider_health } = dashboard || {};
-  const totalJobs = summary?.total_jobs || 0;
-  const totalApplied = summary?.total_applied || 0;
-  const applicationRate = totalJobs > 0 ? ((totalApplied / totalJobs) * 100).toFixed(1) : '0';
-
-  // Map raw lifecycle stage names to human-readable labels for the chart
-  const LIFECYCLE_LABELS: Record<string, string> = {
-    UNKNOWN: 'Acquired',
-    SUBMITTED: 'Submitted',
-    VIEWED: 'Viewed',
-    SHORTLISTED: 'Shortlisted',
-    INTERVIEW: 'Interview',
-    REJECTED: 'Rejected',
-    OFFER: 'Offer',
-  };
-  const lifecycle = (rawLifecycle || []).map((d: any) => ({
-    ...d,
-    lifecycle_stage: LIFECYCLE_LABELS[d.lifecycle_stage] ?? d.lifecycle_stage,
-  }));
+function MetricStrip({
+  totalJobs,
+  totalApplied,
+  applicationRate,
+  latestRun,
+}: {
+  totalJobs: number;
+  totalApplied: number;
+  applicationRate: string;
+  latestRun: any;
+}) {
+  const navigate = useNavigate();
 
   return (
-    <div className="h-full flex flex-col bg-background">
-      <div className="flex items-center px-6 py-4 border-b shrink-0 bg-background/95 backdrop-blur z-10">
-        <h2 className="font-semibold text-lg tracking-tight">Executive Dashboard</h2>
+    <div className="flex items-stretch border border-border/50 rounded-lg bg-card overflow-hidden divide-x divide-border/50">
+      {/* Total Jobs */}
+      <button
+        className="flex flex-col gap-1 px-5 py-4 hover:bg-secondary/40 transition-colors text-left flex-1"
+        onClick={() => navigate('/jobs')}
+        aria-label="View all jobs"
+      >
+        <span className="flex items-center gap-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+          <Briefcase className="w-3 h-3" />
+          Jobs Discovered
+        </span>
+        <span className="text-2xl font-bold tracking-tight tabular-nums">{totalJobs.toLocaleString()}</span>
+      </button>
+
+      {/* Applied */}
+      <button
+        className="flex flex-col gap-1 px-5 py-4 hover:bg-secondary/40 transition-colors text-left flex-1"
+        onClick={() => navigate('/jobs')}
+        aria-label="View applied jobs"
+      >
+        <span className="flex items-center gap-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+          <CheckCircle2 className="w-3 h-3" />
+          Applied
+        </span>
+        <span className="text-2xl font-bold tracking-tight tabular-nums text-emerald-500">{totalApplied.toLocaleString()}</span>
+      </button>
+
+      {/* Conversion Rate */}
+      <div className="flex flex-col gap-1 px-5 py-4 flex-1">
+        <span className="flex items-center gap-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+          <TrendingUp className="w-3 h-3" />
+          Conversion Rate
+        </span>
+        <span className="text-2xl font-bold tracking-tight tabular-nums">{applicationRate}%</span>
       </div>
 
-      <div className="flex-1 overflow-auto p-6 space-y-8">
-        {/* KPI Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Card className="shadow-none border-border/50 bg-card/50">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-[10px] uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-                <DatabaseIcon className="w-3.5 h-3.5" /> Total Ingested Jobs
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-semibold tracking-tight">{totalJobs.toLocaleString()}</div>
-            </CardContent>
-          </Card>
-          <Card className="shadow-none border-border/50 bg-card/50">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-[10px] uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-                <CheckCircle2 className="w-3.5 h-3.5" /> Total Applied
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-semibold tracking-tight text-primary">{totalApplied.toLocaleString()}</div>
-            </CardContent>
-          </Card>
-          <Card className="shadow-none border-border/50 bg-card/50">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-[10px] uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-                <Activity className="w-3.5 h-3.5" /> Conversion Rate
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-semibold tracking-tight">{applicationRate}%</div>
-            </CardContent>
-          </Card>
-          
-          <Card className="shadow-none border-border/50 bg-card/50">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-[10px] uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-                <PlayCircle className="w-3.5 h-3.5" /> Latest Run Status
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center gap-2">
-                <div className="text-lg font-semibold tracking-tight truncate max-w-[120px]" title={latest_run?.run_id}>
-                  {latest_run?.run_id ? latest_run.run_id.split('T')[0] : 'None'}
-                </div>
-                {latest_run?.status && (
-                  <Badge variant="outline" className={`font-mono text-[10px] uppercase rounded-sm border px-1.5 ${latest_run.status === 'SUCCESS' ? 'text-green-500 border-green-500/20 bg-green-500/10' : 'text-red-500 border-red-500/20 bg-red-500/10'}`}>
-                    {latest_run.status}
-                  </Badge>
-                )}
-              </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                {latest_run?.started_at ? <RelativeTime date={latest_run.started_at} /> : 'Unknown time'}
-              </p>
-            </CardContent>
-          </Card>
+      {/* Latest Run */}
+      <button
+        className="flex flex-col gap-1 px-5 py-4 hover:bg-secondary/40 transition-colors text-left flex-1"
+        onClick={() => navigate('/runs')}
+        aria-label="View run history"
+      >
+        <span className="flex items-center gap-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+          <Play className="w-3 h-3" />
+          Latest Run
+        </span>
+        {latestRun?.run_id ? (
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-semibold font-mono tabular-nums">
+              <RelativeTime date={latestRun.started_at} />
+            </span>
+            <StatusBadge status={latestRun.status ?? 'UNKNOWN'} />
+          </div>
+        ) : (
+          <span className="text-sm text-muted-foreground">No runs yet</span>
+        )}
+      </button>
+    </div>
+  );
+}
+
+// ─── System Status Bar ────────────────────────────────────────────────────────
+
+function SystemStatusBar({ health }: { health: any }) {
+  if (!health) return null;
+  const status = health.status ?? 'UNKNOWN';
+  const isHealthy = status === 'HEALTHY';
+  const isWarning = status === 'WARNING';
+
+  return (
+    <div className={cn(
+      'flex items-center gap-3 px-4 py-2.5 rounded-lg border text-xs',
+      isHealthy ? 'bg-emerald-500/5 border-emerald-500/20 text-emerald-600 dark:text-emerald-400'
+        : isWarning ? 'bg-amber-500/5 border-amber-500/20 text-amber-600 dark:text-amber-400'
+        : 'bg-red-500/5 border-red-500/20 text-red-600 dark:text-red-400'
+    )}>
+      {isHealthy
+        ? <CheckCircle className="w-3.5 h-3.5 shrink-0" />
+        : <AlertCircle className="w-3.5 h-3.5 shrink-0" />}
+      <span className="font-semibold">System {status}</span>
+      <span className="text-current/60 ml-auto flex items-center gap-3">
+        <span>Scheduler: {health.scheduler_running ? 'Running' : 'Stopped'}</span>
+        <span>Pipeline: {health.pipeline_running ? 'Active' : 'Idle'}</span>
+        {health.disk_usage_pct != null && (
+          <span>Disk: {health.disk_usage_pct}%</span>
+        )}
+      </span>
+    </div>
+  );
+}
+
+// ─── Pipeline Stage Progress ──────────────────────────────────────────────────
+
+function PipelineProgress({ latestRun }: { latestRun: any }) {
+  if (!latestRun?.run_id) return null;
+
+  return (
+    <div className="bg-card border border-border/50 rounded-lg overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border/40">
+        <div className="flex items-center gap-2">
+          <Cpu className="w-3.5 h-3.5 text-muted-foreground" />
+          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+            Last Run Progress
+          </span>
         </div>
+        <span className="text-[10px] font-mono text-muted-foreground/60 truncate max-w-[200px]">
+          {latestRun.run_id}
+        </span>
+      </div>
+      <div className="px-4 py-3 flex items-center gap-1 overflow-x-auto">
+        {PIPELINE_STAGES.map((stage, idx) => {
+          const raw = (latestRun?.stages?.[stage.key] ?? latestRun?.stage_results?.[stage.key] ?? 'PENDING').toUpperCase();
+          const isSuccess = raw === 'SUCCESS';
+          const isFailed  = raw === 'FAILED';
+          const isRunning = raw === 'RUNNING' || raw === 'IN_PROGRESS';
+          const isSkipped = raw === 'SKIPPED';
 
-        {/* Pipeline Stage Tracker */}
-        <Card className="shadow-none border-border/50 bg-card/50">
-          <CardHeader className="py-3">
-            <CardTitle className="text-xs uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-              <PlayCircle className="w-4 h-4 text-primary" />
-              Latest Run Stage Stepper ({latest_run?.run_id || 'No Run Active'})
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pb-4">
-            <div className="flex flex-col md:flex-row items-center justify-between gap-4 md:gap-2">
-              {STAGES.map((stage, idx) => {
-                const status = (latest_run?.stages?.[stage.key] || latest_run?.stage_results?.[stage.key] || 'PENDING').toUpperCase();
-                let color = 'bg-muted text-muted-foreground border-muted-foreground/20';
-                let statusLabel = 'Pending';
-                if (status === 'SUCCESS') {
-                  color = 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30 font-bold';
-                  statusLabel = 'Success';
-                } else if (status === 'FAILED') {
-                  color = 'bg-rose-500/10 text-rose-500 border-rose-500/30 font-bold';
-                  statusLabel = 'Failed';
-                } else if (status === 'RUNNING' || status === 'IN_PROGRESS') {
-                  color = 'bg-blue-500/10 text-blue-500 border-blue-500/30 font-bold animate-pulse';
-                  statusLabel = 'Running';
-                } else if (status === 'SKIPPED') {
-                  color = 'bg-orange-500/10 text-orange-500 border-orange-500/20';
-                  statusLabel = 'Skipped';
-                }
-
-                return (
-                  <div key={stage.key} className="flex-1 w-full flex items-center gap-2">
-                    <div className="flex flex-col items-center md:items-start flex-1">
-                      <div className={`w-full border rounded-md p-2 flex items-center justify-between ${color}`}>
-                        <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-bold px-1.5 py-0.5 bg-background/50 rounded font-mono">{stage.short}</span>
-                          <span className="text-xs font-semibold">{stage.label}</span>
-                        </div>
-                        <span className="text-[10px] uppercase font-mono">{statusLabel}</span>
-                      </div>
-                    </div>
-                    {idx < STAGES.length - 1 && (
-                      <span className="hidden md:inline text-muted-foreground/30 text-lg">→</span>
-                    )}
-                  </div>
-                );
-              })}
+          return (
+            <div key={stage.key} className="flex items-center gap-1 shrink-0">
+              <div className={cn(
+                'flex flex-col items-center gap-1 px-2.5 py-1.5 rounded text-[10px] font-medium border min-w-[72px] text-center',
+                isSuccess ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
+                  : isFailed  ? 'bg-red-500/10 text-red-500 border-red-500/20'
+                  : isRunning ? 'bg-blue-500/10 text-blue-400 border-blue-500/20 animate-pulse'
+                  : isSkipped ? 'bg-zinc-500/8 text-zinc-500 border-zinc-500/20'
+                  : 'bg-muted/40 text-muted-foreground border-border/30'
+              )}>
+                <span className="font-mono font-bold text-[9px]">{stage.label.slice(0,3).toUpperCase()}</span>
+                <span className="text-[8px] opacity-70">{isSuccess ? '✓' : isFailed ? '✗' : isRunning ? '…' : '–'}</span>
+              </div>
+              {idx < PIPELINE_STAGES.length - 1 && (
+                <ArrowRight className="w-3 h-3 text-border/50 shrink-0" />
+              )}
             </div>
-          </CardContent>
-        </Card>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Funnel Chart */}
-          <Card className="col-span-2 shadow-none border-border/50">
-            <CardHeader>
-              <CardTitle className="text-sm font-semibold">Pipeline Funnel</CardTitle>
-            </CardHeader>
-            <CardContent className="h-[300px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={lifecycle} layout="vertical" margin={{ left: 50, right: 20, top: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border))" />
-                  <XAxis type="number" tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }} />
-                  <YAxis dataKey="lifecycle_stage" type="category" width={100} tick={{ fontSize: 10, fill: 'hsl(var(--foreground))' }} />
-                  <Tooltip 
-                    cursor={{ fill: 'hsl(var(--muted)/0.5)' }}
-                    contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '4px', fontSize: '12px' }} 
-                  />
-                  <Bar dataKey="count" fill="hsl(var(--primary))" radius={[0, 2, 2, 0]} maxBarSize={30} />
-                </BarChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-
-          {/* Provider Status & Health */}
-          <Card className="col-span-1 shadow-none border-border/50">
-            <CardHeader>
-              <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <Globe className="w-4 h-4 text-primary" />
-                Provider Status & Health
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {['indeed', 'linkedin', 'google'].map((provider) => {
-                const health = provider_health?.[provider] || { status: 'active', total_searches: 0, successful_searches: 0, success_rate: 1.0, average_latency_seconds: 0 };
-                const name = provider === 'google' ? 'Google Jobs' : provider === 'indeed' ? 'Indeed' : 'LinkedIn';
-                const status = (health.status || 'unknown').toLowerCase();
-                
-                let badgeColor = 'text-muted-foreground border-border bg-muted/20';
-                if (status === 'active') {
-                  badgeColor = 'text-green-500 border-green-500/20 bg-green-500/10';
-                } else if (status === 'degraded') {
-                  badgeColor = 'text-orange-500 border-orange-500/20 bg-orange-500/10';
-                } else if (status === 'disabled' || status === 'offline') {
-                  badgeColor = 'text-red-500 border-red-500/20 bg-red-500/10';
-                }
-
-                return (
-                  <div key={provider} className="flex flex-col gap-2 border-b border-border/20 last:border-0 pb-3 last:pb-0">
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="font-semibold text-foreground capitalize">{name}</span>
-                      <Badge variant="outline" className={`font-mono text-[9px] uppercase rounded-sm px-1.5 ${badgeColor}`}>
-                        {status}
-                      </Badge>
-                    </div>
-                    <div className="grid grid-cols-3 gap-2 text-[10px] text-muted-foreground font-mono">
-                      <div>
-                        <span className="block text-[8px] uppercase tracking-wider text-muted-foreground/60">Searches</span>
-                        <span className="text-foreground font-medium">{health.total_searches || 0}</span>
-                      </div>
-                      <div>
-                        <span className="block text-[8px] uppercase tracking-wider text-muted-foreground/60">Success %</span>
-                        <span className="text-foreground font-medium">{Math.round((health.success_rate || 0) * 100)}%</span>
-                      </div>
-                      <div>
-                        <span className="block text-[8px] uppercase tracking-wider text-muted-foreground/60">Latency</span>
-                        <span className="text-foreground font-medium">{(health.average_latency_seconds || 0).toFixed(2)}s</span>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </CardContent>
-          </Card>
-
-          {/* System Health */}
-          <Card className="col-span-1 shadow-none border-border/50">
-            <CardHeader>
-              <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <Activity className="w-4 h-4 text-primary" />
-                System Health
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex justify-between items-center text-xs">
-                <span className="text-muted-foreground">Status</span>
-                <Badge variant="outline" className={system_health?.status === 'HEALTHY' ? 'text-green-500 border-green-500' : system_health?.status === 'WARNING' ? 'text-orange-500 border-orange-500' : ''}>
-                  {system_health?.status || 'UNKNOWN'}
-                </Badge>
-              </div>
-              <div className="flex justify-between items-center text-xs">
-                <span className="text-muted-foreground">Scheduler</span>
-                <span>{system_health?.scheduler_running ? 'Running' : 'Stopped'}</span>
-              </div>
-              <div className="flex justify-between items-center text-xs">
-                <span className="text-muted-foreground">Pipeline</span>
-                <span>{system_health?.pipeline_running ? 'Active' : 'Idle'}</span>
-              </div>
-              <div className="flex justify-between items-center text-xs border-t pt-3">
-                <span className="text-muted-foreground">Disk Usage</span>
-                <span>{system_health?.disk_usage_pct}%</span>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Top Companies */}
-          <Card className="col-span-1 shadow-none border-border/50">
-            <CardHeader>
-              <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <DatabaseIcon className="w-4 h-4 text-primary" />
-                Top Companies
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {top_companies?.map((c: any, i: number) => (
-                <div key={i} className="flex justify-between items-center text-xs border-b border-border/20 last:border-0 pb-2 last:pb-0">
-                  <span className="truncate max-w-[150px] font-medium" title={c.name}>{c.name}</span>
-                  <span className="text-muted-foreground">{c.count} applications</span>
-                </div>
-              ))}
-              {!top_companies?.length && <p className="text-xs text-muted-foreground text-center">No data available.</p>}
-            </CardContent>
-          </Card>
-          
-          {/* Upcoming Executions */}
-          <Card className="col-span-1 shadow-none border-border/50">
-            <CardHeader>
-              <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <PlayCircle className="w-4 h-4 text-primary" />
-                Upcoming Executions
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {upcoming_executions?.map((e: any, i: number) => (
-                <div key={i} className="flex justify-between items-center text-xs border-b border-border/20 last:border-0 pb-2 last:pb-0">
-                  <span className="font-medium">{e.task}</span>
-                  <span className="text-muted-foreground"><RelativeTime date={e.scheduled_for} /></span>
-                </div>
-              ))}
-              {!upcoming_executions?.length && <p className="text-xs text-muted-foreground text-center">No scheduled executions.</p>}
-            </CardContent>
-          </Card>
-        </div>
+          );
+        })}
       </div>
     </div>
   );
 }
 
-function DatabaseIcon(props: any) {
+// ─── Provider Health ──────────────────────────────────────────────────────────
+
+function ProviderHealth({ providerHealth }: { providerHealth: Record<string, any> }) {
+  const providers = ['naukri', 'indeed', 'linkedin', 'google'];
+  const NAMES: Record<string, string> = { naukri: 'Naukri', indeed: 'Indeed', linkedin: 'LinkedIn', google: 'Google Jobs' };
+
   return (
-    <svg
-      {...props}
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <ellipse cx="12" cy="5" rx="9" ry="3" />
-      <path d="M3 5V19A9 3 0 0 0 21 19V5" />
-      <path d="M3 12A9 3 0 0 0 21 12" />
-    </svg>
-  )
+    <div className="bg-card border border-border/50 rounded-lg overflow-hidden">
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-border/40">
+        <Globe className="w-3.5 h-3.5 text-muted-foreground" />
+        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Provider Health</span>
+      </div>
+      <div className="divide-y divide-border/30">
+        {providers.map(id => {
+          const h = providerHealth?.[id] ?? {};
+          const status = (h.status ?? 'unknown').toLowerCase();
+          const successPct = Math.round((h.success_rate ?? 0) * 100);
+
+          return (
+            <div key={id} className="flex items-center gap-4 px-4 py-2.5">
+              <span className="text-xs font-semibold w-24 shrink-0">{NAMES[id]}</span>
+              <StatusBadge status={status.toUpperCase()} />
+              <div className="flex items-center gap-4 ml-auto text-[10px] text-muted-foreground font-mono">
+                <span>{h.total_searches ?? 0} searches</span>
+                <span className={successPct >= 90 ? 'text-emerald-500' : 'text-amber-500'}>{successPct}%</span>
+                <span>{(h.average_latency_seconds ?? 0).toFixed(2)}s</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── Activity Feed ────────────────────────────────────────────────────────────
+
+function ActivityFeed({ latestRun, topCompanies, upcomingExecutions }: {
+  latestRun: any;
+  topCompanies: any[];
+  upcomingExecutions: any[];
+}) {
+  // Build a synthetic activity list from available data
+  const activities: Array<{ icon: React.ReactNode; label: string; time?: string; type: 'success' | 'info' | 'warning' | 'neutral' }> = [];
+
+  if (latestRun?.run_id) {
+    const stageCount = Object.values(latestRun.stages ?? latestRun.stage_results ?? {}).filter((s: any) => s.toUpperCase() === 'SUCCESS').length;
+    if (stageCount > 0) {
+      activities.push({ icon: <CheckCircle className="w-3.5 h-3.5" />, label: `${stageCount} pipeline stages completed`, time: latestRun.started_at, type: 'success' });
+    }
+    if (latestRun.status === 'FAILED') {
+      activities.push({ icon: <AlertCircle className="w-3.5 h-3.5" />, label: 'Last run failed', time: latestRun.started_at, type: 'warning' });
+    }
+  }
+
+  if (topCompanies?.length > 0) {
+    activities.push({
+      icon: <Briefcase className="w-3.5 h-3.5" />,
+      label: `${topCompanies.slice(0, 3).map((c: any) => c.name ?? c.company).join(', ')} — top hiring companies`,
+      type: 'info',
+    });
+  }
+
+  if (upcomingExecutions?.length > 0) {
+    activities.push({
+      icon: <Clock className="w-3.5 h-3.5" />,
+      label: `Next run scheduled: ${upcomingExecutions[0].task}`,
+      time: upcomingExecutions[0].scheduled_for,
+      type: 'neutral',
+    });
+  }
+
+  if (activities.length === 0) {
+    activities.push({ icon: <Activity className="w-3.5 h-3.5" />, label: 'No recent activity. Run the pipeline to get started.', type: 'neutral' });
+  }
+
+  const typeColors: Record<string, string> = {
+    success: 'text-emerald-500',
+    info:    'text-blue-400',
+    warning: 'text-amber-500',
+    neutral: 'text-muted-foreground',
+  };
+
+  return (
+    <div className="bg-card border border-border/50 rounded-lg overflow-hidden">
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-border/40">
+        <Activity className="w-3.5 h-3.5 text-muted-foreground" />
+        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Recent Activity</span>
+      </div>
+      <div className="divide-y divide-border/20">
+        {activities.map((act, i) => (
+          <div key={i} className="flex items-start gap-3 px-4 py-3">
+            <span className={cn('shrink-0 mt-0.5', typeColors[act.type])}>
+              {act.icon}
+            </span>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs text-foreground leading-relaxed">{act.label}</p>
+              {act.time && (
+                <p className="text-[10px] text-muted-foreground mt-0.5">
+                  <RelativeTime date={act.time} />
+                </p>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Pipeline Funnel Chart ────────────────────────────────────────────────────
+
+function FunnelChart({ lifecycle }: { lifecycle: any[] }) {
+  if (!lifecycle?.length) return null;
+
+  return (
+    <div className="bg-card border border-border/50 rounded-lg overflow-hidden">
+      <div className="px-4 py-3 border-b border-border/40">
+        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Application Funnel</span>
+      </div>
+      <div className="p-4 h-[220px]">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={lifecycle} layout="vertical" margin={{ left: 16, right: 24, top: 0, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border))" />
+            <XAxis type="number" tick={{ fontSize: 9, fill: 'hsl(var(--muted-foreground))' }} tickLine={false} axisLine={false} />
+            <YAxis
+              dataKey="lifecycle_stage"
+              type="category"
+              width={80}
+              tick={{ fontSize: 10, fill: 'hsl(var(--foreground))' }}
+              tickLine={false}
+              axisLine={false}
+            />
+            <Tooltip
+              cursor={{ fill: 'hsl(var(--muted) / 0.4)' }}
+              contentStyle={{
+                backgroundColor: 'hsl(var(--card))',
+                border: '1px solid hsl(var(--border))',
+                borderRadius: '6px',
+                fontSize: '11px',
+                color: 'hsl(var(--foreground))',
+              }}
+            />
+            <Bar dataKey="count" fill="hsl(var(--chart-1))" radius={[0, 3, 3, 0]} maxBarSize={24} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
+
+// ─── Loading skeleton ─────────────────────────────────────────────────────────
+
+function OverviewSkeleton() {
+  return (
+    <div className="p-6 space-y-6 animate-pulse">
+      <div className="h-6 w-32 bg-muted rounded" />
+      <div className="h-[84px] bg-muted rounded-lg" />
+      <div className="h-10 bg-muted rounded-lg" />
+      <div className="grid grid-cols-2 gap-4">
+        <div className="h-[220px] bg-muted rounded-lg" />
+        <div className="h-[220px] bg-muted rounded-lg" />
+      </div>
+    </div>
+  );
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
+export default function Dashboard() {
+  const { data: dashboard, isLoading } = useQuery({
+    queryKey: ['dashboard'],
+    queryFn: fetchDashboard,
+    refetchInterval: 30_000,
+  });
+
+  if (isLoading) return <OverviewSkeleton />;
+
+  const {
+    summary,
+    lifecycle: rawLifecycle,
+    latest_run,
+    system_health,
+    upcoming_executions,
+    top_companies,
+    provider_health,
+  } = dashboard ?? {};
+
+  const totalJobs      = summary?.total_jobs ?? 0;
+  const totalApplied   = summary?.total_applied ?? 0;
+  const applicationRate = totalJobs > 0 ? ((totalApplied / totalJobs) * 100).toFixed(1) : '0';
+
+  const lifecycle = (rawLifecycle ?? []).map((d: any) => ({
+    ...d,
+    lifecycle_stage: LIFECYCLE_LABELS[d.lifecycle_stage] ?? d.lifecycle_stage,
+  })).filter((d: any) => d.count > 0);
+
+  return (
+    <div className="h-full flex flex-col bg-background overflow-auto">
+      {/* Page Header */}
+      <div className="flex items-center justify-between px-6 py-4 border-b border-border/50 shrink-0 bg-background/95 backdrop-blur z-10">
+        <div>
+          <h1 className="text-base font-semibold tracking-tight">Overview</h1>
+          <p className="text-xs text-muted-foreground mt-0.5">System health, pipeline status, and application progress at a glance.</p>
+        </div>
+      </div>
+
+      <div className="flex-1 p-6 space-y-5 max-w-[1600px]">
+
+        {/* System Status — always first */}
+        <SystemStatusBar health={system_health} />
+
+        {/* Metric Strip */}
+        <MetricStrip
+          totalJobs={totalJobs}
+          totalApplied={totalApplied}
+          applicationRate={applicationRate}
+          latestRun={latest_run}
+        />
+
+        {/* Pipeline Stage Progress */}
+        <PipelineProgress latestRun={latest_run} />
+
+        {/* Two-column: Funnel + Activity */}
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
+          <div className="lg:col-span-3">
+            <FunnelChart lifecycle={lifecycle} />
+          </div>
+          <div className="lg:col-span-2">
+            <ActivityFeed
+              latestRun={latest_run}
+              topCompanies={top_companies ?? []}
+              upcomingExecutions={upcoming_executions ?? []}
+            />
+          </div>
+        </div>
+
+        {/* Provider Health */}
+        <ProviderHealth providerHealth={provider_health ?? {}} />
+
+      </div>
+    </div>
+  );
 }

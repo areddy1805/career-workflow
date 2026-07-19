@@ -5,17 +5,17 @@ import { Input } from '@/components/ui/input';
 import { useState, useMemo } from 'react';
 import {
   Search as SearchIcon, Globe, MapPin, Layers, Cpu,
-  CheckCircle2, AlertTriangle, Clock, Filter, ChevronDown,
-  ChevronRight, Zap, Database, Activity,
+  Filter, ChevronDown, ChevronRight, Zap, Database, Activity,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 // ─── Provider Health Card ───────────────────────────────────────────────────
 
 const PROVIDER_META: Record<string, { label: string; icon: string; color: string }> = {
-  google: { label: 'Google Jobs', icon: 'G', color: 'text-blue-400' },
-  indeed: { label: 'Indeed', icon: 'I', color: 'text-yellow-400' },
-  linkedin: { label: 'LinkedIn', icon: 'in', color: 'text-sky-400' },
+  naukri: { label: 'Naukri', icon: 'N', color: 'text-indigo-500' },
+  google: { label: 'Google Jobs', icon: 'G', color: 'text-blue-500' },
+  indeed: { label: 'Indeed', icon: 'I', color: 'text-yellow-500' },
+  linkedin: { label: 'LinkedIn', icon: 'in', color: 'text-sky-500' },
 };
 
 function ProviderCard({ id, data }: { id: string; data: any }) {
@@ -145,14 +145,9 @@ function CoverageMatrix({ queries }: { queries: any[] }) {
 
 function QueryBrowser({ queries }: { queries: any[] }) {
   const [filter, setFilter] = useState('');
-  const [profileFilter, setProfileFilter] = useState<string | null>(null);
+  const [profileFilter] = useState<string | null>(null);
   const [tierFilter, setTierFilter] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState<string | null>(null);
-
-  const profiles = useMemo(
-    () => [...new Set(queries.map((q: any) => q.search_profile))].sort(),
-    [queries]
-  );
+  const [expanded, setExpanded] = useState<string | null>('__ALL__');
 
   const filtered = useMemo(() => {
     let q = queries;
@@ -210,7 +205,7 @@ function QueryBrowser({ queries }: { queries: any[] }) {
       {/* Profile group rows */}
       <div className="overflow-auto max-h-[500px]">
         {Object.entries(grouped).map(([profile, qs]) => {
-          const isOpen = expanded === profile;
+          const isOpen = expanded === profile || expanded === '__ALL__';
           const tierA = qs.filter((q: any) => q.track === 'TIER_A').length;
           const tierB = qs.filter((q: any) => q.track === 'TIER_B').length;
           return (
@@ -305,13 +300,15 @@ export default function Search() {
 
   return (
     <div className="h-full flex flex-col bg-background overflow-auto">
-      {/* Header */}
-      <div className="flex items-center gap-2 px-6 py-3 border-b shrink-0 bg-background/95 backdrop-blur z-10">
-        <SearchIcon className="w-4 h-4 text-primary" />
-        <h2 className="font-semibold tracking-tight">Acquisition Search Engine</h2>
-        <span className="ml-2 text-[10px] text-muted-foreground font-mono bg-muted/50 px-1.5 py-0.5 rounded">
-          {active_profiles.length} profiles · {locations.length} location · {total_queries} queries
-        </span>
+      {/* Page Header */}
+      <div className="flex items-center justify-between px-6 py-4 border-b border-border/50 shrink-0 bg-background/95 backdrop-blur z-10">
+        <div>
+          <h1 className="text-base font-semibold tracking-tight">Search Intelligence</h1>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Provider health, query coverage, and active search strategy.
+            <span className="ml-1 text-muted-foreground/60">{active_profiles.length} profiles · {locations.length} location{locations.length !== 1 ? 's' : ''} · {total_queries} queries</span>
+          </p>
+        </div>
       </div>
 
       <div className="flex-1 p-5 space-y-5 max-w-[1600px]">

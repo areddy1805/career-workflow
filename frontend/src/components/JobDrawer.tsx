@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { useQueryClient } from '@tanstack/react-query';
 import { fetchJobDetails, transitionQueueJob } from '@/lib/api';
 import { formatSalary, cn } from '@/lib/utils';
-import { Loader2, ExternalLink, CheckCircle, XCircle, SkipForward, Search, AlertCircle } from 'lucide-react';
+import { StatusBadge } from '@/components/StatusBadge';
+import { RelativeTime } from '@/components/RelativeTime';
+import { Loader2, ExternalLink, CheckCircle, XCircle, SkipForward, Brain, AlertCircle } from 'lucide-react';
 
 interface JobDrawerProps {
   jobId: string | null;
@@ -14,11 +16,18 @@ interface JobDrawerProps {
   onTransitioned: () => void;
 }
 
+function scoreColor(score: number | null | undefined) {
+  if (score == null) return 'text-muted-foreground';
+  if (score >= 70) return 'text-emerald-500';
+  if (score >= 40) return 'text-amber-500';
+  return 'text-red-400';
+}
+
 export function JobDrawer({ jobId, open, onOpenChange, onTransitioned }: JobDrawerProps) {
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading]         = useState(false);
   const [transitioning, setTransitioning] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [data, setData] = useState<any>(null);
+  const [error, setError]             = useState<string | null>(null);
+  const [data, setData]               = useState<any>(null);
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -35,23 +44,19 @@ export function JobDrawer({ jobId, open, onOpenChange, onTransitioned }: JobDraw
     }
   }, [jobId, open]);
 
-  // WorkflowStatus valid values: NEW, PENDING, IN_PROGRESS, OPENED, APPLIED, INTERVIEW, OFFER, REJECTED, ARCHIVED
-  // Skip → REJECTED (workflow machine maps this cleanly)
-  // Dismiss → ARCHIVED (terminal state)
   const handleTransition = async (status: string) => {
     if (!jobId) return;
     setTransitioning(status);
     setError(null);
     try {
-      await transitionQueueJob(jobId, status, 'From UI Drawer');
-      // Invalidate all queue-related queries so the list refreshes
+      await transitionQueueJob(jobId, status, 'From Drawer');
       queryClient.invalidateQueries({ queryKey: ['queue'] });
       queryClient.invalidateQueries({ queryKey: ['jobs'] });
       onTransitioned();
       onOpenChange(false);
     } catch (e: any) {
       console.error(e);
-      setError(`Transition to ${status} failed — the current status may not allow this action.`);
+      setError(`Action failed — this job may not allow this transition from its current state.`);
     } finally {
       setTransitioning(null);
     }
@@ -71,110 +76,146 @@ export function JobDrawer({ jobId, open, onOpenChange, onTransitioned }: JobDraw
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full sm:max-w-2xl overflow-y-auto sm:w-[800px]">
+      <SheetContent className="w-full sm:max-w-[600px] p-0 flex flex-col border-l border-border/50">
         {loading || !data ? (
           <div className="flex h-full items-center justify-center">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
         ) : (
-          <div className="space-y-6">
-            <SheetHeader>
-              <div className="flex justify-between items-start gap-4">
-                <div>
-                  <SheetTitle className="text-2xl">{data.overview?.title}</SheetTitle>
-                  <SheetDescription className="text-lg">
-                    {data.overview?.company} • {data.overview?.location}
+          <>
+            {/* Header */}
+            <SheetHeader className="px-5 pt-5 pb-4 border-b border-border/40 bg-muted/10">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <SheetTitle className="text-base font-bold leading-snug truncate">{data.overview?.title}</SheetTitle>
+                  <SheetDescription className="text-sm mt-1">
+                    <span className="font-medium text-foreground">{data.overview?.company}</span>
+                    {data.overview?.location && <> · <span className="text-muted-foreground">{data.overview.location}</span></>}
                   </SheetDescription>
                 </div>
-                <Badge variant="secondary" className="text-sm px-3 py-1 whitespace-nowrap">
-                  {data.overview?.workflow_status || data.overview?.status}
-                </Badge>
+                <div className="flex items-center gap-2 shrink-0">
+                  <StatusBadge status={data.overview?.workflow_status ?? data.overview?.status ?? 'UNKNOWN'} />
+                  {data.overview?.score != null && (
+                    <span className={cn('text-xs font-mono font-bold tabular-nums', scoreColor(data.overview.score))}>
+                      {data.overview.score}
+                    </span>
+                  )}
+                </div>
               </div>
             </SheetHeader>
 
-            <div className="flex flex-wrap gap-2 border-b pb-4">
-               {jobUrl ? (
-                 <Button variant="outline" size="sm" onClick={() => window.open(jobUrl, '_blank')}>
-                   <ExternalLink className="w-4 h-4 mr-2" /> Open External
-                 </Button>
-               ) : null}
-               {/* APPLIED is valid from: IN_PROGRESS, OPENED states */}
-               <Button
-                 variant="default" size="sm"
-                 onClick={() => handleTransition('APPLIED')}
-                 disabled={!!transitioning}
-                 className="bg-green-600 hover:bg-green-700 text-white"
-               >
-                 {transitioning === 'APPLIED' ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle className="w-4 h-4 mr-2" />}
-                 Mark Applied
-               </Button>
-               {/* REJECTED is the correct status for skip/pass — valid from PENDING, IN_PROGRESS, OPENED, APPLIED, INTERVIEW */}
-               <Button
-                 variant="outline" size="sm"
-                 onClick={() => handleTransition('REJECTED')}
-                 disabled={!!transitioning}
-                 className="text-orange-500 border-orange-500/30 hover:bg-orange-500/10 dark:hover:bg-orange-500/10"
-               >
-                 {transitioning === 'REJECTED' ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <SkipForward className="w-4 h-4 mr-2" />}
-                 Skip
-               </Button>
-               {/* ARCHIVED is the terminal dismiss — valid from most states */}
-               <Button
-                 variant="ghost" size="sm"
-                 onClick={() => handleTransition('ARCHIVED')}
-                 disabled={!!transitioning}
-                 className="text-destructive hover:bg-destructive/10"
-               >
-                 {transitioning === 'ARCHIVED' ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <XCircle className="w-4 h-4 mr-2" />}
-                 Dismiss
-               </Button>
-            </div>
-            {error && (
-              <div className="flex items-start gap-2 text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded p-3">
-                <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                {error}
-              </div>
-            )}
+            <ScrollArea className="flex-1">
+              <div className="px-5 py-5 space-y-5">
 
-            <div className="grid grid-cols-2 gap-4 text-sm bg-muted/30 p-4 rounded-lg">
-              <div><span className="font-semibold text-muted-foreground">Experience:</span> {data.overview?.experience || 'N/A'}</div>
-              <div><span className="font-semibold text-muted-foreground">Salary:</span> {data.overview?.salary ? formatSalary(data.overview.salary) : 'N/A'}</div>
-              <div><span className="font-semibold text-muted-foreground">AI Score:</span> {data.overview?.ai_score || data.overview?.score || 'N/A'}</div>
-              <div><span className="font-semibold text-muted-foreground">Source:</span> {data.overview?.source || 'N/A'}</div>
-            </div>
+                {/* AI Assessment — elevated to the top */}
+                {(data.overview?.reasoning || data.overview?.notes || data.overview?.ai_reason) && (
+                  <div className="bg-primary/5 border border-primary/15 rounded-lg p-4">
+                    <div className="flex items-center gap-1.5 mb-2">
+                      <Brain className="w-3.5 h-3.5 text-primary" />
+                      <p className="text-[10px] font-semibold text-primary uppercase tracking-wider">AI Assessment</p>
+                    </div>
+                    <p className="text-xs text-foreground/80 leading-relaxed whitespace-pre-wrap">
+                      {data.overview.reasoning ?? data.overview.ai_reason ?? data.overview.notes}
+                    </p>
+                  </div>
+                )}
 
-            {(data.overview?.ai_reason || data.overview?.reason) && (
-              <div className="bg-secondary/30 p-4 rounded-lg border border-secondary">
-                <h4 className="font-semibold mb-2 flex items-center text-primary"><Search className="w-4 h-4 mr-2" /> AI Analysis</h4>
-                <p className="text-sm leading-relaxed">{data.overview.ai_reason || data.overview.reason}</p>
-              </div>
-            )}
+                {/* Actions */}
+                <div className="flex flex-wrap gap-2">
+                  {jobUrl && (
+                    <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5" onClick={() => window.open(jobUrl, '_blank', 'noopener,noreferrer')}>
+                      <ExternalLink className="w-3 h-3" /> Open Externally
+                    </Button>
+                  )}
+                  <Button
+                    size="sm"
+                    className="h-8 text-xs gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white border-0"
+                    onClick={() => handleTransition('APPLIED')}
+                    disabled={!!transitioning}
+                  >
+                    {transitioning === 'APPLIED' ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle className="w-3 h-3" />}
+                    Mark Applied
+                  </Button>
+                  <Button
+                    variant="outline" size="sm"
+                    className="h-8 text-xs gap-1.5 text-red-500 border-red-500/30 hover:bg-red-500/10"
+                    onClick={() => handleTransition('REJECTED')}
+                    disabled={!!transitioning}
+                  >
+                    {transitioning === 'REJECTED' ? <Loader2 className="w-3 h-3 animate-spin" /> : <SkipForward className="w-3 h-3" />}
+                    Skip
+                  </Button>
+                  <Button
+                    variant="ghost" size="sm"
+                    className="h-8 text-xs gap-1.5 text-destructive hover:bg-destructive/10"
+                    onClick={() => handleTransition('ARCHIVED')}
+                    disabled={!!transitioning}
+                  >
+                    {transitioning === 'ARCHIVED' ? <Loader2 className="w-3 h-3 animate-spin" /> : <XCircle className="w-3 h-3" />}
+                    Dismiss
+                  </Button>
+                </div>
 
-            {data.events && data.events.length > 0 && (
-              <div>
-                <h4 className="font-semibold mb-2 border-b pb-1">Application History</h4>
-                <ul className="text-sm space-y-2">
-                  {data.events.map((e: any, i: number) => (
-                    <li key={i} className="flex gap-4 p-2 hover:bg-muted/50 rounded">
-                      <span className="text-muted-foreground w-32 shrink-0">{new Date(e.timestamp).toLocaleString()}</span>
-                      <span className="font-medium shrink-0 w-24">{e.status}</span>
-                      {e.note && <span className="text-muted-foreground truncate">{e.note}</span>}
-                    </li>
+                {/* Error */}
+                {error && (
+                  <div className="flex items-start gap-2 text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded-md p-3">
+                    <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+                    {error}
+                  </div>
+                )}
+
+                {/* Metadata Grid */}
+                <div className="grid grid-cols-2 gap-3">
+                  {[
+                    { label: 'Experience', value: data.overview?.experience },
+                    { label: 'Salary',     value: data.overview?.salary ? formatSalary(data.overview.salary) : null },
+                    { label: 'Source',     value: data.overview?.source },
+                    { label: 'Priority',   value: data.overview?.priority },
+                  ].filter(m => m.value).map(m => (
+                    <div key={m.label} className="bg-muted/30 rounded-md p-3">
+                      <p className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wider mb-1">{m.label}</p>
+                      <p className="text-xs font-medium">{String(m.value)}</p>
+                    </div>
                   ))}
-                </ul>
-              </div>
-            )}
+                </div>
 
-            {data.overview?.description && (
-              <div>
-                <h4 className="font-semibold mb-2 border-b pb-1">Job Description</h4>
-                <div 
-                  className="text-sm bg-muted/30 p-4 rounded-lg border max-h-[500px] overflow-y-auto [&>p]:mb-4 [&>ul]:list-disc [&>ul]:pl-5 [&>ul]:mb-4"
-                  dangerouslySetInnerHTML={{ __html: data.overview.description }}
-                />
+                {/* Application Timeline */}
+                {data.events?.length > 0 && (
+                  <div>
+                    <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-3">Application History</p>
+                    <div className="space-y-0 relative before:absolute before:left-[5px] before:top-2 before:bottom-2 before:w-px before:bg-border/50">
+                      {data.events.map((evt: any, i: number) => (
+                        <div key={i} className="relative pl-4 py-2">
+                          <div className="absolute left-[2px] top-3 w-2 h-2 rounded-full bg-border border-2 border-background z-10" />
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <StatusBadge status={evt.status} />
+                            <span className="text-[10px] text-muted-foreground">
+                              <RelativeTime date={evt.timestamp ?? evt.created_at} />
+                            </span>
+                          </div>
+                          {(evt.note || evt.detail) && (
+                            <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{evt.note ?? evt.detail}</p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Job Description */}
+                {data.overview?.description && (
+                  <div>
+                    <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-3">Job Description</p>
+                    <div
+                      className="text-xs bg-muted/20 border border-border/30 p-4 rounded-lg max-h-[400px] overflow-y-auto leading-relaxed [&>p]:mb-3 [&>ul]:list-disc [&>ul]:pl-5 [&>ul]:mb-3"
+                      dangerouslySetInnerHTML={{ __html: data.overview.description }}
+                    />
+                  </div>
+                )}
+
               </div>
-            )}
-          </div>
+            </ScrollArea>
+          </>
         )}
       </SheetContent>
     </Sheet>

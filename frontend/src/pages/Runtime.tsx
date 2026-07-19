@@ -1,7 +1,63 @@
 import { useQuery } from '@tanstack/react-query';
 import { fetchRuntime } from '@/lib/api';
-import { Badge } from '@/components/ui/badge';
-import { Activity, Server, Clock, Lock, Cpu } from 'lucide-react';
+import { Activity, Server, Clock, Lock, Cpu, CheckCircle, AlertCircle } from 'lucide-react';
+import { StatusBadge } from '@/components/StatusBadge';
+import { RelativeTime } from '@/components/RelativeTime';
+import { cn } from '@/lib/utils';
+
+// ─── Reusable data row ────────────────────────────────────────────────────────
+
+function DataRow({ label, value, mono = false }: { label: string; value: React.ReactNode; mono?: boolean }) {
+  return (
+    <div className="flex items-center justify-between py-2 border-b border-border/20 last:border-0 text-xs gap-4">
+      <span className="text-muted-foreground shrink-0">{label}</span>
+      <span className={cn('text-right', mono && 'font-mono')}>{value}</span>
+    </div>
+  );
+}
+
+// ─── Health module card ───────────────────────────────────────────────────────
+
+function ModuleCard({
+  icon: Icon,
+  title,
+  status,
+  children,
+}: {
+  icon: React.ElementType;
+  title: string;
+  status?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="border border-border/50 rounded-lg bg-card overflow-hidden">
+      <div className="h-10 px-4 border-b border-border/50 bg-muted/10 flex items-center justify-between">
+        <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+          <Icon className="w-3.5 h-3.5" />
+          {title}
+        </div>
+        {status && <StatusBadge status={status} />}
+      </div>
+      <div className="p-4 space-y-0">{children}</div>
+    </div>
+  );
+}
+
+// ─── Process alive indicator ──────────────────────────────────────────────────
+
+function AliveIndicator({ alive }: { alive: boolean | undefined }) {
+  if (alive == null) return <span className="text-muted-foreground">—</span>;
+  return (
+    <span className={cn('flex items-center gap-1.5 justify-end', alive ? 'text-emerald-500' : 'text-red-400')}>
+      {alive
+        ? <CheckCircle className="w-3.5 h-3.5" />
+        : <AlertCircle className="w-3.5 h-3.5" />}
+      {alive ? 'Online' : 'Offline'}
+    </span>
+  );
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function Runtime() {
   const { data: runtime, isLoading } = useQuery({
@@ -12,229 +68,135 @@ export default function Runtime() {
 
   if (isLoading) {
     return (
-      <div className="h-full flex flex-col bg-background">
-        <div className="p-6 animate-pulse space-y-4">
-          <div className="h-4 bg-muted w-1/4 rounded" />
-          <div className="h-32 bg-muted rounded" />
+      <div className="h-full p-6 animate-pulse space-y-5 max-w-4xl">
+        <div className="h-5 w-36 bg-muted rounded" />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {[1,2,3].map(i => <div key={i} className="h-32 bg-muted rounded-lg" />)}
         </div>
       </div>
     );
   }
 
-  const { scheduler, pipeline, ui, latest_run_details } = runtime || {};
+  const { scheduler, pipeline, ui, latest_run_details } = runtime ?? {};
 
   return (
     <div className="h-full flex flex-col bg-background text-sm">
-      <div className="flex items-center px-6 py-4 border-b shrink-0 bg-background/95 backdrop-blur z-10">
-        <h2 className="font-semibold text-lg tracking-tight flex items-center gap-2">
-          <Activity className="w-5 h-5 text-primary" />
-          Runtime Monitor
-        </h2>
+      {/* Page Header */}
+      <div className="flex items-center justify-between px-6 py-4 border-b border-border/50 shrink-0 bg-background/95 backdrop-blur z-10">
+        <div>
+          <h1 className="text-base font-semibold tracking-tight">Pipeline Health</h1>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Real-time status of the scheduler, pipeline worker, and API server.
+          </p>
+        </div>
       </div>
 
       <div className="flex-1 overflow-auto p-6 max-w-4xl space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Scheduler Module */}
-          <div className="border border-border/50 rounded-md bg-card/30 flex flex-col">
-            <div className="h-10 px-4 border-b bg-secondary/30 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              <Clock className="w-4 h-4" /> Scheduler
-            </div>
-            <div className="p-4 space-y-3">
-              <div className="flex items-center justify-between border-b border-border/40 pb-2">
-                <span className="text-muted-foreground text-xs font-medium">Status</span>
-                <Badge variant="outline" className={`font-mono text-[10px] rounded-sm px-1.5 ${scheduler?.status === 'RUNNING' ? 'text-green-500 border-green-500/20 bg-green-500/10' : scheduler?.status === 'STALE' ? 'text-red-500 border-red-500/20 bg-red-500/10' : 'text-muted-foreground'}`}>
-                  {scheduler?.status || 'UNKNOWN'}
-                </Badge>
-              </div>
-              <div className="flex items-center justify-between border-b border-border/40 pb-2">
-                <span className="text-muted-foreground text-xs font-medium">Process Alive</span>
-                <span className="font-mono text-xs">{scheduler?.is_alive ? 'True' : 'False'}</span>
-              </div>
-              <div className="flex items-center justify-between border-b border-border/40 pb-2">
-                <span className="text-muted-foreground text-xs font-medium">Heartbeat Age</span>
-                <span className="font-mono text-xs">{scheduler?.heartbeat_age ? `${Math.round(scheduler.heartbeat_age)}s` : 'N/A'}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground text-xs font-medium">PID</span>
-                <span className="font-mono text-xs text-primary">{scheduler?.pid || 'N/A'}</span>
-              </div>
-            </div>
-          </div>
 
-          {/* Pipeline Module */}
-          <div className="border border-border/50 rounded-md bg-card/30 flex flex-col">
-            <div className="h-10 px-4 border-b bg-secondary/30 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              <Cpu className="w-4 h-4" /> Pipeline Worker
-            </div>
-            <div className="p-4 space-y-3">
-              <div className="flex items-center justify-between border-b border-border/40 pb-2">
-                <span className="text-muted-foreground text-xs font-medium">State</span>
-                <Badge variant="outline" className={`font-mono text-[10px] rounded-sm px-1.5 ${pipeline?.status === 'RUNNING' ? 'text-green-500 border-green-500/20 bg-green-500/10' : 'text-muted-foreground'}`}>
-                  {pipeline?.status || 'IDLE'}
-                </Badge>
-              </div>
-              <div className="flex items-center justify-between border-b border-border/40 pb-2">
-                <span className="text-muted-foreground text-xs font-medium">Process Alive</span>
-                <span className="font-mono text-xs">{pipeline?.is_alive ? 'True' : 'False'}</span>
-              </div>
-              <div className="flex items-center justify-between border-b border-border/40 pb-2">
-                <span className="text-muted-foreground text-xs font-medium">Execution Lock</span>
-                <div className="flex items-center gap-1.5 font-mono text-xs">
-                  {scheduler?.lock ? <Lock className="w-3 h-3 text-red-500" /> : <Lock className="w-3 h-3 text-muted-foreground/30" />}
-                  {scheduler?.lock ? <span className="text-red-500">LOCKED</span> : <span>FREE</span>}
-                </div>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground text-xs font-medium">PID</span>
-                <span className="font-mono text-xs text-primary">{pipeline?.pid || 'N/A'}</span>
-              </div>
-            </div>
-          </div>
+        {/* Process modules — 3 cards in a grid */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 
-          {/* UI Server Module */}
-          <div className="border border-border/50 rounded-md bg-card/30 flex flex-col md:col-span-2 lg:col-span-1">
-            <div className="h-10 px-4 border-b bg-secondary/30 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              <Server className="w-4 h-4" /> Core API (UI Server)
-            </div>
-            <div className="p-4 space-y-3">
-              <div className="flex items-center justify-between border-b border-border/40 pb-2">
-                <span className="text-muted-foreground text-xs font-medium">Status</span>
-                <Badge variant="outline" className="font-mono text-[10px] rounded-sm px-1.5 text-green-500 border-green-500/20 bg-green-500/10">
-                  {ui?.status || 'ONLINE'}
-                </Badge>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground text-xs font-medium">PID</span>
-                <span className="font-mono text-xs text-primary">{ui?.pid || 'N/A'}</span>
-              </div>
-            </div>
-          </div>
+          {/* Scheduler */}
+          <ModuleCard icon={Clock} title="Scheduler" status={scheduler?.status ?? 'UNKNOWN'}>
+            <DataRow label="Process"      value={<AliveIndicator alive={scheduler?.is_alive} />} />
+            <DataRow label="Heartbeat"    value={scheduler?.heartbeat_age != null ? `${Math.round(scheduler.heartbeat_age)}s ago` : '—'} mono />
+            <DataRow label="PID"          value={scheduler?.pid ?? '—'} mono />
+          </ModuleCard>
+
+          {/* Pipeline Worker */}
+          <ModuleCard icon={Cpu} title="Pipeline Worker" status={pipeline?.status ?? 'IDLE'}>
+            <DataRow label="Process"  value={<AliveIndicator alive={pipeline?.is_alive} />} />
+            <DataRow label="Lock"     value={
+              scheduler?.lock
+                ? <span className="flex items-center gap-1.5 text-red-400 justify-end"><Lock className="w-3 h-3" /> Locked</span>
+                : <span className="text-muted-foreground">Free</span>
+            } />
+            <DataRow label="PID"      value={pipeline?.pid ?? '—'} mono />
+          </ModuleCard>
+
+          {/* API Server */}
+          <ModuleCard icon={Server} title="API Server" status={ui?.status ?? 'ONLINE'}>
+            <DataRow label="Process" value={<AliveIndicator alive={true} />} />
+            <DataRow label="PID"     value={ui?.pid ?? '—'} mono />
+          </ModuleCard>
+
         </div>
 
-        {/* Latest Run Telemetry */}
-        {latest_run_details && latest_run_details.run_id && (
-          <div className="space-y-6 pt-4 border-t border-border/50">
-            <h3 className="text-base font-semibold tracking-tight flex items-center gap-2 text-foreground">
-              <Cpu className="w-5 h-5 text-primary" />
-              Latest Run Telemetry
-            </h3>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Latest Run Detail */}
+        {latest_run_details?.run_id && (
+          <div className="space-y-4 pt-4 border-t border-border/50">
+            <div>
+              <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Last Run Telemetry</h2>
+              <p className="text-[10px] text-muted-foreground/60 mt-0.5 font-mono">{latest_run_details.run_id}</p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
               {/* Run Overview */}
-              <div className="border border-border/50 rounded-md bg-card/30 p-4 space-y-3">
-                <div className="flex justify-between items-center pb-2 border-b">
-                  <span className="font-semibold text-xs text-muted-foreground uppercase tracking-wider">Run Overview</span>
-                  <Badge variant="outline" className={`font-mono text-[10px] uppercase rounded-sm px-1.5 
-                    ${latest_run_details.status === 'SUCCESS' ? 'text-green-500 border-green-500/20 bg-green-500/10' : 
-                      latest_run_details.status === 'RUNNING' ? 'text-blue-500 border-blue-500/20 bg-blue-500/10 animate-pulse' : 
-                      'text-red-500 border-red-500/20 bg-red-500/10'}`}>
-                    {latest_run_details.status || 'UNKNOWN'}
-                  </Badge>
-                </div>
-                <div className="grid grid-cols-2 gap-y-2 text-xs">
-                  <div className="text-muted-foreground">Run ID</div>
-                  <div className="font-mono text-right truncate" title={latest_run_details.run_id}>{latest_run_details.run_id}</div>
-                  
-                  <div className="text-muted-foreground">Started At</div>
-                  <div className="text-right">{latest_run_details.started_at ? new Date(latest_run_details.started_at).toLocaleString() : 'N/A'}</div>
+              <ModuleCard icon={Activity} title="Run Overview" status={latest_run_details.status}>
+                <DataRow label="Started"   value={latest_run_details.started_at ? <RelativeTime date={latest_run_details.started_at} /> : '—'} />
+                <DataRow label="Completed" value={latest_run_details.completed_at ? <RelativeTime date={latest_run_details.completed_at} /> : 'Running…'} />
+                <DataRow label="Mode"      value={latest_run_details.dry_run ? 'Dry Run' : 'Live'} />
+              </ModuleCard>
 
-                  <div className="text-muted-foreground">Completed At</div>
-                  <div className="text-right">{latest_run_details.completed_at ? new Date(latest_run_details.completed_at).toLocaleString() : 'Running...'}</div>
+              {/* Stage Checklist */}
+              <div className="border border-border/50 rounded-lg bg-card overflow-hidden">
+                <div className="h-10 px-4 border-b border-border/50 bg-muted/10 flex items-center text-xs font-semibold text-muted-foreground uppercase tracking-wider gap-2">
+                  <Cpu className="w-3.5 h-3.5" /> Stage Checklist
                 </div>
-              </div>
-
-              {/* Stage Stepper / Progress */}
-              <div className="border border-border/50 rounded-md bg-card/30 p-4 space-y-3">
-                <span className="font-semibold text-xs text-muted-foreground uppercase tracking-wider block pb-2 border-b">Stage Checklist</span>
-                <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
-                  {Object.entries(latest_run_details.stages || {}).map(([stage, status]: any) => {
-                    const uppercaseStatus = String(status).toUpperCase();
-                    let color = 'text-muted-foreground';
-                    if (uppercaseStatus === 'SUCCESS') color = 'text-green-500 font-semibold';
-                    else if (uppercaseStatus === 'FAILED') color = 'text-red-500 font-semibold';
-                    else if (uppercaseStatus === 'RUNNING' || uppercaseStatus === 'IN_PROGRESS') color = 'text-blue-500 font-semibold animate-pulse';
-                    return (
-                      <div key={stage} className="flex justify-between items-center py-0.5 border-b border-border/20">
-                        <span className="capitalize">{stage}</span>
-                        <span className={`font-mono text-[10px] ${color}`}>{uppercaseStatus}</span>
-                      </div>
-                    );
-                  })}
+                <div className="p-4 space-y-0">
+                  {Object.entries(latest_run_details.stages ?? {}).map(([stage, status]: any) => (
+                    <DataRow
+                      key={stage}
+                      label={stage.charAt(0).toUpperCase() + stage.slice(1)}
+                      value={<StatusBadge status={String(status).toUpperCase()} />}
+                    />
+                  ))}
                 </div>
               </div>
 
               {/* Acquisition Metrics */}
-              <div className="border border-border/50 rounded-md bg-card/30 p-4 space-y-3">
-                <span className="font-semibold text-xs text-muted-foreground uppercase tracking-wider block pb-2 border-b">Acquisition Metrics</span>
-                <div className="grid grid-cols-2 gap-y-2 text-xs">
-                  <div className="text-muted-foreground">Jobs Acquired</div>
-                  <div className="font-mono text-right">{latest_run_details.acquisition?.jobs ?? latest_run_details.acquisition?.acquired ?? 'N/A'}</div>
-                  
-                  <div className="text-muted-foreground">Search Requests</div>
-                  <div className="font-mono text-right">{latest_run_details.acquisition?.search_requests_attempted ?? 'N/A'}</div>
+              <ModuleCard icon={Activity} title="Acquisition">
+                <DataRow label="Jobs Acquired"      value={latest_run_details.acquisition?.acquired ?? latest_run_details.acquisition?.jobs ?? '—'} mono />
+                <DataRow label="Search Requests"    value={latest_run_details.acquisition?.search_requests_attempted ?? '—'} mono />
+                <DataRow label="Challenge Blocked"  value={latest_run_details.acquisition?.challenge_encountered ? 'Yes' : 'No'} />
+              </ModuleCard>
 
-                  <div className="text-muted-foreground">Challenge Blocked</div>
-                  <div className="text-right">{latest_run_details.acquisition?.challenge_encountered ? 'Yes' : 'No'}</div>
-                </div>
-              </div>
+              {/* Classification */}
+              <ModuleCard icon={Activity} title="Classification">
+                <DataRow label="Classified"         value={latest_run_details.classification?.summary?.classified ?? '—'} mono />
+                <DataRow label="Deduplicated"        value={latest_run_details.classification?.summary?.description_duplicates_removed ?? '—'} mono />
+                <DataRow label="Pre-filter Rejected" value={latest_run_details.classification?.rejected_count ?? '—'} mono />
+              </ModuleCard>
 
-              {/* Classification Metrics */}
-              <div className="border border-border/50 rounded-md bg-card/30 p-4 space-y-3">
-                <span className="font-semibold text-xs text-muted-foreground uppercase tracking-wider block pb-2 border-b">Classification Metrics</span>
-                <div className="grid grid-cols-2 gap-y-2 text-xs">
-                  <div className="text-muted-foreground">Enriched & Classified</div>
-                  <div className="font-mono text-right">{latest_run_details.classification?.summary?.classified ?? 'N/A'}</div>
-                  
-                  <div className="text-muted-foreground">Description Duplicates</div>
-                  <div className="font-mono text-right">{latest_run_details.classification?.summary?.description_duplicates_removed ?? 'N/A'}</div>
+              {/* Selection */}
+              <ModuleCard icon={Activity} title="Selection &amp; Routing">
+                <DataRow label="AI Scored"        value={latest_run_details.selection?.ranked ?? '—'} mono />
+                <DataRow label="Routing Eligible" value={latest_run_details.selection?.hard_gate_eligible ?? '—'} mono />
+                <DataRow label="Routing Blocked"  value={latest_run_details.selection?.hard_gate_rejected ?? '—'} mono />
+              </ModuleCard>
 
-                  <div className="text-muted-foreground">Prefilter Rejections</div>
-                  <div className="font-mono text-right">{latest_run_details.classification?.rejected_count ?? 'N/A'}</div>
-                </div>
-              </div>
-
-              {/* Selection Metrics */}
-              <div className="border border-border/50 rounded-md bg-card/30 p-4 space-y-3">
-                <span className="font-semibold text-xs text-muted-foreground uppercase tracking-wider block pb-2 border-b">Selection & Routing</span>
-                <div className="grid grid-cols-2 gap-y-2 text-xs">
-                  <div className="text-muted-foreground">AI Scored / Ranked</div>
-                  <div className="font-mono text-right">{latest_run_details.selection?.ranked ?? 'N/A'}</div>
-                  
-                  <div className="text-muted-foreground">Routing Eligible</div>
-                  <div className="font-mono text-right">{latest_run_details.selection?.hard_gate_eligible ?? 'N/A'}</div>
-
-                  <div className="text-muted-foreground">Routing Blocked</div>
-                  <div className="font-mono text-right">{latest_run_details.selection?.hard_gate_rejected ?? 'N/A'}</div>
-                </div>
-              </div>
-
-              {/* Application/Submission Metrics */}
-              <div className="border border-border/50 rounded-md bg-card/30 p-4 space-y-3">
-                <span className="font-semibold text-xs text-muted-foreground uppercase tracking-wider block pb-2 border-b">Application / Queue Actions</span>
-                <div className="grid grid-cols-2 gap-y-2 text-xs">
-                  <div className="text-muted-foreground">Submitted (Live)</div>
-                  <div className="font-mono text-right text-primary font-semibold">{latest_run_details.application?.submitted ?? 'N/A'}</div>
-                  
-                  <div className="text-muted-foreground">Dry Run Skipped</div>
-                  <div className="font-mono text-right">{latest_run_details.application?.dry_run_skipped ?? 'N/A'}</div>
-
-                  <div className="text-muted-foreground">Sent to Manual Review</div>
-                  <div className="font-mono text-right text-orange-500 font-semibold">{latest_run_details.application?.manual_review ?? 'N/A'}</div>
-
-                  <div className="text-muted-foreground">Application Failures</div>
-                  <div className="font-mono text-right text-red-500 font-semibold">{latest_run_details.application?.failed ?? 'N/A'}</div>
-                </div>
-              </div>
+              {/* Application */}
+              <ModuleCard icon={Activity} title="Application">
+                <DataRow label="Submitted (Live)"   value={<span className="text-emerald-500 font-semibold">{latest_run_details.application?.submitted ?? '—'}</span>} />
+                <DataRow label="Dry Run Skipped"    value={latest_run_details.application?.dry_run_skipped ?? '—'} mono />
+                <DataRow label="Sent to Review"     value={<span className="text-purple-400 font-semibold">{latest_run_details.application?.manual_review ?? '—'}</span>} />
+                <DataRow label="Failed"             value={
+                  (latest_run_details.application?.failed ?? 0) > 0
+                    ? <span className="text-red-400 font-semibold">{latest_run_details.application?.failed}</span>
+                    : '0'
+                } />
+              </ModuleCard>
             </div>
 
-            {/* Error Telemetry */}
-            {latest_run_details.errors && latest_run_details.errors.length > 0 && (
-              <div className="border border-red-500/20 rounded-md bg-red-500/5 p-4 space-y-2">
-                <span className="font-semibold text-xs text-red-500 uppercase tracking-wider block">Runtime Errors Detected</span>
-                <ul className="space-y-1 text-xs text-red-500/80 font-mono">
+            {/* Errors */}
+            {latest_run_details.errors?.length > 0 && (
+              <div className="border border-red-500/20 rounded-lg bg-red-500/5 p-4">
+                <p className="text-[10px] font-semibold text-red-500 uppercase tracking-wider mb-3">Runtime Errors</p>
+                <ul className="space-y-1 text-xs text-red-400 font-mono">
                   {latest_run_details.errors.map((err: string, i: number) => (
                     <li key={i} className="flex gap-2 items-start">
-                      <span className="shrink-0">•</span>
+                      <span className="shrink-0 opacity-60">•</span>
                       <span>{err}</span>
                     </li>
                   ))}
@@ -243,6 +205,7 @@ export default function Runtime() {
             )}
           </div>
         )}
+
       </div>
     </div>
   );
